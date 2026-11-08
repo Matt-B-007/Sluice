@@ -49,11 +49,18 @@ CHECK_SECONDS = 180
 
 # What the new code must be able to do before it is allowed to replace the old: import its main parts from its own folder.
 _CHECK = (
-    "import sys\n"
-    "tree = sys.argv[1]\n"
+    "import os, sys\n"
+    "tree, root = os.path.realpath(sys.argv[1]), os.path.realpath(sys.argv[2])\n"
+    # An editable install (pip install -e) lets the *installed* folder answer for sluice's submodules and adds it to
+    # sys.path: switch both off, so that only the downloaded code can satisfy these imports.
+    "sys.meta_path[:] = [f for f in sys.meta_path if 'editable' not in (getattr(f, '__module__', '') + repr(f)).lower()]\n"
+    "sys.path[:] = [p for p in sys.path if os.path.realpath(p or '.') != root]\n"
     "sys.path.insert(0, tree)\n"
     "import sluice, sluice.engine, sluice.model, sluice.updates, sluice.ui\n"
-    "assert sluice.__file__.startswith(tree), sluice.__file__\n"
+    "for name, module in list(sys.modules.items()):\n"
+    "    where = getattr(module, '__file__', None)\n"
+    "    if (name == 'sluice' or name.startswith('sluice.')) and where:\n"
+    "        assert os.path.realpath(where).startswith(tree + os.sep), (name, where)\n"
     "print(sluice.__version__)\n"
 )
 
@@ -332,11 +339,11 @@ def stage(result, root: Path, progress: Optional[Callable[[int, int], None]] = N
 
 
 # ----------------------------------------------------------------------------------------------------- the swap itself
-def _verify_new_code(tree: Path, expected: str, run: Callable) -> None:
+def _verify_new_code(tree: Path, root: Path, expected: str, run: Callable) -> None:
     env = {k: v for k, v in os.environ.items() if k not in ("PYTHONPATH", "PYTHONHOME")}
     env.setdefault("QT_QPA_PLATFORM", "offscreen")
     try:
-        done = run([sys.executable, "-I", "-c", _CHECK, str(tree.resolve())], capture_output=True, text=True,
+        done = run([sys.executable, "-I", "-c", _CHECK, str(tree.resolve()), str(root.resolve())], capture_output=True, text=True,
                    timeout=CHECK_SECONDS, env=env, cwd=str(tree))
     except (OSError, subprocess.SubprocessError) as exc:
         raise UpdateError(f"The new version could not be tried out ({exc}), so it was not installed.") from exc
@@ -381,7 +388,7 @@ def apply_staged(root: Path, run: Optional[Callable] = None) -> Optional[str]:
         discard_staged(root)  # stale: already installed, or not what it claims
         return None
     try:
-        _verify_new_code(tree, version, run)
+        _verify_new_code(tree, root, version, run)
     except UpdateError:
         discard_staged(root)
         raise
