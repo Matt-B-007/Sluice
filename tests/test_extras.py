@@ -141,9 +141,7 @@ def test_the_probe_fails_quietly_without_a_server(monkeypatch):
 
 
 # ---------------------------------------------------- echo measurement through the engine
-def test_the_echo_measurement_goes_through_the_engine(rig):
-    from tests.test_room import clap_room
-
+def test_the_echo_measurement_goes_through_the_engine(rig, clap_room):
     engine, io = rig
     clap = clap_room(0.6, -75)
     io.streamed_inputs = {"mic": clap}

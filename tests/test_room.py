@@ -180,31 +180,14 @@ def test_measuring_an_unknown_channel_or_without_audio_fails_clearly(rig):
 
 
 # ------------------------------------------------------------------ echo time from a clap
-def clap_room(rt60, noise_db, seed=0):
-    rng = np.random.default_rng(seed)
-    n = int(SR * rt60 * 1.3)
-    t = np.arange(n) / SR
-    tail = rng.standard_normal(n) * 10 ** (-3 * t / rt60)
-    tail[: int(0.004 * SR)] = 0
-    tail *= 1.0 / np.sqrt(np.sum(tail ** 2))
-    h = tail.copy()
-    h[int(0.002 * SR)] += 1.0
-    clap = np.zeros(SR * 4)
-    clap[SR:SR + 30] = rng.standard_normal(30) * 0.8
-    x = np.convolve(clap, h)[: clap.size]
-    x = x / np.max(np.abs(x)) * 0.5
-    hum = rng.standard_normal(x.size) * 10 ** (noise_db / 20)
-    return np.stack([x + hum, x + hum]).astype(np.float32)
-
-
 @pytest.mark.parametrize("rt60", [0.3, 0.5, 0.8, 1.2])
-def test_echo_time_is_read_from_a_clap_in_a_quiet_room(rt60):
+def test_echo_time_is_read_from_a_clap_in_a_quiet_room(rt60, clap_room):
     result = room.analyse_echo(clap_room(rt60, -70), SR)
     assert result.status == "ok" and result.usable
     assert abs(result.reverb_time - rt60) / rt60 < 0.15
 
 
-def test_a_loud_room_refuses_instead_of_guessing():
+def test_a_loud_room_refuses_instead_of_guessing(clap_room):
     result = room.analyse_echo(clap_room(0.8, -35), SR)
     assert result.status == "no_clap" and not result.usable and "clap" in result.message
 

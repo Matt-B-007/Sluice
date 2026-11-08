@@ -147,9 +147,8 @@ def test_a_channel_without_a_gate_has_no_measure_button(rig):
     assert not [b for b in dialog.params_area.widget().findChildren(QPushButton) if b.text().startswith("Measure")]
 
 
-def test_measuring_the_echo_with_a_clap_sets_the_room_echo_time(rig):
+def test_measuring_the_echo_with_a_clap_sets_the_room_echo_time(rig, clap_room):
     from sluice.ui_room import MeasureEchoDialog
-    from tests.test_room import clap_room
 
     _, engine, io = rig
     used = []
@@ -167,9 +166,8 @@ def test_measuring_the_echo_with_a_clap_sets_the_room_echo_time(rig):
     assert len(used) == 1 and abs(used[0] - 0.9) < 0.15
 
 
-def test_a_loud_room_is_told_the_clap_was_not_clear(rig):
+def test_a_loud_room_is_told_the_clap_was_not_clear(rig, clap_room):
     from sluice.ui_room import MeasureEchoDialog
-    from tests.test_room import clap_room
 
     _, engine, io = rig
     dialog = MeasureEchoDialog(engine, engine.mixer.channel("mic"), 0.6, lambda v: None)
