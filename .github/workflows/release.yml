@@ -22,15 +22,22 @@ jobs:
           python -m build
           mkdir -p out
           git archive --prefix=sluice/ -o "out/sluice-${GITHUB_REF_NAME}.zip" HEAD
+          # The in-app updater downloads this file next to the zip and refuses a zip that does not match it.
+          (cd out && sha256sum "sluice-${GITHUB_REF_NAME}.zip" > "sluice-${GITHUB_REF_NAME}.zip.sha256")
       - name: Release notes from the changelog
         run: |
           v="${GITHUB_REF_NAME#v}"
           awk -v v="$v" '$0 ~ "^## " v "$" {on=1; next} /^## / {on=0} on' CHANGELOG.md > notes.md
-          [ -s notes.md ] || echo "See CHANGELOG.md." > notes.md
+          [ -s notes.md ] || { echo "CHANGELOG.md has no section '## $v': add one before tagging"; exit 1; }
+          case "$v" in 0.*) echo "title=Sluice $v (beta)" ;; *) echo "title=Sluice $v" ;; esac >> "$GITHUB_OUTPUT"
+        id: notes
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ steps.notes.outputs.title }}
           body_path: notes.md
           prerelease: ${{ startsWith(github.ref_name, 'v0.') }}  # every 0.x version is a beta
           files: |
             dist/*
             out/*.zip
+            out/*.sha256

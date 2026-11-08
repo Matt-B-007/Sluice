@@ -11,23 +11,22 @@ An open-source virtual audio mixer for Linux (PipeWire). Put your mic, games, mu
 > [issue](https://github.com/Matt-B-007/Sluice/issues) with the file. The newest version is on the
 > [releases page](https://github.com/Matt-B-007/Sluice/releases).
 
-## What's new in 0.9.0
+## What's new in 0.9.1
 
-Takes noise and echo out of your voice, not only out of the gaps between words. (The full list for every version is in
-[CHANGELOG.md](CHANGELOG.md); Sluice also shows it once after an update, and under *Help > What's new in this version*.)
+Sluice can update itself. (The full list for every version is in [CHANGELOG.md](CHANGELOG.md); Sluice also shows it once
+after an update, and under *Help > What's new in this version*.)
 
-- **Echo Reducer and Noise Reducer**: two new effects that lower a room's echo tail and its steady noise (fan, air
-  conditioner, road hiss) while you talk, with a *Compare* button, a live "turning your voice down by X dB" readout and
-  a clap-based *Measure my room's echo*. They are in the recommended voice chain; press *Use the recommended voice
-  chain* to add them to an existing Mic channel. See *Effects*.
-- **Presets** for the voice chain, and your own.
-- **A system tray icon** (*File > When I close the window > Keep running in the system tray*).
-- **Mute my microphone** (status bar button, Ctrl+M, `sluice ctl mic-mute`), including the *Sluice (Mic)* device.
-- **A third mix, "Recording"**, for a recorder that should hear a different blend from your audience.
-- **Games from Lutris, Heroic/Epic and Bottles** in the App or game list.
-- **Sluice reconnects by itself** after PipeWire is restarted.
-- Everything from 0.8.0 is still here: *Measure my room*, the noisy-room defaults, Wine/Proton game matching, the
-  lighter CPU use and the what's-new window.
+- **Update now**: *Help > Check for updates* shows what the new version changes, and an **Update now** button downloads
+  it, checks it against its checksum, and restarts into it. No zip to download and unpack.
+- **Update automatically** (off by default): Sluice downloads a newer version in the background and installs it when
+  you close it.
+- **Go back to the previous version** if an update does not suit you (`sluice --rollback` if Sluice will not start).
+- Releases are titled "Sluice 0.9.1 (beta)" and carry a checksum file.
+- Everything from 0.9.0 is still here: the **Echo Reducer** and **Noise Reducer** effects (with *Compare*, a live
+  readout and a clap-based *Measure my room's echo*), presets for the voice chain, the **system tray** icon,
+  **Mute my microphone** (status bar, Ctrl+M, `sluice ctl mic-mute`), a third **Recording** mix, games from Lutris,
+  Heroic/Epic and Bottles, and reconnecting by itself after PipeWire restarts. Press *Use the recommended voice chain*
+  on an existing Mic channel to add the two reducers. See *Effects*.
 
 ## What it does
 
@@ -64,7 +63,7 @@ Takes noise and echo out of your voice, not only out of the gaps between words. 
 
 ## Status: please read
 
-Version 0.9.0, a beta. The mixing engine, effects, routing, PulseAudio control and UI are covered by more than 370 automated
+Version 0.9.1, a beta. The mixing engine, effects, routing, PulseAudio control and UI are covered by more than 410 automated
 tests, and the interface has been run and screenshotted. On CachyOS (PipeWire, Elgato Wave XLR Pro) these have been
 confirmed by hand: the microphone, **Sluice (Mic)** and **Sluice (Broadcast)** in OBS, Hear Broadcast, the faders,
 Steam game detection and routing (Counter-Strike 2 through Proton), starting from the applications menu, installing from
@@ -83,7 +82,7 @@ and other musl-based systems (the Python audio packages have no wheels for them)
 Open the [latest release](https://github.com/Matt-B-007/Sluice/releases) and download the zip named **`sluice-vX.Y.Z.zip`** from the *Assets* list (not the green *Code* button, and not the *Source code* links, which unpack into a differently named folder). Or `git clone` the repository. Then:
 
 ```bash
-unzip sluice-v0.9.0.zip && cd sluice
+unzip sluice-v0.9.1.zip && cd sluice
 ./install.sh              # shows the package command for your distribution and asks before running it
 ./install.sh --dry-run    # only shows what it would do
 ```
@@ -269,7 +268,7 @@ To watch what it is doing while you test: `tail -f ~/.local/state/sluice/sluice.
 | **Mixer** | Add channel (Ctrl+N), Recording devices for OBS, Mute my microphone (Ctrl+M), Hear Broadcast (Ctrl+B), Mute Listen (Ctrl+Shift+L), Mute Broadcast (Ctrl+Shift+B), Third mix: Recording, Refresh devices and apps (F5) |
 | **View** | Full screen (F11), Reset window size, Audio buffer |
 | **Controllers** | MIDI controllers and Stream Deck |
-| **Help** | Keyboard shortcuts (F1), What's new in this version, Check for updates, Save bug report, Open log folder, About |
+| **Help** | Keyboard shortcuts (F1), What's new in this version, Check for updates, Update automatically, Go back to the previous version, Save bug report, Open log folder, About |
 
 Settings are saved automatically a few seconds after every change and when you quit (see *Saving*). **Import settings** checks the file, keeps your current settings as
 `config.before-import.json`, and takes effect the next time Sluice starts; quitting does not overwrite the imported file.
@@ -277,11 +276,24 @@ Settings are saved automatically a few seconds after every change and when you q
 ## Version and updates
 
 The version is in the window title, at the right of the status bar and in **Help > About Sluice**. Please include it
-in bug reports. **Help > Check for updates** only runs when you click it: it asks GitHub for the newest release
+in bug reports. **Help > Check for updates** runs when you click it: it asks GitHub for the newest release
 (pre-releases included) and tells you whether yours is current. If a newer one exists it shows **what that version
-changes** (its release notes) with a button to open the download page. Nothing is sent except that request. To update,
-download the new zip from the releases page, unpack it and run `./install.sh` again; your settings stay where they are.
-For a different release feed, set `SLUICE_UPDATE_URL`.
+changes** (its release notes) with an **Update now** button and a button to open the download page. Nothing is sent
+except that request. For a different release feed, set `SLUICE_UPDATE_URL`.
+
+**Update now** downloads the release zip and its `.sha256` file from github.com over https and stops unless they match,
+unpacks it into a `.update` folder inside the Sluice folder, starts the new code once to see that it loads, and then
+asks you to restart. *Later* installs it the next time you close Sluice; Sluice never swaps its own files while it runs.
+The old files are kept in `.previous`, and **Help > Go back to the previous version** (or `sluice --rollback`) restores
+them. Your settings and `.venv` are not touched; if the new version needs another Python package, it is installed first,
+and nothing changes if that fails. The checksum catches a damaged or cut-off download; it cannot catch a release that was
+tampered with on GitHub itself. A copy that is a git checkout (update it with `git pull`) or sits in a folder Sluice
+cannot write to is never changed by the updater, and versions before 0.9.1 cannot update themselves: install 0.9.1 from the
+zip once.
+
+**Help > Update automatically when a new version is found** is off by default. When it is on, Sluice asks GitHub once,
+20 seconds after it starts, and downloads and checks a newer version in the background; it is installed when you close
+Sluice, never while you are in a call or a game.
 
 **After an update**, Sluice shows what is new in the version you now have, once (a brand-new install is not shown it, and
 a start minimized at login waits until you open the window). **Help > What's new in this version** shows it again. The

@@ -10,3 +10,5 @@ notes.md
 *.tmp
 sluice-report.txt
 pwmix-report.txt
+.update/
+.previous/

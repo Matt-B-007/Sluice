@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.9.1
+Sluice can now update itself, and the release page is named after the version.
+- **Update now.** *Help > Check for updates* shows what the new version changes and, when it can, an **Update now**
+  button: Sluice downloads the release, checks it against its checksum, starts the new code once to see that it loads,
+  and then asks you to restart. If you choose *Later*, it is installed the next time you close Sluice. Nothing is
+  swapped while Sluice is running. Your settings, presets and the `.venv` folder are not touched, and if the new version
+  needs another Python package it is installed first (and nothing changes if that fails).
+- **Update automatically** (*Help*, off by default). When it is on, Sluice asks GitHub once, 20 seconds after it starts,
+  and downloads and checks a newer version in the background. It is installed when you close Sluice, never in the middle
+  of a call or a game.
+- **Go back to the previous version** (*Help*, or `sluice --rollback` when Sluice does not start): the files from before
+  the last update are kept and can be put back.
+- **Safe by design.** Only https downloads from github.com; a checksum file that must match; archives with unsafe paths,
+  links or odd sizes are refused. A copy that is a git checkout, or in a folder Sluice cannot write to, is never
+  changed: update those with `git pull` or the way you installed them. The checksum catches a damaged or cut-off
+  download; it does not protect against a release that was tampered with on GitHub itself.
+- **Releases** are now titled "Sluice 0.9.1 (beta)" (tag `v0.9.1`), carry a `.sha256` file beside the zip, and the
+  release workflow refuses to run if `CHANGELOG.md` has no section for the version.
+- Tests no longer depend on `scipy` or on `tests` being importable as a package (the cause of the failed CI run).
+- Honest limits: the updater was tested against simulated releases and a throw-away folder, not a real GitHub release
+  yet. The first real use is updating from 0.9.1 to the next version; 0.9.0 cannot update itself, so install 0.9.1 from
+  the zip once.
+
 ## 0.9.0
 Takes noise and echo out of your voice, not only out of the gaps between words, and fills in what was missing.
 - **Two new effects: Echo Reducer and Noise Reducer.** The Echo Reducer lowers the tail of your room's echo, the part

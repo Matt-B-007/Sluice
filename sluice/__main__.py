@@ -99,6 +99,26 @@ def _report(target: str) -> int:
     return 0
 
 
+def _rollback() -> int:
+    from . import selfupdate
+
+    root = selfupdate.install_root()
+    previous = selfupdate.previous_version(root)
+    if not previous:
+        print("There is no earlier version to go back to.", file=sys.stderr)
+        return 1
+    if _acquire_lock() is None:
+        print("sluice is running. Close it first, then go back.", file=sys.stderr)
+        return 1
+    try:
+        selfupdate.rollback(root)
+    except selfupdate.UpdateError as exc:
+        print(f"sluice: {exc}", file=sys.stderr)
+        return 1
+    print(f"Went back to Sluice {previous}. Your settings were not changed.")
+    return 0
+
+
 def _desktop(install: bool) -> int:
     from . import desktop
 
@@ -208,6 +228,12 @@ def _run_gui(args, log_file: Optional[Path]) -> int:
 
     code = app.exec()
     log.info("window closed, exit code %s", code)
+    if not is_demo:
+        from . import selfupdate
+
+        installed = selfupdate.apply_staged_quietly()  # a downloaded update goes in now that nothing is running
+        if installed:
+            print(f"sluice: updated to {installed}; it starts next time.", file=sys.stderr)
     del lock
     return code
 
@@ -225,6 +251,7 @@ def main(argv: Optional[list] = None) -> int:
     parser.add_argument("--diagnose", action="store_true", help="check that everything sluice needs is installed and running")
     parser.add_argument("--debug", action="store_true", help="log every detail (links, commands) to the log file and the terminal")
     parser.add_argument("--report", nargs="?", const="", metavar="FILE", help="write a bug report file (default: ~/sluice-report.txt)")
+    parser.add_argument("--rollback", action="store_true", help="go back to the version before the last in-app update")
     parser.add_argument("--cleanup", action="store_true", help="remove virtual devices left behind by a crash")
     parser.add_argument("--install-desktop", action="store_true", help="add Sluice to the applications menu (your own folders only)")
     parser.add_argument("--uninstall-desktop", action="store_true", help="remove Sluice from the applications menu")
@@ -245,6 +272,8 @@ def main(argv: Optional[list] = None) -> int:
             return 0 if ok else 1
         if args.cleanup:
             return _cleanup()
+        if args.rollback:
+            return _rollback()
         if args.autostart:
             from . import desktop
 

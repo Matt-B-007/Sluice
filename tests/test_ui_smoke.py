@@ -294,7 +294,8 @@ def test_help_menu_saves_a_bug_report(ui, tmp_path, monkeypatch):
     from sluice import __version__
 
     assert [a.text().replace("&", "") for a in help_menu.actions() if a.text()] == [
-        "Keyboard shortcuts", "What's new in this version\u2026", "Check for updates\u2026", "Save bug report\u2026", "Open log folder", f"About Sluice {__version__}"]
+        "Keyboard shortcuts", "What's new in this version\u2026", "Check for updates\u2026", "Update automatically when a new version is found",
+        "Go back to the previous version\u2026", "Save bug report\u2026", "Open log folder", f"About Sluice {__version__}"]
     target = tmp_path / "report.txt"
     win.save_report_to(target)
     assert target.read_text().startswith("sluice bug report")
