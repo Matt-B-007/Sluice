@@ -59,7 +59,7 @@ and other musl-based systems (the Python audio packages have no wheels for them)
 
 ### The short way
 
-Download the zip from the [releases page](https://github.com/Matt-B-007/Sluice/releases) (or `git clone` the repository), then:
+Open the [latest release](https://github.com/Matt-B-007/Sluice/releases) and download the zip named **`sluice-vX.Y.Z.zip`** from the *Assets* list (not the green *Code* button, and not the *Source code* links, which unpack into a differently named folder). Or `git clone` the repository. Then:
 
 ```bash
 unzip sluice-v0.7.0.zip && cd sluice
