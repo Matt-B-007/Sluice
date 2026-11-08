@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sluice"
+version = "0.7.0"
+description = "An open-source virtual audio mixer for PipeWire on Linux: channels, per-output mixes and VST3 effects"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "GPL-3.0-or-later" }
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: X11 Applications :: Qt",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Operating System :: POSIX :: Linux",
+    "Topic :: Multimedia :: Sound/Audio :: Mixers",
+]
+dependencies = [
+    "PySide6-Essentials>=6.5",
+    "pulsectl>=23.5",
+    "numpy>=1.24",
+    "pedalboard>=0.9",
+    "JACK-Client>=0.5",
+]
+
+[project.urls]
+Homepage = "https://github.com/Matt-B-007/Sluice"
+Issues = "https://github.com/Matt-B-007/Sluice/issues"
+
+[project.optional-dependencies]
+dev = ["pytest>=7", "pyflakes"]
+
+[project.scripts]
+sluice = "sluice.__main__:run"
+
+[tool.setuptools]
+packages = ["sluice"]
+
+[tool.setuptools.package-data]
+sluice = ["data/*.svg", "data/png/*.png"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

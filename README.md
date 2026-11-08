@@ -1,0 +1,497 @@
+# Sluice
+
+An open-source virtual audio mixer for Linux (PipeWire). Put your mic, games, music and chat on separate
+**channels**, decide what *you* hear and what your *audience* hears, and run **VST3 plugins** on any channel.
+
+
+![Sluice main window, demo mode](docs/screenshot.png)
+
+> **Beta.** Sluice works on the system it was developed on (CachyOS, PipeWire, an Elgato Wave XLR Pro) and has automated
+> tests, but it has had little testing elsewhere. Please report problems: run `sluice --report` and open an
+> [issue](https://github.com/Matt-B-007/Sluice/issues) with the file. The newest version is on the
+> [releases page](https://github.com/Matt-B-007/Sluice/releases).
+
+## What it does
+
+- **Channels** (a new install starts with Mic, Browser, Game, Chat, Music and System; add as many more as you like). Each channel has a list of
+  **sources**: capture devices (microphones, capture cards) and **apps**. Add them with one click from
+  *+ Add device or app*, or use the **Playing now** bar at the bottom to send any running app to a channel.
+  *+ Add device or app* lists every microphone and input, the sound playing on any output device (for example
+  to bring in a second headset), and **App or game**: one searchable list holding the apps playing right now,
+  everything installed and your Steam games, with a *Games only* filter, where you can pick several at once.
+  A program that is not in the list can be added by typing its name and choosing *Add "name" by name*. Steam games are found
+  in all your Steam libraries and are recognised by their game id, so they work even through Proton and even when
+  the game has not started yet.
+- **Two mixes**: *Listen* (what you hear, to your headphones) and *Broadcast* (what your audience hears). Every
+  channel has its own fader and mute for each, so you can listen to music that never reaches the stream.
+  **LINK** moves both faders together.
+- **Broadcast as a microphone**: the Broadcast mix appears as a device called **Sluice (Broadcast)**.
+  Pick it as the audio source in OBS, Discord, Zoom, a browser, anything.
+- **Separate recording devices**: any channel can also be its own microphone ("Sluice (Mic)", "Sluice (Game)
+  only", ...), so OBS or another recorder can record just that channel on its own track. See *Recording one channel
+  on its own*.
+- **Effects on every channel**: gain, high-pass, noise gate, 3-band EQ, compressor, limiter, and **VST3 plugins**.
+  The built-in ones always run in the best order and start from sensible values for a speaking voice. See *Effects*.
+- **A launcher for the desktop**: *File > Add Sluice to the applications menu* (or `sluice --install-desktop`) gives
+  Sluice an icon and an entry in your launcher, so you can start it like any other app.
+- **Hardware control**: drive faders and mutes from a **Stream Deck** (or any button that can run a command) and from
+  **MIDI** faders, knobs and pads. See *Controllers* below.
+- **Hear what your audience hears**: the *Hear Broadcast* button on the Listen mix plays the Broadcast mix in your
+  own output so you can check it, and *Listen* returns when you turn it off. It always starts off.
+- Peak meters everywhere, a limiter on each mix, and your layout is saved to `~/.config/sluice/config.json`.
+
+![effects dialog](docs/effects.png)
+
+## Status: please read
+
+Version 0.6. The mixing engine, effects, routing, PulseAudio control and UI are covered by about 260 automated
+tests, and the interface has been run and screenshotted. On CachyOS (PipeWire, Elgato Wave XLR Pro) the mic, the
+Broadcast mix, Hear Broadcast, Steam game detection and the faders have been confirmed by hand. Not yet confirmed on
+real hardware: the *Recording devices for OBS* outputs, controller support, VST3 plugins, and every distribution other
+than Arch. If something does not work, use **Help > Save bug report** (or `sluice --report`) and send the file:
+see *Logs and bug reports* below.
+
+## Install
+
+Sluice needs a Linux desktop that runs **PipeWire** (with its PulseAudio and JACK parts) and Python 3.10 or newer.
+Most current distributions qualify. It does **not** work on systems that still use plain PulseAudio, or on Alpine
+and other musl-based systems (the Python audio packages have no wheels for them).
+
+### The short way
+
+Download the zip from the [releases page](https://github.com/Matt-B-007/Sluice/releases) (or `git clone` the repository), then:
+
+```bash
+unzip sluice-v0.7.0.zip && cd sluice
+./install.sh              # shows the package command for your distribution and asks before running it
+./install.sh --dry-run    # only shows what it would do
+```
+
+`install.sh` never removes packages, never uses root except for the one package command you approve, and puts
+everything else in a `.venv` folder inside `sluice/`. Add `--desktop` to also add Sluice to the applications menu,
+`--yes` to skip the question, `--no-system` if you installed the packages yourself.
+
+### Supported distributions
+
+| Family | System packages |
+|---|---|
+| Arch, CachyOS, Manjaro, EndeavourOS | `sudo pacman -S --needed python pipewire pipewire-pulse wireplumber pipewire-jack libpulse xcb-util-cursor` |
+| Debian, Ubuntu (22.04+), Linux Mint, Pop!_OS | `sudo apt install python3 python3-pip python3-venv pipewire pipewire-pulse wireplumber pipewire-jack pipewire-bin pulseaudio-utils libpulse0 libxcb-cursor0 libgl1 libegl1 libxkbcommon-x11-0 libfontconfig1` |
+| Fedora, Nobara | `sudo dnf install python3 python3-pip pipewire pipewire-pulseaudio wireplumber pipewire-jack-audio-connection-kit pipewire-utils pulseaudio-utils pulseaudio-libs xcb-util-cursor mesa-libGL mesa-libEGL libxkbcommon-x11 fontconfig` |
+| openSUSE | `sudo zypper install python3 python3-pip pipewire pipewire-pulseaudio wireplumber pipewire-libjack-0_3 pipewire-tools pulseaudio-utils libpulse0 libxcb-cursor0 libGL1 libEGL1 libxkbcommon-x11-0 fontconfig` |
+
+Only the Arch family has been run for real. The others use each distribution's documented package names and are
+covered by unit tests, but if one is wrong for your release, tell me with `sluice --report`.
+`sluice --diagnose` prints the right command for *your* distribution next to anything that is missing.
+
+#### Other distributions
+
+You need: PipeWire with `pipewire-pulse` and WirePlumber running as your user, the PipeWire JACK library
+(`libjack` from PipeWire, not from jack2), the `pw-link` tool, libpulse, `python3-venv`, and the Qt xcb helper
+library (`libxcb-cursor`). Then:
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install -e . && .venv/bin/sluice --diagnose
+```
+
+#### Debian and Ubuntu: the JACK library
+
+On Debian-family systems PipeWire's JACK library lives outside the default search path, so Python cannot find it.
+Sluice notices and restarts itself with the right path (you will see one line about it in the log). If you prefer,
+`pw-jack sluice` does the same by hand. This fix is written from the packaging layout and unit-tested, but has not
+been run on a real Debian or Ubuntu machine.
+
+#### Arch: the manual way
+
+```bash
+pacman -Q pipewire-jack                      # is it installed? read the note below before installing it
+sudo pacman -S --needed python pipewire pipewire-pulse wireplumber libpulse xcb-util-cursor
+sudo pacman -S --needed pipewire-jack        # only if the line above said it is not installed
+python -m venv .venv && source .venv/bin/activate && pip install -e .
+sluice --diagnose && sluice --demo && sluice
+```
+
+- If `pacman` offers to **remove `jack2`** in order to install `pipewire-jack`, answer **no** and stop: it means
+  you use a real JACK server, and Sluice would need a different setup.
+- The Python packages (PySide6, pedalboard, numpy) have wheels for recent Python versions on x86_64;
+  a brand-new Python can lag (check with `python --version` if `pip install` complains).
+
+## Microphones
+
+The Mic channel starts on **System default**, so it follows whichever microphone your system uses: plug in a headset
+that becomes the default and Sluice switches to it within a couple of seconds. Every connected microphone is also
+listed in a channel's input menu, and a microphone that appears while Sluice is running is announced in the status
+bar. A microphone is only listed if the sound system exposes it as an input: if a USB device shows up as speakers
+only, `sluice --diagnose` says which sound-card profile to switch (`pactl set-card-profile ...`).
+
+## What the devices are called
+
+Every virtual device Sluice makes has the channel's name in brackets, so you can tell what you are picking in OBS,
+Discord, a browser or a game's settings:
+
+| Where you see it | Name | What it is |
+|---|---|---|
+| An app's *output* list (Discord, browser, game) | **Sluice (Game) output**, **Sluice (Browser) output**, ... | send that app's sound to the channel |
+| OBS *Audio Input Capture*, Discord *input*, any *microphone* list | **Sluice (Broadcast)** | the stream mix: what your audience hears |
+| OBS *Audio Input Capture*, and the microphone list in Discord, games and browsers | **Sluice (Mic)** (on from the start) | your microphone after its effects: gate, EQ, compressor, limiter |
+| The same lists, after ticking more channels in *Recording devices for OBS* | **Sluice (Game)**, **Sluice (Music)**, ... | just that one channel, for its own track |
+
+Use **Sluice (Mic)** wherever a program asks for your microphone, and **Sluice (Broadcast)** for everything the audience should hear. Names ending in *feed* or *recording feed* are internal plumbing, and the one PipeWire program node that carries everything is just called *sluice*; you can ignore all of those. Renaming a channel renames its devices.
+
+## Starting Sluice from the desktop
+
+After installing, run this once:
+
+```bash
+.venv/bin/sluice --install-desktop
+```
+
+(or use *File > Add Sluice to the applications menu* inside the app). It writes a launcher and an icon into your own
+folders (`~/.local/share/applications` and `~/.local/share/icons`), and nothing needs root. Then search for **Sluice**
+in your launcher. `sluice --uninstall-desktop` removes both again. If you move the Sluice folder, run the command again.
+
+**If clicking it does nothing:** the menu entry has no terminal, so any error would vanish. Sluice's launcher keeps
+them in `~/.local/state/sluice/launcher.log`; read the last lines (`tail -20 ~/.local/state/sluice/launcher.log`). The most
+common causes are a Sluice already running (look for the window on another workspace, or run `sluice --cleanup`) and a
+launcher left from an older version or a deleted folder: run `sluice --diagnose`, which checks the launcher, then
+`sluice --install-desktop` again.
+
+## Saving
+
+Your layout (channels, levels, effects, devices) saves itself a few seconds after every change, and again when you
+quit, so a crash or a power cut loses almost nothing. *File > Save settings* saves right now. *File > Import settings*
+is the one exception: after an import, Sluice keeps the imported file until you save or restart.
+
+**Earlier versions.** Before a save replaces the settings file, Sluice keeps the old one in
+`~/.config/sluice/backups/`, at most one new version every 15 minutes and only if something actually changed. It keeps
+the **last 5** and deletes older ones by itself. *File > Restore earlier settings* lists them by time and number of
+channels; choosing one makes it the saved settings (your current ones go to `config.before-import.json`) and takes
+effect the next time Sluice starts. *File > Export settings* never makes backups.
+
+## Closing the window
+
+*File > When I close the window* chooses what the window's close button does: **Quit Sluice** (the default; the virtual
+devices are removed and your apps go back to your normal output), or **Keep running, minimized to the taskbar**, so the
+mixer keeps working while the window is out of the way (click it in the taskbar to bring it back). *File > Quit*
+(Ctrl+Q) always quits. The choice is saved with your settings.
+
+## Starting at login
+
+*File > Start when I log in* has three choices: do not start automatically, start with the window open, or start
+**minimized to the taskbar** (the mixer keeps running; click it in the taskbar to open it). The same from a terminal:
+`sluice --autostart off|window|minimized`, and `sluice --minimized` starts minimized once. At login Sluice waits up to
+30 seconds for PipeWire, so it does not fall back to demo mode because the sound system was a moment late. Starting
+Sluice again while it is already running (from the menu, or at login) simply brings the open window to the front.
+The choice is a file in `~/.config/autostart/`, which any desktop's start-up settings can also show and remove.
+
+## First run, step by step
+
+1. Start `sluice`. In the **Listen** mix, pick your headphones in the device list (or leave *Default*).
+2. **Mic** channel: it already uses your default microphone. Add effects with the *Effects* button
+   (noise gate, then compressor is a good start). Its Listen mute is on so you do not hear yourself.
+3. Play some music. It appears in **Playing now**. Click it and choose **Music**. (Or on the Music channel:
+   *+ Add device or app > App or game*.) From then on that app always goes to the Music channel,
+   even after a restart.
+4. Lower **Music** in the *Broadcast* column only (turn **LINK** off first) and your audience hears it quietly
+   while you hear it at full volume.
+5. In OBS add an *Audio Input Capture* and choose **Sluice (Broadcast)**.
+
+Apps that are not on any channel keep playing straight to your default output, as usual.
+
+## Testing it safely
+
+Sluice does not edit your PipeWire or WirePlumber configuration and does not change your default devices.
+Its only files are its settings (`~/.config/sluice/config.json`), its logs and a lock file. While it runs it
+adds virtual devices called `sluice_*`, makes connections it owns, and moves **only the apps you assign** to a
+channel. Everything is removed when it quits.
+
+A careful first run:
+
+1. `sluice --demo` first: it touches no audio at all.
+2. Turn your system volume down (about 30%) and use headphones, not speakers, so a mistake cannot become
+   loud feedback. Note your defaults if you like: `pactl get-default-sink` and `pactl get-default-source`.
+3. Start `sluice` and change nothing. Your audio should sound exactly as before. Check the connections exist:
+   `pw-link -l | grep sluice`.
+4. Assign **one** app (click it in *Playing now*). Confirm it moves, then remove it with the x on its chip and
+   confirm it goes back to your normal output.
+5. Only then try the microphone and OBS.
+
+To watch what it is doing while you test: `tail -f ~/.local/state/sluice/sluice.log`.
+
+## Undoing everything
+
+- **Close Sluice** (the window, or Ctrl+C in its terminal). It removes its devices and connections itself.
+  If an app you had assigned is silent afterwards, restart that app (some apps remember their last output).
+- **After a crash**, leftover virtual devices are removed on the next start, or at once with `sluice --cleanup`.
+  `sluice --cleanup` also removes devices left behind by the old name (pwmix).
+- **Audio still odd?** `systemctl --user restart pipewire pipewire-pulse wireplumber` resets PipeWire's running
+  state (all audio is interrupted for a moment; none of your files are touched).
+- **Uninstall:** delete the Sluice folder (the virtual environment is inside it), then
+  `rm -rf ~/.config/sluice ~/.local/state/sluice`. Nothing was installed outside it.
+  If you used it under its old name, `~/.config/pwmix` and `~/.local/state/pwmix` can go too.
+
+## The menus
+
+| Menu | What is in it |
+|---|---|
+| **File** | Save settings (Ctrl+S), Export settings, Import settings, Restore earlier settings, Open settings folder, Add Sluice to the applications menu, Start when I log in, When I close the window, Quit (Ctrl+Q) |
+| **Mixer** | Add channel (Ctrl+N), Recording devices for OBS, Hear Broadcast (Ctrl+B), Mute Listen (Ctrl+Shift+L), Mute Broadcast (Ctrl+Shift+B), Refresh devices and apps (F5) |
+| **View** | Full screen (F11), Reset window size |
+| **Controllers** | MIDI controllers and Stream Deck |
+| **Help** | Keyboard shortcuts (F1), Check for updates, Save bug report, Open log folder, About |
+
+Settings are saved automatically when you quit. **Import settings** checks the file, keeps your current settings as
+`config.before-import.json`, and takes effect the next time Sluice starts; quitting does not overwrite the imported file.
+
+## Version and updates
+
+The version is in the window title, at the right of the status bar and in **Help > About Sluice**. Please include it
+in bug reports. **Help > Check for updates** only runs when you click it. Sluice has no download address to check yet,
+so for now it says so, and new versions arrive as a new zip file. When a release page exists it will be set in
+`sluice/updates.py` (or with the `SLUICE_UPDATE_URL` environment variable).
+
+When you remove an app from a channel it goes back to playing straight to your normal output, outside the mixer, so
+you will still hear it. To silence an app in the mix instead, keep it on its channel and mute the channel.
+
+## Logs and bug reports
+
+| File | Contents |
+|---|---|
+| `~/.local/state/sluice/sluice.log` | startup, devices found, connections made, apps moved, warnings and errors. Rotates at 512 KB and keeps 3 old copies. |
+| `~/.local/state/sluice/crash.log` | a Python traceback if Sluice itself crashes natively, for example inside a VST3 plugin |
+
+Normal runs log the important events. `sluice --debug` also logs every connection and command, and prints them in
+the terminal: use it when something does not connect. Nothing is ever logged from the audio thread.
+
+**To report a bug:** use **Help > Save bug report...** in the window, or run `sluice --report`. The file has the
+self-check results, versions, Sluice's devices and connections, your settings and the last 300 log lines. It
+contains device names, app names and plugin paths, so look it over before sharing. Please also say what you did,
+what you expected, and what happened (silence, crackling, the wrong output...). If a plugin crashed it, send
+`crash.log` too. **Help > Open log folder** opens the folder.
+
+## Controllers (Stream Deck, MIDI)
+
+Everything on the mixer can be driven from outside while Sluice is running.
+
+**Any button or script: `sluice ctl`.** Give each Stream Deck button a command to run. Use the full path to the
+program, because the virtual environment is not on your `PATH`:
+
+```bash
+/path/to/sluice/.venv/bin/sluice ctl mute mic                                  # toggle Mic mute (both mixes)
+/path/to/sluice/.venv/bin/sluice ctl mute music --mix listen                   # toggle Music in Listen only
+/path/to/sluice/.venv/bin/sluice ctl level music --mix listen --step=-2        # 2 dB quieter (use --step=2 for louder)
+/path/to/sluice/.venv/bin/sluice ctl level game --set -10                      # set to exactly -10 dB
+/path/to/sluice/.venv/bin/sluice ctl master broadcast --step=-3                # the Broadcast master
+/path/to/sluice/.venv/bin/sluice ctl master-mute broadcast on                  # on, off or toggle
+/path/to/sluice/.venv/bin/sluice ctl assign firefox music                      # send an app to a channel ('none' releases it)
+/path/to/sluice/.venv/bin/sluice ctl hear-broadcast                            # check the audience mix in your own output (on, off, toggle)
+/path/to/sluice/.venv/bin/sluice ctl status                                    # print every level and mute
+```
+
+Channels are named by their id or label (`mic`, `Music`), mixes by `listen` or `broadcast`. Most Linux Stream Deck
+programs (for example *streamdeck-ui*) can run a shell command per button: check how yours does it. Whether a
+dial or touch strip on newer models can repeat a command depends on that program, not on sluice. The command exits
+with 0 on success, 1 if Sluice refused it (the reason is printed), and 2 if Sluice is not running. It talks to a private
+socket in `$XDG_RUNTIME_DIR` that only your user can open, and it needs no extra packages.
+
+**MIDI faders, knobs and pads.** Open **Controllers > MIDI controllers and Stream Deck...**, choose what the control
+should do, press **Learn**, and then move the fader, turn the knob or press the button on your device. Fader/knob
+bindings use an audio taper (top = 0 dB). Endless encoders send "turn" steps, with a configurable dB per click.
+Buttons toggle a mute when pressed. Bindings are saved in `~/.config/sluice/controls.json`.
+Sluice reads the raw MIDI device files (`/dev/snd/midi*`), so it needs no extra packages, but your user must be
+allowed to read them (the `audio` group). It only listens: nothing is ever sent to the device, so lights and motor
+faders are not updated yet, and a controller's own settings cannot be changed by sluice.
+
+Not covered: the GoXLR (on Linux it is run by the separate *goxlr-utility*, not by MIDI) and Rode interfaces. Any
+Rode or other device that shows up as a USB MIDI device should work through MIDI learn, but that has not been tried.
+**None of the controller support has been tried with real hardware yet**, only with simulated input.
+
+## Effects
+
+Built-in effects always run in this order, which is the usual order for a voice, and you cannot put them out of it:
+
+1. **Gain**: trim the level going in.
+2. **High-pass** (80 Hz): remove rumble, desk thumps and breath noise below the voice.
+3. **Noise Gate** (closes below -45 dB): silence the room between words. Set the threshold just above your room noise.
+4. **3-Band EQ**: starts with a small cut around 300 Hz (less "boxy") and a little lift above 10 kHz (more air).
+5. **Compressor** (3:1, threshold -18 dB, attack 10 ms, release 100 ms): takes a few dB off the loud parts so you
+   stay even; 2 dB of makeup gain brings the level back up.
+6. **Limiter** (ceiling -2 dB): catches the occasional shout.
+
+These starting values come from common voice-chain and OBS microphone guides; where the guides differ (for example
+whether the gate comes before or after the compressor), Sluice gates first so the compressor does not lift the room
+noise before the gate sees it. They are starting points: every value can be changed, and every effect can be
+bypassed or removed. A new install puts this chain on the Mic channel. On any channel, *Effects > Use the recommended
+voice chain* puts it back (it replaces the built-in effects there and keeps VST3 plugins). VST3 plugins can be moved
+up and down with the arrows and are never reordered.
+
+**Typing values and resetting.** Every slider has a box beside it: click it, type a number (units are fine, `-20`,
+`-20 dB`, `3:1`, `250 ms`), and press Enter. **Double-click a slider to put it back to its default.** The same works
+on the mix faders' readouts and on each channel's level readout.
+
+## Recording one channel on its own
+
+*Mixer > Recording devices for OBS* (or a channel's **⋮** menu > *Also offer as its own input*) offers the channel as an extra
+microphone called **Sluice (Mic)**, **Sluice (Game)** and so on. In OBS add one *Audio Input
+Capture* per channel and pick the matching device, then record them as separate tracks.
+
+Each one carries only that channel, after its effects. It deliberately ignores the channel's faders and mute buttons,
+so what you record does not change when you adjust the live mix. Mute it in OBS if you need to. The devices exist only
+while Sluice is running and are removed when it quits.
+
+## Faders and meters
+
+The fader has more travel where you actually mix: 0 dB sits three quarters of the way up, -20 dB about a third of the
+way up, and the top goes to +12 dB. The wheel moves 1 dB per step and double-click returns to 0 dB. Meters show the peak
+level on a 60 dB scale; the bar falls back at about 20 dB a second and a thin line holds the highest recent peak for a
+moment.
+
+## VST3 plugins
+
+*Effects > Add > VST3 plugin* lists plugins found in `~/.vst3`, `/usr/lib/vst3`, `/usr/local/lib/vst3`, the folders in
+the `VST3_PATH` environment variable, and any folder you add yourself (the *Where does Sluice look?* button in that
+list, or *Browse*). On Linux a VST3 is a folder ending in `.vst3`. Sliders for the plugin's parameters are shown, and
+*Open plugin window* shows its own interface. Plugin settings are saved with your layout.
+A plugin that fails to load is shown with a warning and skipped, so it cannot silence the channel; a plugin
+that crashes while running is switched off automatically.
+
+**REAPER and its plugins.** Sluice loads *Linux* VST3 plugins. Cockos's ReaPlugs (ReaEQ, ReaComp and so on) are
+published for Windows (and so WINE) as VST2; I found no native Linux VST3 build of them, so they will not load
+here. Plugins made for Windows can sometimes be run through *yabridge*, which creates Linux `.vst3` folders; point
+Sluice at the folder yabridge writes to (usually `~/.vst3/yabridge`). That route is untested. LSP Plugins, for example, publishes Linux VST3 builds (I have not tried them with Sluice).
+
+## How it works
+
+```
+ capture devices ---------------\
+                                 >-- sluice:in_<channel> -- effects --+-- Listen mix    --> headphones
+ apps -> "Sluice (<channel>)" sink -/   (pipewire-jack client)          +-- Broadcast mix --> Sluice (Broadcast) feed
+        (its monitor is linked in)                                                          |
+                                                          apps record "Sluice (Broadcast)" <-'
+```
+
+| Piece | Done with |
+|---|---|
+| Mixing, effects, VST3 hosting | a JACK client (`sluice`) on pipewire-jack; numpy + [pedalboard](https://github.com/spotify/pedalboard) |
+| One virtual device per channel, the Broadcast mix and its microphone | `module-null-sink` / `module-remap-source` through pipewire-pulse |
+| Which app goes to which channel | Sluice moves the app's playback stream onto the channel's virtual device |
+| Connections | `pw-link`; Sluice only ever removes links it made itself |
+
+Everything Sluice creates is named `sluice_*` or `sluice:*` and is removed when it quits. Virtual devices left
+behind by a crash are cleaned up on the next start, or with `sluice --cleanup`.
+
+## Known limitations
+
+- **Python in the audio path.** It works at 512-frame blocks (about 10 ms). If you hear crackles, watch the
+  *dropouts* counter in the status bar, close CPU-heavy apps, or raise the quantum
+  (`PIPEWIRE_LATENCY=1024/48000 sluice`). Heavy VST3 chains cost more.
+- Sluice asks PipeWire for ~10 ms blocks (`PIPEWIRE_LATENCY`), which applies to the whole graph while it runs.
+- Added latency is about two blocks, fine for streaming, noticeable if you monitor your own mic through it.
+- The mix limiter is a simple peak limiter; there is no lookahead, so very large overloads sound harsh.
+- Renaming a channel briefly re-creates its virtual device.
+- The installed-programs list reads the desktop-entry files and Steam's game manifests. Games from Lutris,
+  Heroic, Bottles and similar launchers are not listed yet: type the name in the *App or game* search, or use the *Playing now* bar for those.
+  A program is recognised by its binary, its app name or (Steam) its game id; if one does not move, check the
+  names in the log (`moved ...` lines) and add it by name.
+- Meters show peaks per channel (after effects and fader), not per source.
+- Only two mixes (Listen and Broadcast) for now.
+- **Chat is muted on Broadcast by default.** If a voice-chat app (Discord, etc.) plays into *Chat* and records from
+  *Sluice (Broadcast)*, un-muting Chat on Broadcast would send people their own voice back to them.
+- **Your mic is always open on Broadcast.** There is no push-to-talk or mute hotkey yet; use the Mic channel's mute.
+- **Bluetooth headsets:** if the headset switches profile (music vs. call quality) the device is re-created and
+  Sluice re-links it within a couple of seconds; expect a short gap.
+- If PipeWire or pipewire-pulse is **restarted** while Sluice runs, restart Sluice too: it does not reconnect yet.
+- Sluice puts apps back on your normal output when it quits. If WirePlumber keeps moving an app away from its
+  channel, Sluice notices, leaves that app alone for a minute and says so in the status bar and log.
+
+## Troubleshooting
+
+```bash
+sluice --diagnose                    # checks Python deps, pipewire-pulse, pipewire-jack, pw-link, sound card inputs, VST3 folders
+sluice --debug                       # log every connection and command
+sluice --report                      # save a bug report file (also in the Help menu)
+sluice --cleanup                     # remove virtual devices a crash left behind
+sluice --reset                       # ignore the saved layout
+pw-link -l | grep -A2 sluice         # are the connections there?
+pactl list short sinks | grep sluice # are the virtual devices there?
+```
+
+### My USB interface or mic does not show up as an input
+
+If a USB audio interface plays sound but its microphone is missing from the input lists, its sound card is probably
+on an *output-only* profile. `sluice --diagnose` checks for this (*Sound card inputs*) and prints the command to fix
+it, which looks like this (use the names it prints; this changes your system setting, and the undo command is shown):
+
+```bash
+pactl list cards short                                   # find the card, e.g. alsa_card.usb-...
+pactl set-card-profile CARD output:multichannel-output+input:multichannel-input
+```
+
+A multichannel input has many channels; Sluice uses the first two. If your voice is on others, say so in a bug report.
+
+## Dropouts
+
+The status bar counts *dropouts*: moments when the audio could not keep up, which sound like a click or a gap. A few
+while Sluice starts or while you add effects are normal and are not counted. If the number keeps climbing, choose
+a larger size in *View > Audio buffer*, close heavy plugins, or check that nothing else is hogging the CPU.
+
+## Resource use
+
+Sluice is built to sit quietly behind a game. With the demo mixer on a small virtual machine it uses roughly
+9% of one core while the window is open and visible; meters stop redrawing when the window is minimised or hidden.
+What you can tune: *View > Audio buffer* (larger = lighter on the CPU, a little more delay; 512 is the default, 1024
+is fine for listening only), fewer effects on channels you do not use, and VST3 plugins, which are the usual heavy part.
+Background work is a 2-second device check and a 0.5-second rules check, with link repair every 6 seconds.
+
+## Putting it on GitHub
+
+See [docs/PUBLISHING.md](docs/PUBLISHING.md) for the step-by-step guide. The repository includes continuous
+integration, a release workflow and issue templates.
+
+## Development
+
+```bash
+pip install -e ".[dev]"
+pytest                                                    # about 260 tests, no audio server needed
+QT_QPA_PLATFORM=offscreen sluice --demo --screenshot out.png
+```
+
+| File | Role |
+|---|---|
+| `sluice/model.py` | channels, mixes, gain/mute/link logic, saving (no Qt, no audio) |
+| `sluice/dsp.py` | the real-time mixing graph and limiter |
+| `sluice/effects.py` | built-in effects and VST3 hosting (pedalboard) |
+| `sluice/audio_io.py` | JACK audio client, plus a synthetic one for demo and tests |
+| `sluice/linker.py` | `pw-link` wrapper |
+| `sluice/backend.py` | PulseAudio control: devices, virtual sinks, moving apps (and a fake for tests) |
+| `sluice/engine.py` | keeps everything above in sync with the model |
+| `sluice/ui.py`, `ui_effects.py` | PySide6 interface |
+| `sluice/apps.py`, `sluice/ui_apps.py` | the installed apps and games list, and its picker |
+| `sluice/control.py` | `sluice ctl` and the control socket |
+| `sluice/midi.py`, `sluice/ui_controls.py` | MIDI input, bindings, and the Controllers window |
+| `sluice/diagnose.py` | `--diagnose` |
+| `sluice/distro.py`, `sluice/jackfix.py` | per-distribution package names and the Debian JACK library fix |
+| `sluice/desktop.py` | the applications-menu launcher and icons |
+| `sluice/ui_widgets.py` | typed-value boxes and double-click-reset sliders |
+| `sluice/logs.py`, `sluice/report.py` | the log files, crash hooks and `--report` |
+
+## Roadmap
+
+Presets/profiles, more than two mixes, per-app volume inside a channel, a de-esser, global hotkeys, a tray icon,
+start-with-login, auto-assigning apps by rules, and an AUR package (so it installs like any other app).
+
+## Name
+
+Sluice was called pwmix while it was being built. On first start it copies your settings (channels, effects and
+controller bindings) from `~/.config/pwmix` if there are no Sluice settings yet; the old folder is left alone. The
+virtual devices now start with `Sluice` and `sluice_`, so choose **Sluice (Broadcast)** again in OBS or Discord.
+
+## License and notices
+
+GPL-3.0-or-later. See `LICENSE`. pedalboard is GPLv3 as well, which is why Sluice uses the same license.
+
+Sluice is an independent project. It is written from scratch, contains no code or artwork from other mixer
+applications, and is not affiliated with or endorsed by any other audio-software vendor.
+
+VST is a registered trademark of Steinberg Media Technologies GmbH. It is used here only to say which
+plugin format Sluice can load. PipeWire, JACK, PulseAudio and other names belong to their respective projects.
