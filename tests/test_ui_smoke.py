@@ -253,10 +253,10 @@ def test_effects_dialog_adds_edits_bypasses_orders_and_removes(ui):
 def test_effects_button_counts_active_effects(ui):
     win, _, engine = ui
     mic = strip_for(win, "mic")
-    assert mic.fx_button.text() == "Effects (5/5 on)"
+    assert mic.fx_button.text() == "Effects (7/7 on)"
     engine.set_effect_bypass("mic", engine.mixer.channel("mic").effects[0].id, True)
     mic._update_fx_button()
-    assert mic.fx_button.text() == "Effects (4/5 on)"
+    assert mic.fx_button.text() == "Effects (6/7 on)"
 
 
 def test_a_vst3_that_cannot_load_is_reported_and_not_added(ui, monkeypatch, tmp_path):
@@ -294,7 +294,7 @@ def test_help_menu_saves_a_bug_report(ui, tmp_path, monkeypatch):
     from sluice import __version__
 
     assert [a.text().replace("&", "") for a in help_menu.actions() if a.text()] == [
-        "Keyboard shortcuts", "Check for updates\u2026", "Save bug report\u2026", "Open log folder", f"About Sluice {__version__}"]
+        "Keyboard shortcuts", "What's new in this version\u2026", "Check for updates\u2026", "Save bug report\u2026", "Open log folder", f"About Sluice {__version__}"]
     target = tmp_path / "report.txt"
     win.save_report_to(target)
     assert target.read_text().startswith("sluice bug report")
@@ -689,10 +689,10 @@ def test_effect_values_can_be_typed_and_double_click_resets_to_the_default(ui):
     win, _, engine = ui
     mic = engine.mixer.channel("mic")
     dialog = EffectsDialog(engine, mic, win)
-    dialog.list.setCurrentRow(3)  # Compressor
+    dialog.list.setCurrentRow(5)  # Compressor
     rows = {r.info.key: r for r in dialog.params_area.widget().findChildren(ParamRow)}
     threshold = rows["threshold_db"]
-    compressor = mic.effects[3]
+    compressor = mic.effects[5]
 
     threshold.readout.setText("-27.5 dB")
     threshold.readout.entered.emit(parse_number(threshold.readout.text()))
@@ -897,3 +897,209 @@ def test_closing_quits_by_default(ui):
     win.show()
     win.close()
     assert win._closed
+
+
+# ------------------------------------------------------------- 0.9.0 additions
+def test_the_mic_button_and_menu_item_mute_the_microphone(ui):
+    win, _, engine = ui
+    assert win.mic_button.text() == "Mic live" and not engine.mic_muted
+    win.mic_button.click()
+    assert engine.mic_muted and win.mic_button.text() == "MIC MUTED" and win.mic_button.isChecked()
+    win.mic_action.trigger()
+    assert not engine.mic_muted and win.mic_button.text() == "Mic live"
+    engine.set_mic_muted(True)  # something else (a controller, `sluice ctl mic-mute`) changed it
+    win.sync_from_model()
+    assert win.mic_button.text() == "MIC MUTED"
+
+
+def test_the_mixer_menu_offers_the_recording_mix_and_the_mic_mute(ui):
+    win, _, engine = ui
+    menu = next(a.menu() for a in win.menuBar().actions() if a.menu() and a.text().replace("&", "") == "Mixer")
+    texts = [a.text().replace("&", "") for a in menu.actions() if a.text()]
+    assert "Mute my microphone" in texts and any(t.startswith("Third mix: Recording") for t in texts)
+    assert not win.recording_action.isChecked()
+
+
+def test_effects_window_explains_the_reducers_and_can_compare_them(ui):
+    from PySide6.QtWidgets import QLabel, QPushButton
+
+    from sluice.ui_effects import EffectsDialog
+
+    win, _, engine = ui
+    mic = engine.mixer.channel("mic")
+    dialog = EffectsDialog(engine, mic, win)
+    names = [e.type for e in mic.effects]
+    dialog.list.setCurrentRow(names.index("echo_reducer"))
+    labels = " ".join(label.text() for label in dialog.params_area.widget().findChildren(QLabel))
+    assert "16 ms" in labels and "Room echo time" in labels
+    buttons = {b.text(): b for b in dialog.params_area.widget().findChildren(QPushButton)}
+    assert "Measure my room's echo…" in buttons
+    assert not dialog.new_hint.isVisibleTo(dialog)  # this channel already has them
+    buttons["Compare: switch both reducers off / on"].click()
+    assert all(e.bypass for e in mic.effects if e.type in ("echo_reducer", "noise_reducer"))
+    dialog.list.setCurrentRow(names.index("echo_reducer"))
+    next(b for b in dialog.params_area.widget().findChildren(QPushButton) if b.text().startswith("Compare")).click()
+    assert not any(e.bypass for e in mic.effects if e.type in ("echo_reducer", "noise_reducer"))
+    dialog._update_activity()
+    dialog.close()
+
+
+def test_a_channel_without_a_microphone_is_warned_about_the_reducers(ui):
+    from PySide6.QtWidgets import QLabel
+
+    from sluice.model import Effect, new_effect_id
+    from sluice.ui_effects import EffectsDialog
+
+    win, _, engine = ui
+    music = engine.mixer.channel("music")
+    engine.add_effect("music", Effect(new_effect_id(), "builtin", "Noise Reducer", type="noise_reducer"))
+    dialog = EffectsDialog(engine, music, win)
+    dialog.list.setCurrentRow(0)
+    assert "no microphone" in " ".join(label.text() for label in dialog.params_area.widget().findChildren(QLabel))
+    dialog.close()
+
+
+def test_an_older_voice_chain_is_told_about_the_new_effects(ui):
+    from sluice.ui_effects import EffectsDialog
+
+    win, _, engine = ui
+    mic = engine.mixer.channel("mic")
+    for effect in [e for e in mic.effects if e.type in ("echo_reducer", "noise_reducer")]:
+        engine.remove_effect("mic", effect.id)
+    dialog = EffectsDialog(engine, mic, win)
+    assert dialog.new_hint.isVisibleTo(dialog)
+    dialog.close()
+
+
+def test_presets_apply_from_the_effects_window_and_can_be_saved(ui, monkeypatch, tmp_path):
+    from PySide6.QtWidgets import QInputDialog
+
+    from sluice import presets
+    from sluice.ui_effects import EffectsDialog
+
+    win, _, engine = ui
+    mic = engine.mixer.channel("mic")
+    dialog = EffectsDialog(engine, mic, win)
+    dialog._build_presets_menu()
+    menu = dialog.presets_button.menu()
+    assert "Light touch" in [a.text() for a in menu.actions()]
+    next(a for a in menu.actions() if a.text() == "Light touch").trigger()
+    assert next(e for e in mic.effects if e.type == "noise_reducer").params["reduction_db"] == 6
+    monkeypatch.setattr(QInputDialog, "getText", staticmethod(lambda *a, **k: ("My room", True)))
+    dialog._save_preset()
+    assert "My room" in presets.load_user(tmp_path / "presets.json")
+    dialog._build_presets_menu()
+    assert "My room" in [a.text() for a in dialog.presets_button.menu().actions()]
+    dialog._delete_preset("My room")
+    assert presets.load_user(tmp_path / "presets.json") == {}
+    dialog.close()
+
+
+def test_a_lost_audio_server_starts_the_wait_to_reconnect(ui, monkeypatch):
+    win, _, engine = ui
+    called = []
+    monkeypatch.setattr(win, "_begin_reconnect", lambda: called.append(1))
+    win._tick_engine()
+    assert not called
+    engine.server_lost = True
+    win._tick_engine()
+    assert called == [1]
+
+
+def test_reconnecting_restarts_only_when_the_server_answers(ui, monkeypatch):
+    from sluice import reconnect
+
+    win, _, engine = ui
+    restarted = []
+    monkeypatch.setattr(reconnect, "restart_self", lambda: restarted.append(1))
+    answers = iter([False, True])
+    monkeypatch.setattr(reconnect, "server_is_back", lambda: next(answers))
+    win._begin_reconnect()
+    win._try_reconnect()
+    assert not restarted
+    win._try_reconnect()
+    assert restarted == [1]
+
+
+# ------------------------------------------------------------------ system tray
+@pytest.fixture
+def tray(monkeypatch):
+    from PySide6.QtWidgets import QSystemTrayIcon
+
+    monkeypatch.setattr(QSystemTrayIcon, "isSystemTrayAvailable", staticmethod(lambda: True))
+
+
+def test_tray_mode_shows_an_icon_and_closing_hides_the_window_into_it(ui, tray):
+    win, _, engine = ui
+    win.show()
+    assert not win.tray_active
+    win.close_actions["tray"].trigger()
+    assert engine.mixer.close_action == "tray" and win.tray_active
+    win._refresh_file_menu()
+    assert win.close_actions["tray"].isChecked()
+    win.close()  # the X button
+    assert not win._closed and not win.isVisible() and "system tray" in win.status_label.text()
+    win.bring_to_front()  # the tray icon's click, or starting Sluice a second time
+    assert win.isVisible()
+    win.quit_app()
+    assert win._closed and not win.tray_active
+
+
+def test_the_tray_menu_shows_mutes_and_quits(ui, tray):
+    win, _, engine = ui
+    win.show()
+    win.close_actions["tray"].trigger()
+    win.hide()
+    win._refresh_tray_menu()
+    assert win._tray_show.text() == "Show Sluice" and not win._tray_mic.isChecked()
+    win._tray_mic.trigger()
+    assert engine.mic_muted and "muted" in win._tray.toolTip()
+    win._refresh_tray_menu()
+    assert win._tray_mic.isChecked()
+    win._tray_show.trigger()
+    assert win.isVisible()
+    win._refresh_tray_menu()
+    assert win._tray_show.text() == "Hide Sluice"
+    from PySide6.QtWidgets import QSystemTrayIcon
+
+    win.isActiveWindow = lambda: True
+    win._on_tray_activated(QSystemTrayIcon.ActivationReason.Trigger)  # a click while it is in front hides it
+    assert not win.isVisible()
+    win._on_tray_activated(QSystemTrayIcon.ActivationReason.Trigger)
+    assert win.isVisible()
+    win._on_tray_activated(QSystemTrayIcon.ActivationReason.Context)  # a right-click is for the menu only
+    assert win.isVisible()
+
+
+def test_without_a_system_tray_the_window_falls_back_to_the_taskbar(ui):
+    from PySide6.QtWidgets import QSystemTrayIcon
+
+    assert not QSystemTrayIcon.isSystemTrayAvailable()  # the offscreen test platform has none
+    win, _, engine = ui
+    win.show()
+    win.close_actions["tray"].trigger()
+    assert engine.mixer.close_action == "tray" and not win.tray_active and "taskbar" in win.status_label.text()
+    win.close()
+    assert not win._closed  # never closed, never lost: it is minimized, and Quit still works
+    win.quit_app()
+    assert win._closed
+
+
+def test_a_minimized_start_goes_to_the_tray_when_there_is_one(ui, tray):
+    win, _, engine = ui
+    engine.mixer.close_action = "tray"
+    win.start_minimized()
+    assert win.tray_active and not win.isVisible()
+    win.quit_app()
+
+
+def test_the_tray_icon_is_there_from_the_start_when_saved_that_way(app, tmp_path, tray):
+    engine = Engine(Mixer.default(), MockSystem(), NullIO(realtime=False), NullLinker())
+    engine.mixer.close_action = "tray"
+    engine.start()
+    win = MainWindow(engine, config_file=tmp_path / "config.json")
+    try:
+        assert win.tray_active
+    finally:
+        win.shutdown()
+    assert not win.tray_active

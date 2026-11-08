@@ -36,11 +36,12 @@ MAX_DB = 12.0
 CONFIG_VERSION = 2
 BUFFER_CHOICES = (256, 512, 1024, 2048)  # audio block sizes (frames) the user can pick; bigger = less CPU, more delay
 DEFAULT_BUFFER = 512
-CLOSE_CHOICES = ("quit", "minimize")  # what closing the window does
+CLOSE_CHOICES = ("quit", "minimize", "tray")  # what closing the window does
 DEFAULT_CLOSE = "quit"
 
 MONITOR = "monitor"
 STREAM = "stream"
+RECORDING = "recording"  # the optional third mix (its kind is STREAM)
 
 # Every object sluice creates in the audio server starts with this prefix.
 PREFIX = "sluice_"
@@ -115,12 +116,12 @@ def new_effect_id() -> str:
 # Built-in effects always run in this order, which is the usual order for a voice (trim the level, remove
 # rumble, gate the room noise, shape the tone, even out the level, catch the peaks). VST3 plugins are not
 # part of it: they stay wherever you put them.
-BUILTIN_ORDER = ("gain", "highpass", "noise_gate", "eq", "compressor", "limiter")
+BUILTIN_ORDER = ("gain", "highpass", "echo_reducer", "noise_reducer", "noise_gate", "eq", "compressor", "limiter")
 BUILTIN_NAMES = {
-    "gain": "Gain", "highpass": "High-pass", "noise_gate": "Noise Gate", "eq": "3-Band EQ",
+    "gain": "Gain", "highpass": "High-pass", "echo_reducer": "Echo Reducer", "noise_reducer": "Noise Reducer", "noise_gate": "Noise Gate", "eq": "3-Band EQ",
     "compressor": "Compressor", "limiter": "Limiter",
 }
-VOICE_CHAIN = ("highpass", "noise_gate", "eq", "compressor", "limiter")
+VOICE_CHAIN = ("highpass", "echo_reducer", "noise_reducer", "noise_gate", "eq", "compressor", "limiter")
 
 
 def canonical_order(effects: list) -> list:
@@ -221,7 +222,26 @@ class Mixer:
         self.mixes = mixes
         self.vst3_folders: list = []  # extra places to look for VST3 plugins, added by the user
         self.buffer_frames = DEFAULT_BUFFER  # used the next time Sluice starts
-        self.close_action = DEFAULT_CLOSE  # "quit", or "minimize" (keep running in the taskbar)
+        self.close_action = DEFAULT_CLOSE  # "quit", "minimize" (keep running in the taskbar) or "tray" (keep running in the system tray)
+
+    # ------------------------------------------------------------------ the optional third mix
+    @property
+    def has_recording_mix(self) -> bool:
+        return any(m.id == RECORDING for m in self.mixes)
+
+    def set_recording_mix(self, on: bool) -> None:
+        """Add or remove the third mix, "Recording": a second virtual microphone for a recorder, apart from Broadcast.
+        It is used the next time Sluice starts, because every device and port is made at start-up."""
+        if on and not self.has_recording_mix:
+            self.mixes.append(Mix(RECORDING, "Recording", STREAM))
+            for c in self.channels:
+                c.levels.setdefault(RECORDING, 0.0)
+                c.mutes.setdefault(RECORDING, False)
+        elif not on and self.has_recording_mix:
+            self.mixes = [m for m in self.mixes if m.id != RECORDING]
+            for c in self.channels:
+                c.levels.pop(RECORDING, None)
+                c.mutes.pop(RECORDING, None)
 
     # ------------------------------------------------------------------ defaults
     @classmethod
@@ -378,6 +398,7 @@ class Mixer:
                 }
                 for c in self.channels
             ],
+            "recording_mix": self.has_recording_mix,
             "mixes": [
                 {"id": m.id, "device": m.device, "gain_db": m.gain_db, "mute": m.mute, "limiter": m.limiter}
                 for m in self.mixes
@@ -399,6 +420,8 @@ class Mixer:
         if isinstance(folders, list):
             mixer.vst3_folders = [f for f in folders if isinstance(f, str) and f][:50]
 
+        if data.get("recording_mix") is True:
+            mixer.set_recording_mix(True)
         for item in data.get("mixes", []):
             if not isinstance(item, dict):
                 continue

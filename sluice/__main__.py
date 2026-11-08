@@ -191,7 +191,7 @@ def _run_gui(args, log_file: Optional[Path]) -> int:
 
     window.attach_controls(Controls(engine, window, config_file.with_name("controls.json") if config_file else None, demo=is_demo))
     if args.minimized:
-        window.showMinimized()
+        window.start_minimized()
     else:
         window.show()
 

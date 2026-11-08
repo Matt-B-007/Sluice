@@ -18,7 +18,10 @@ from typing import Callable, Iterable, Optional
 
 import numpy as np
 
+from .effects import Chain
+
 LIMITER_CEILING_DB = -1.0
+SILENCE_TAIL_SECONDS = 6.0  # after this long without input, a channel's effect chain is skipped (reverb tails are shorter)
 
 
 def _pedalboard():
@@ -70,6 +73,22 @@ def _curve(previous: float, target: float, frames: int):
     return np.linspace(previous, target, frames, dtype=np.float32)
 
 
+class Capture:
+    """A few seconds of one channel's input, copied on the audio thread into memory made beforehand."""
+
+    def __init__(self, frames: int) -> None:
+        self.buf = np.zeros((2, frames), dtype=np.float32)
+        self.pos = 0
+
+    @property
+    def size(self) -> int:
+        return self.buf.shape[1]
+
+    @property
+    def done(self) -> bool:
+        return self.pos >= self.size
+
+
 class ChannelDsp:
     def __init__(self, channel_id: str) -> None:
         self.id = channel_id
@@ -79,6 +98,9 @@ class ChannelDsp:
         self.solo_gain: Optional[float] = None  # None: no own output; else the gain of the "<channel> only" output
         self.solo_applied = 0.0
         self.peak = 0.0
+        self.asleep = False  # the chain was skipped for silence; it is woken when sound returns
+        self.quiet_frames = 0  # how long the input has been digital silence (an idle app sends exact zeros)
+        self.capture: Optional[Capture] = None  # set while "Measure my room" is listening
 
 
 class MixDsp:
@@ -100,6 +122,7 @@ class Graph:
         self.mixes: dict = {mix_id: MixDsp(mix_id) for mix_id in mix_ids}
         self.errors: list = []
         self._queue: deque = deque()
+        self._captures: dict = {}  # channel id -> the Capture "Measure my room" is filling
         self._pb = _pedalboard()
 
     # ------------------------------------------------------------ control side
@@ -121,15 +144,60 @@ class Graph:
 
         self.submit(apply)
 
+    # --------------------------------------------------------------- capturing
+    def start_capture(self, channel_id: str, seconds: float) -> None:
+        """Record the next ``seconds`` of a channel's input (before its effects) for ``take_capture``."""
+        capture = Capture(max(1, int(seconds * self.sample_rate)))  # made here, not on the audio thread
+
+        def apply() -> None:
+            channel = self.channels.get(channel_id)
+            if channel is not None:
+                channel.capture = capture
+
+        self._captures[channel_id] = capture
+        self.submit(apply)
+
+    def capture_progress(self, channel_id: str) -> float:
+        """0.0 to 1.0; 0.0 as well when nothing is being captured."""
+        capture = self._captures.get(channel_id)
+        return 0.0 if capture is None else min(1.0, capture.pos / capture.size)
+
+    def take_capture(self, channel_id: str) -> Optional[np.ndarray]:
+        """The finished recording (and forget it), or None while it is still running or was never started."""
+        capture = self._captures.get(channel_id)
+        if capture is None or not capture.done:
+            return None
+        del self._captures[channel_id]
+
+        def clear() -> None:
+            channel = self.channels.get(channel_id)
+            if channel is not None and channel.capture is capture:
+                channel.capture = None
+
+        self.submit(clear)
+        return capture.buf
+
+    def cancel_capture(self, channel_id: str) -> None:
+        capture = self._captures.pop(channel_id, None)
+        if capture is None:
+            return
+
+        def clear() -> None:
+            channel = self.channels.get(channel_id)
+            if channel is not None and channel.capture is capture:
+                channel.capture = None
+
+        self.submit(clear)
+
     def set_chain(self, channel_id: str, instances: Iterable) -> None:
         """Set a channel's effect chain from usable ``EffectInstance`` objects."""
-        plugins = [p for inst in instances for p in inst.plugins]
+        items = [item for inst in instances for item in inst.items]
 
         def apply() -> None:
             channel = self.channels.get(channel_id)
             if channel is None:
                 return
-            channel.board = self._pb.Pedalboard(plugins) if (plugins and self._pb) else None
+            channel.board = Chain(self._pb, items) if (items and self._pb) else None
 
         self.submit(apply)
 
@@ -193,13 +261,42 @@ class Graph:
         self._drain()
         outputs = {mid: np.zeros((2, frames), dtype=np.float32) for mid in self.mixes}
 
+        silence = None  # one shared block of zeros, made only if some channel needs it
         for cid, channel in self.channels.items():
             audio = inputs.get(cid)
+            if audio is not None:
+                audio = np.ascontiguousarray(audio, dtype=np.float32)
+            if audio is None or not audio.any():
+                channel.quiet_frames = min(channel.quiet_frames + frames, 1 << 30)
+            else:
+                channel.quiet_frames = 0
+            cap = channel.capture
+            if cap is not None and frames and not cap.done:  # "Measure my room": keep a copy of what comes in
+                n = min(frames, cap.size - cap.pos)
+                if audio is not None:
+                    cap.buf[:, cap.pos:cap.pos + n] = audio[:, :n]
+                cap.pos += n
+            # An idle channel (no sound for longer than any effect's tail) costs nothing: no chain, no mixing.
+            if channel.quiet_frames > 0 and frames and (
+                channel.board is None or channel.quiet_frames > self.sample_rate * SILENCE_TAIL_SECONDS
+            ):
+                channel.asleep = channel.board is not None
+                if silence is None or silence.shape[1] != frames:
+                    silence = np.zeros((2, frames), dtype=np.float32)
+                for mid in outputs:
+                    channel.applied[mid] = channel.gains.get(mid, 0.0)
+                if channel.solo_gain is not None:
+                    outputs[f"solo_{cid}"] = silence.copy()
+                    channel.solo_applied = channel.solo_gain
+                continue
             if audio is None:
                 audio = np.zeros((2, frames), dtype=np.float32)
-            else:
-                audio = np.ascontiguousarray(audio, dtype=np.float32)
             if channel.board is not None:
+                if channel.asleep:
+                    channel.asleep = False
+                    wake = getattr(channel.board, "wake", None)
+                    if wake is not None:
+                        wake()
                 try:
                     audio = self._run_board(channel.board, audio)
                 except Exception as exc:  # e.g. a VST3 plugin crashed: drop the chain, keep the audio running

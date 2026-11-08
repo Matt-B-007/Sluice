@@ -37,7 +37,7 @@ GitHub's "latest release" address skips pre-releases and every 0.x version is pu
 git init -b main
 git add .
 git status                                # read the list: no .venv, no zip, no report
-git commit -m "Sluice 0.7.0 (beta)"
+git commit -m "Sluice 0.9.0 (beta)"
 git remote add origin https://github.com/Matt-B-007/Sluice.git
 git push -u origin main
 ```
@@ -51,13 +51,13 @@ the next step. If it is red, open it and send me the log.
 ## 5. Publish the beta release
 
 ```bash
-git tag v0.7.0
-git push origin v0.7.0
+git tag v0.9.0
+git push origin v0.9.0
 ```
 
 The *Release* workflow checks that the tag matches the version in the code, builds the package, writes the release notes
 from `CHANGELOG.md`, and attaches the files to a new release marked **Pre-release**. Find it under **Releases** on the
-repository page. People install from the zip attached to it (`sluice-v0.7.0.zip`), then run `./install.sh`.
+repository page. People install from the zip attached to it (`sluice-v0.9.0.zip`), then run `./install.sh`.
 
 Edit the release on the website if you like, for example to add a line such as: *Beta: it works on one CachyOS system with an
 Elgato Wave XLR; please report anything else with `sluice --report`.*
@@ -73,8 +73,13 @@ Elgato Wave XLR; please report anything else with `sluice --report`.*
 ## 7. Releasing the next version
 
 1. Change `version` in `pyproject.toml` and `__version__` in `sluice/__init__.py` (they must match).
-2. Add a section to `CHANGELOG.md` headed exactly `## 0.6.11` (it becomes the release notes).
-3. `git commit -am "Sluice 0.6.11"`, `git push`, wait for the green tick, then `git tag v0.6.11 && git push origin v0.6.11`.
+2. Add a section at the top of `CHANGELOG.md` headed exactly `## 0.9.1` (use the new version). It becomes the GitHub release
+   notes, the window people see after updating, and what *Check for updates* shows, so write it for users: what they
+   can do now and what changed for them. Then copy it into the package: `cp CHANGELOG.md sluice/data/CHANGELOG.md`.
+3. Update the "What's new in ..." section at the top of `README.md` to the new version.
+4. Run `pytest`: it fails if the changelog copy differs, if the newest changelog section is not this version, or if the
+   README's "What's new" heading is for another version.
+5. `git commit -am "Sluice 0.9.1"`, `git push`, wait for the green tick, then `git tag v0.9.1 && git push origin v0.9.1`.
 
 While the version starts with `0.`, every release is marked as a pre-release. When you decide it is ready, release `1.0.0`
 (the workflow then publishes a normal release).

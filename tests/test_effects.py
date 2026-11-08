@@ -174,3 +174,39 @@ def test_added_plugin_folders_are_saved_and_junk_is_ignored(tmp_path):
     assert Mixer.from_dict(data).vst3_folders == ["/ok"]
     data["vst3_folders"] = "not a list"
     assert Mixer.from_dict(data).vst3_folders == []
+
+
+def _level_db(audio: np.ndarray) -> float:
+    return 20 * np.log10(float(np.sqrt(np.mean(audio[:, SR // 4:] ** 2))) + 1e-12)
+
+
+def test_the_high_pass_falls_twelve_db_per_octave_and_one_slider_moves_both_stages():
+    instance = make("highpass")
+    assert len(instance.plugins) == 2
+    tone = lambda f: sine(0.1, seconds=1.0, freq=f)  # noqa: E731
+    at_cutoff = _level_db(run(instance, tone(100))) - _level_db(tone(100))
+    octave_down = _level_db(run(make("highpass"), tone(50))) - _level_db(tone(50))
+    assert at_cutoff == pytest.approx(-6.0, abs=0.7)
+    assert octave_down < at_cutoff - 6  # a single stage would only fall another 3-4 dB
+    instance.apply_param("cutoff_frequency_hz", 200.0)
+    assert [p.cutoff_frequency_hz for p in instance.plugins] == [200.0, 200.0]
+    assert abs(_level_db(run(make("highpass"), tone(1000))) - _level_db(tone(1000))) < 0.2  # the voice is untouched
+
+
+def test_the_defaults_suit_a_noisy_echoing_room():
+    values = {key: {p.key: p.default for p in d.params} for key, d in BUILTINS.items()}
+    assert values["highpass"]["cutoff_frequency_hz"] == 100
+    gate = values["noise_gate"]
+    assert (gate["threshold_db"], gate["ratio"], gate["attack_ms"], gate["release_ms"]) == (-30, 4, 3, 100)
+    assert values["eq"]["mid_hz"] == 250 and values["eq"]["mid_db"] == -4 and values["eq"]["low_db"] == -2
+    assert values["compressor"]["makeup_db"] == 2  # unchanged: more makeup or squash did not help in the tests
+
+
+def test_the_default_gate_quiets_steady_room_noise_but_lets_speech_through():
+    rng = np.random.default_rng(3)
+    noise = (rng.standard_normal((2, SR * 2)) * 10 ** (-48 / 20)).astype(np.float32)  # a fan, about -48 dBFS
+    gate = make("noise_gate")
+    hushed = _level_db(run(gate, noise)) - _level_db(noise)
+    assert hushed < -12
+    speech = sine(0.1, seconds=1.0, freq=200.0)  # a steady voice-level tone, -23 dBFS
+    assert _level_db(run(make("noise_gate"), speech)) - _level_db(speech) > -0.5

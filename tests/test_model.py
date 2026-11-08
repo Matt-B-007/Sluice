@@ -103,7 +103,7 @@ def test_route_and_master_gain():
 def test_demo_layout_is_filled_in():
     mixer = Mixer.demo()
     assert mixer.channel_for_app("spotify").id == "music"
-    assert [e.type for e in mixer.channel("mic").effects] == ["highpass", "noise_gate", "eq", "compressor", "limiter"]
+    assert [e.type for e in mixer.channel("mic").effects] == ["highpass", "echo_reducer", "noise_reducer", "noise_gate", "eq", "compressor", "limiter"]
 
 
 def test_roundtrip(tmp_path):
@@ -272,6 +272,9 @@ def test_close_action_is_saved_and_validated(tmp_path):
     mixer.close_action = "minimize"
     mixer.save(tmp_path / "c.json")
     assert Mixer.load(tmp_path / "c.json").close_action == "minimize"
+    mixer.close_action = "tray"
+    mixer.save(tmp_path / "c.json")
+    assert Mixer.load(tmp_path / "c.json").close_action == "tray"
     for bad in ("hide", 3, None, ["quit"]):
         data = Mixer.default().to_dict()
         data["close_action"] = bad

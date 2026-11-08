@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sluice"
-version = "0.7.0"
+version = "0.9.0"
 description = "An open-source virtual audio mixer for PipeWire on Linux: channels, per-output mixes and VST3 effects"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -39,7 +39,7 @@ sluice = "sluice.__main__:run"
 packages = ["sluice"]
 
 [tool.setuptools.package-data]
-sluice = ["data/*.svg", "data/png/*.png"]
+sluice = ["data/*.svg", "data/png/*.png", "data/*.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

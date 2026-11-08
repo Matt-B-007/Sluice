@@ -273,3 +273,25 @@ def test_if_the_first_spelling_gives_the_wrong_name_the_next_is_tried(monkeypatc
     system.ensure_null_sink("sluice_ch_game", "Sluice (Game)")
     assert len(system._pulse.loaded) == 2 and system._pulse.unloaded == [system._pulse.loaded[0][0]]
     assert '\\"' in system._pulse.loaded[1][2]
+
+
+def test_a_proton_game_named_cs2_exe_also_answers_to_cs2(system):
+    system._pulse.inputs = [sink_input(11, 1, name="cs2.exe")]
+    (stream,) = system.list_streams()
+    assert stream.key == "cs2.exe"
+    assert "cs2" in stream.names and "cs2.exe" in stream.names
+
+
+def test_the_sink_list_is_not_asked_for_again_on_every_look(system):
+    calls = []
+    real = system._pulse.sink_list
+    system._pulse.sink_list = lambda: (calls.append(1), real())[1]
+    system._pulse.inputs = [sink_input(11, 1, binary="firefox")]
+    system.list_streams()
+    system.list_streams()
+    system.list_streams()
+    assert len(calls) == 1
+    system._pulse.sinks.append(SimpleNamespace(index=9, name="alsa_output.new", description="n", owner_module=INVALID_INDEX))
+    system._pulse.inputs = [sink_input(12, 9, binary="firefox")]  # a stream on a sink not seen before: look again
+    assert system.list_streams()[0].sink == "alsa_output.new"
+    assert len(calls) == 2

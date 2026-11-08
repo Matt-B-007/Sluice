@@ -187,3 +187,54 @@ def test_nan_from_a_plugin_becomes_silence_not_noise(graph):
     out = graph.process({"a": block(0.2), "b": block(0.1)}, N)
     assert np.isfinite(out["monitor"]).all()
     assert out["monitor"][0, 10] == pytest.approx(0.1)  # only channel b contributes at the poisoned samples
+
+
+def test_an_idle_channel_without_effects_adds_nothing_and_keeps_its_gain_state():
+    from sluice.dsp import Graph
+
+    graph = Graph(48000, ["listen"])
+    graph.set_channels(["a"])
+    graph.set_gain("a", "listen", 0.5)
+    out = graph.process({"a": np.ones((2, 64), dtype=np.float32)}, 64)["listen"]
+    assert np.allclose(out, 0.5)  # half gain, under the limiter's ceiling
+    silent = graph.process({"a": np.zeros((2, 64), dtype=np.float32)}, 64)["listen"]
+    assert not silent.any()
+    assert graph.channels["a"].applied["listen"] == 0.5
+    back = graph.process({"a": np.ones((2, 64), dtype=np.float32)}, 64)["listen"]
+    assert back.max() > 0.4  # no ramp from stale state: the channel is simply back
+
+
+def test_an_idle_channel_with_effects_keeps_running_them_until_the_tail_is_over():
+    from sluice.dsp import SILENCE_TAIL_SECONDS, Graph
+
+    class Counting:
+        calls = 0
+
+        def __call__(self, audio, rate, reset=False):
+            Counting.calls += 1
+            return audio
+
+    graph = Graph(48000, ["listen"])
+    graph.set_channels(["a"])
+    graph.channels["a"].board = Counting()
+    graph.set_gain("a", "listen", 1.0)
+    blocks = int(48000 * SILENCE_TAIL_SECONDS / 480)
+    for _ in range(blocks - 5):
+        graph.process({}, 480)
+    assert Counting.calls == blocks - 5  # still running: a reverb tail could still be sounding
+    for _ in range(20):
+        graph.process({}, 480)
+    assert Counting.calls == blocks  # six seconds of silence reached: the chain is skipped from here on
+    before = Counting.calls
+    graph.process({"a": np.ones((2, 480), dtype=np.float32)}, 480)
+    assert Counting.calls == before + 1  # runs again as soon as sound returns
+
+
+def test_an_idle_channel_with_its_own_output_still_provides_silence_on_it():
+    from sluice.dsp import Graph
+
+    graph = Graph(48000, ["listen"])
+    graph.set_channels(["a"])
+    graph.set_solo("a", 1.0)
+    outputs = graph.process({}, 64)
+    assert "solo_a" in outputs and not outputs["solo_a"].any() and outputs["solo_a"].shape == (2, 64)

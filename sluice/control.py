@@ -63,10 +63,11 @@ class ControlApi:
                 "master-mute": self._master_mute,
                 "assign": self._assign,
                 "hear-broadcast": self._hear_broadcast,
+                "mic-mute": self._mic_mute,
                 "show": lambda _request: {},  # the window itself is raised by whoever listens (see ui_controls)
             }.get(cmd)
             if handler is None:
-                raise ControlError(f"unknown command {cmd!r}; try: status, level, mute, master, master-mute, assign, hear-broadcast, show")
+                raise ControlError(f"unknown command {cmd!r}; try: status, level, mute, master, master-mute, assign, hear-broadcast, mic-mute, show")
             result = handler(request)
             if cmd != "status":
                 self.on_change(cmd)
@@ -147,6 +148,7 @@ class ControlApi:
                 for c in mixer.channels
             ],
             "hear_broadcast": self.engine.hear_broadcast,
+            "mic_muted": self.engine.mic_muted,
             "mixes": [
                 {"id": m.id, "label": m.label, "db": round(m.gain_db, 1), "muted": m.mute, "limiter": m.limiter}
                 for m in mixer.mixes
@@ -182,6 +184,10 @@ class ControlApi:
         on = self._state(request, self.engine.hear_broadcast)
         self.engine.set_hear_broadcast(on)
         return {"hear_broadcast": self.engine.hear_broadcast}
+
+    def _mic_mute(self, request: dict) -> dict:
+        self.engine.set_mic_muted(self._state(request, self.engine.mic_muted))
+        return {"mic_muted": self.engine.mic_muted}
 
     def _assign(self, request: dict) -> dict:
         app = request.get("app")
@@ -352,6 +358,8 @@ def build_parser():
     p.add_argument("mix")
     state(p)
     p = sub.add_parser("hear-broadcast", help="play the Broadcast mix in your own output, to check what the audience hears")
+    state(p)
+    p = sub.add_parser("mic-mute", help="silence (or restore) every microphone, in all mixes and in Sluice (Mic) too")
     state(p)
     p = sub.add_parser("assign", help="send an app to a channel (or 'none' to release it)")
     p.add_argument("app")

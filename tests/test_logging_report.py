@@ -20,6 +20,7 @@ def state(tmp_path, monkeypatch):
     """Point the log, crash log and config at a temp folder, and undo all global hooks afterwards."""
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))  # so a Sluice that is running right now cannot hold the lock
     yield tmp_path
     logs.shutdown()
     logging.getLogger("sluice").propagate = True

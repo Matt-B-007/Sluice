@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Optional
@@ -305,9 +306,18 @@ class PulseSystem(AudioSystem):
 
     # ----------------------------------------------------------------- streams
     def list_streams(self) -> list:
-        sinks = {s.index: s.name for s in self._pulse.sink_list()}
+        items = self._pulse.sink_input_list()
+        # Sink names only change when devices come and go, so the list is reused; it is asked for again
+        # only when a stream sits on a sink this program has not seen yet (one query instead of two, twice a second).
+        # (PipeWire can reuse an id after a device is removed, so the list also expires after a few seconds.)
+        sinks = self.__dict__.setdefault("_sink_names", {})
+        now = time.monotonic()
+        if any(item.sink not in sinks for item in items) or now - self.__dict__.get("_sink_names_at", 0.0) > 4.0:
+            sinks.clear()
+            sinks.update({s.index: s.name for s in self._pulse.sink_list()})
+            self.__dict__["_sink_names_at"] = now
         streams = []
-        for item in self._pulse.sink_input_list():
+        for item in items:
             if item.owner_module not in (None, INVALID_INDEX):
                 continue  # created by a module (a loopback, say), not by an app
             props = item.proplist or {}
@@ -325,6 +335,7 @@ class PulseSystem(AudioSystem):
             steam = self._steam_id(props.get("application.process.id"))
             if steam:
                 aliases.add(steam)
+            aliases.update(name[:-4] for name in {key, *aliases} if name.endswith(".exe") and len(name) > 4)
             aliases.discard("")
             aliases.discard(key)
             streams.append(Stream(item.index, key, app_name or binary, sink, frozenset(aliases)))

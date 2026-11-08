@@ -299,10 +299,10 @@ def test_a_vst3_can_be_moved_but_built_ins_stay_in_order(rig):
     engine.add_effect("mic", plugin)
     assert channel.effects[-1] is plugin
     engine.move_effect("mic", plugin.id, -2)
-    assert [e.type or e.kind for e in channel.effects] == ["highpass", "noise_gate", "eq", "vst3", "compressor", "limiter"]
+    assert [e.type or e.kind for e in channel.effects] == ["highpass", "echo_reducer", "noise_reducer", "noise_gate", "eq", "vst3", "compressor", "limiter"]
     engine.move_effect("mic", plugin.id, -9)  # clamped to the top
     assert channel.effects[0] is plugin
-    assert [e.type for e in channel.effects[1:]] == ["highpass", "noise_gate", "eq", "compressor", "limiter"]
+    assert [e.type for e in channel.effects[1:]] == ["highpass", "echo_reducer", "noise_reducer", "noise_gate", "eq", "compressor", "limiter"]
 
 
 def test_the_recommended_voice_chain_replaces_the_built_ins_and_keeps_plugins(rig):
@@ -312,10 +312,10 @@ def test_the_recommended_voice_chain_replaces_the_built_ins_and_keeps_plugins(ri
     engine.add_effect("game", plugin)
     engine.apply_voice_chain("game")
     assert [e.type or e.kind for e in channel.effects[:1]] == ["vst3"] or plugin in channel.effects
-    assert [e.type for e in channel.effects if e.kind == "builtin"] == ["highpass", "noise_gate", "eq", "compressor", "limiter"]
+    assert [e.type for e in channel.effects if e.kind == "builtin"] == ["highpass", "echo_reducer", "noise_reducer", "noise_gate", "eq", "compressor", "limiter"]
     assert plugin in channel.effects
     engine.apply_voice_chain("game")  # again: still exactly one of each
-    assert [e.type for e in channel.effects if e.kind == "builtin"] == ["highpass", "noise_gate", "eq", "compressor", "limiter"]
+    assert [e.type for e in channel.effects if e.kind == "builtin"] == ["highpass", "echo_reducer", "noise_reducer", "noise_gate", "eq", "compressor", "limiter"]
 
 
 def test_a_broken_effect_is_kept_but_skipped(rig):
@@ -345,11 +345,11 @@ def test_levels_report_post_fader_peaks(rig):
 # ------------------------------------------------------------------- persistence
 def test_save_config_keeps_effect_settings(rig, tmp_path):
     _, _, _, engine = rig
-    effect = engine.mixer.channel("mic").effects[1]  # the compressor
+    effect = engine.mixer.channel("mic").effects[3]  # the noise gate
     engine.set_effect_param(effect.id, "threshold_db", -33.0)
     engine.save_config(tmp_path / "c.json")
     restored = Mixer.load(tmp_path / "c.json")
-    assert restored.channel("mic").effects[1].params["threshold_db"] == -33.0
+    assert restored.channel("mic").effects[3].params["threshold_db"] == -33.0
     assert restored.channel_for_app("spotify").id == "music"
 
 
@@ -549,7 +549,7 @@ def test_connections_are_rechecked_every_few_seconds_not_every_tick(rig, monkeyp
     for _ in range(40):  # 20 seconds of ticks, twice a second, with nothing changing
         clock[0] += 0.5
         engine.tick(clock[0])
-    assert 2 <= len(calls) <= 4  # about every 6 seconds, not 40 times
+    assert 1 <= len(calls) <= 3  # about every 10 seconds, not 40 times
 
 
 def test_a_device_change_relinks_at_once(rig, monkeypatch):

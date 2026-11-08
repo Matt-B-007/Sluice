@@ -66,6 +66,8 @@ class NullIO(AudioIO):
         self.channel_ids: list = []
         self.mix_ids: list = []
         self.fixed_inputs: dict = {}  # tests: channel id -> (2, n) array (cycled) overriding the synth
+        self.streamed_inputs: dict = {}  # tests: channel id -> (2, n) recording played through block after block, then repeated
+        self._stream_at: dict = {}
         self.last_outputs: dict = {}
         self.blocks = 0
         self._graph = None
@@ -111,7 +113,13 @@ class NullIO(AudioIO):
         inputs = {}
         for cid in self.channel_ids:
             fixed = self.fixed_inputs.get(cid)
-            if fixed is not None:
+            streamed = self.streamed_inputs.get(cid)
+            if streamed is not None:
+                at = self._stream_at.get(cid, 0)
+                index = (at + np.arange(frames)) % streamed.shape[1]
+                inputs[cid] = streamed[:, index]
+                self._stream_at[cid] = (at + frames) % streamed.shape[1]
+            elif fixed is not None:
                 reps = -(-frames // fixed.shape[1])
                 inputs[cid] = np.tile(fixed, (1, reps))[:, :frames]
             else:

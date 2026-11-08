@@ -6,7 +6,7 @@ from functools import partial
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QApplication,
@@ -25,8 +25,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .effects import ParamInfo, builtin_names, scan_vst3, vst3_plugin_names, vst3_search_paths
+from .effects import BUILTINS, ParamInfo, builtin_names, scan_vst3, vst3_plugin_names, vst3_search_paths
+from . import presets
 from .model import VOICE_CHAIN, Effect, new_effect_id
+from .ui_room import MeasureEchoDialog, MeasureRoomDialog
 from .ui_widgets import ReadoutEdit, ResetSlider
 
 MAX_VST3_PARAMS = 64
@@ -85,6 +87,10 @@ class ParamRow(QWidget):
         self.readout.setText(format_value(value, info.unit, info.normalized))
         self._on_change(info.key, value)
 
+    def set_value(self, value: float) -> None:
+        """Set an exact value from outside (for example the result of Measure my room)."""
+        self._set_value(value)
+
     def _reset(self) -> None:
         if self.info.default is not None:
             self._set_value(self.info.default)
@@ -108,6 +114,7 @@ class EffectsDialog(QDialog):
     def __init__(self, engine, channel, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.engine, self.channel = engine, channel
+        self._rows: dict = {}  # parameter key -> its ParamRow, for the effect being shown
         self.setWindowTitle(f"Effects — {channel.label}")
         self.resize(720, 460)
 
@@ -139,6 +146,15 @@ class EffectsDialog(QDialog):
         preset.setToolTip("High-pass, noise gate, EQ, compressor and limiter, in that order, with starting values that suit a speaking voice.")
         preset.clicked.connect(self._apply_voice_chain)
         left.addWidget(preset)
+        self.presets_button = QPushButton("Presets ▾")
+        self.presets_button.setToolTip("Ready-made settings for different rooms, and your own. They never change the gate threshold.")
+        self.presets_button.setMenu(QMenu(self.presets_button))
+        self.presets_button.menu().aboutToShow.connect(self._build_presets_menu)
+        left.addWidget(self.presets_button)
+        self.new_hint = QLabel("New: Echo Reducer and Noise Reducer. Use Add, or the button above, to put them on this channel.")
+        self.new_hint.setWordWrap(True)
+        self.new_hint.setObjectName("hint")
+        left.addWidget(self.new_hint)
         outer.addLayout(left)
 
         right = QVBoxLayout()
@@ -161,6 +177,12 @@ class EffectsDialog(QDialog):
         right.addWidget(self.params_area, 1)
         outer.addLayout(right, 1)
 
+        self.activity_label: Optional[QLabel] = None
+        self._activity_stage = None
+        self._timer = QTimer(self)
+        self._timer.setInterval(200)
+        self._timer.timeout.connect(self._update_activity)
+        self.finished.connect(self._timer.stop)
         self.list.currentRowChanged.connect(self._show_params)
         self.list.itemChanged.connect(self._on_item_changed)
         self._reload(select=0)
@@ -191,10 +213,56 @@ class EffectsDialog(QDialog):
                 item.setForeground(QColor("#6f7887"))
             self.list.addItem(item)
         self.list.blockSignals(False)
+        types = {e.type for e in self.channel.effects if e.kind == "builtin"}
+        self.new_hint.setVisible(bool(types & {"highpass", "noise_gate"}) and not types & {"echo_reducer", "noise_reducer"})
         if self.channel.effects:
             row = 0 if select is None else max(0, min(select, len(self.channel.effects) - 1))
             self.list.setCurrentRow(row)
         self._show_params(self.list.currentRow())
+
+    def _presets_file(self):
+        return presets.path_beside(getattr(self.parent(), "config_file", None))
+
+    def _build_presets_menu(self) -> None:
+        menu = self.presets_button.menu()
+        menu.clear()
+        for name, (description, entries) in presets.BUILT_IN.items():
+            action = menu.addAction(name, partial(self._apply_preset, entries))
+            action.setToolTip(description)
+        user = presets.load_user(self._presets_file())
+        if user:
+            menu.addSeparator()
+            for name, entries in user.items():
+                menu.addAction(name, partial(self._apply_preset, entries))
+        menu.addSeparator()
+        save = menu.addAction("Save these settings as a preset…", self._save_preset)
+        save.setEnabled(self._presets_file() is not None)
+        if user:
+            remove = menu.addMenu("Delete a preset of mine")
+            for name in user:
+                remove.addAction(name, partial(self._delete_preset, name))
+        menu.setToolTipsVisible(True)
+
+    def _apply_preset(self, entries: list) -> None:
+        presets.apply(self.engine, self.channel.id, entries)
+        self._reload(select=max(0, self.list.currentRow()))
+
+    def _save_preset(self) -> None:
+        name, ok = QInputDialog.getText(self, "Save preset", "Name for this preset:")
+        name = name.strip()
+        if not ok or not name:
+            return
+        path = self._presets_file()
+        stored = presets.load_user(path)
+        stored[name] = presets.snapshot(self.channel.effects)
+        if not presets.save_user(path, stored):
+            QMessageBox.warning(self, "Save preset", "The preset could not be saved (is the settings folder writable?).")
+
+    def _delete_preset(self, name: str) -> None:
+        path = self._presets_file()
+        stored = presets.load_user(path)
+        stored.pop(name, None)
+        presets.save_user(path, stored)
 
     def _apply_voice_chain(self) -> None:
         if any(e.kind == "builtin" and e.type in VOICE_CHAIN for e in self.channel.effects):
@@ -261,13 +329,88 @@ class EffectsDialog(QDialog):
         if instance.has_editor and instance.usable:
             self.editor_button.show()
         infos = instance.param_infos()
+        self._rows = {}
         for info in infos[:MAX_VST3_PARAMS]:
-            layout.addWidget(ParamRow(info, partial(self.engine.set_effect_param, effect.id)))
+            row = ParamRow(info, partial(self.engine.set_effect_param, effect.id))
+            self._rows[info.key] = row
+            layout.addWidget(row)
+        definition = BUILTINS.get(effect.type) if effect.kind == "builtin" else None
+        self.activity_label, self._activity_stage = None, None
+        self._timer.stop()
+        if definition is not None and definition.hint:
+            layout.addSpacing(8)
+            if not self.channel.devices:
+                warn = QLabel("This channel has no microphone. This effect is made for a voice and will make music or "
+                              "game sound worse: remove it here.")
+                warn.setWordWrap(True)
+                warn.setStyleSheet("color: #e0a030;")
+                layout.addWidget(warn)
+            note = QLabel(definition.hint)
+            note.setWordWrap(True)
+            note.setObjectName("hint")
+            layout.addWidget(note)
+        if instance.stage is not None and instance.usable:
+            self.activity_label = QLabel("")
+            self.activity_label.setObjectName("hint")
+            layout.addWidget(self.activity_label)
+            self._activity_stage = instance.stage
+            self._timer.start()
+            self._update_activity()
+            if effect.type == "echo_reducer":
+                measure_echo = QPushButton("Measure my room's echo…")
+                measure_echo.setAutoDefault(False)
+                measure_echo.setToolTip("Clap once; Sluice works out how long your room's echo lasts and sets Room echo time.")
+                measure_echo.clicked.connect(partial(self._measure_echo, effect))
+                layout.addWidget(measure_echo, 0, Qt.AlignmentFlag.AlignLeft)
+            compare = QPushButton("Compare: switch both reducers off / on")
+            compare.setAutoDefault(False)
+            compare.setToolTip("Flips the Echo Reducer and Noise Reducer together, so you can hear the difference while you talk.")
+            compare.clicked.connect(self._compare_reducers)
+            layout.addWidget(compare, 0, Qt.AlignmentFlag.AlignLeft)
+        if effect.kind == "builtin" and effect.type == "noise_gate" and instance.usable:
+            note = QLabel("Not sure what threshold suits your room? Sluice can listen to your microphone for a few "
+                          "quiet seconds and set it for you.")
+            note.setWordWrap(True)
+            note.setObjectName("hint")
+            measure = QPushButton("Measure my room…")
+            measure.setAutoDefault(False)
+            measure.setToolTip("Stay quiet for 5 seconds with your usual background noise on; the threshold is set just above it.")
+            measure.clicked.connect(partial(self._measure_room, effect))
+            layout.addSpacing(12)
+            layout.addWidget(note)
+            layout.addWidget(measure, 0, Qt.AlignmentFlag.AlignLeft)
         if len(infos) > MAX_VST3_PARAMS:
             more = QLabel(f"{len(infos) - MAX_VST3_PARAMS} more parameters: use “Open plugin window”.")
             more.setObjectName("hint")
             layout.addWidget(more)
         self.params_area.setWidget(panel)
+
+    def _update_activity(self) -> None:
+        if self.activity_label is None or self._activity_stage is None:
+            return
+        db = self._activity_stage.activity_db
+        self.activity_label.setText("Turning your voice's frequencies down by about %.0f dB right now." % -db if db < -0.5
+                                    else "Not doing anything right now (nothing to reduce, or no sound).")
+
+    def _compare_reducers(self) -> None:
+        reducers = [e for e in self.channel.effects if e.kind == "builtin" and e.type in ("echo_reducer", "noise_reducer")]
+        turn_off = any(not e.bypass for e in reducers)
+        for effect in reducers:
+            self.engine.set_effect_bypass(self.channel.id, effect.id, turn_off)
+        self._reload(select=self.list.currentRow())
+
+    def _measure_echo(self, effect: Effect) -> None:
+        row = self._rows.get("reverb_time")
+        if row is None:
+            return
+        MeasureEchoDialog(self.engine, self.channel, row.value, row.set_value, self).exec()
+
+    def _measure_room(self, effect: Effect) -> None:
+        row = self._rows.get("threshold_db")
+        if row is None:
+            return
+        dialog = MeasureRoomDialog(self.engine, self.channel, effect.id, row.value, row.set_value, self)
+        dialog.exec()
 
     def _open_editor(self) -> None:
         effect = self._current_effect()

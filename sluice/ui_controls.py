@@ -25,7 +25,7 @@ from .midi import Binding, MidiEvent, MidiHub, load_bindings, save_bindings
 
 log = logging.getLogger("sluice.controls")
 
-POLL_MS = 10
+POLL_MS = 15
 RESCAN_MS = 2000
 
 ACTIONS = [
@@ -52,14 +52,22 @@ class Controls:
         self.server = ControlServer(self.api, socket_path(demo))
         bindings = load_bindings(bindings_file) if bindings_file else []
         self.hub = MidiHub(self.api.handle, bindings)
-        self.hub.rescan()
         self.poll_timer = QTimer(window)
         self.poll_timer.timeout.connect(self.hub.poll)
-        self.poll_timer.start(POLL_MS)
         self.scan_timer = QTimer(window)
-        self.scan_timer.timeout.connect(self.hub.rescan)
+        self.scan_timer.timeout.connect(self.rescan)
+        self.rescan()
         self.scan_timer.start(RESCAN_MS)
         self.dialog: Optional["ControllersDialog"] = None
+
+    def rescan(self) -> None:
+        """Look for controllers. Reading them is only polled while one is plugged in: with none, nothing wakes up."""
+        self.hub.rescan()
+        if self.hub.has_inputs():
+            if not self.poll_timer.isActive():
+                self.poll_timer.start(POLL_MS)
+        elif self.poll_timer.isActive():
+            self.poll_timer.stop()
 
     def _changed(self, cmd: str) -> None:
         if cmd == "show":  # a second Sluice was started (menu, autostart): bring this window to the front

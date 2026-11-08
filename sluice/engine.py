@@ -27,16 +27,18 @@ from .audio_io import AudioIO, in_port_names, out_port_names
 from .apps import STEAM_PREFIX, Catalog
 from .backend import AudioSystem, Stream
 from .dsp import Graph
-from .effects import EffectInstance
+from .effects import EffectInstance, runner_for
 from .linker import Linker
+from . import reconnect, room
 from .model import MONITOR, PREFIX, STREAM, VOICE_CHAIN, Channel, Effect, Mix, Mixer, canonical_order, voice_chain_effects
 
 log = logging.getLogger("sluice.engine")
 
 REFRESH_SECONDS = 2.0
-RELINK_EVERY = 3
+GUARD_STREAK_LOST = 6  # this many failed audio-server calls in a row, with no success between, means the server is gone
+RELINK_EVERY = 5  # re-check the connections every 5th device refresh (10 s) unless something changed sooner
 SETTLE_SECONDS = 8.0  # dropouts while starting up or loading effects are expected and are not shown in the status bar
-CHANGE_SETTLE_SECONDS = 3.0  # re-check the connections every 3rd device refresh (6 s) unless something changed sooner
+CHANGE_SETTLE_SECONDS = 3.0  # the same quiet time after a change such as adding an effect
 RULES_SECONDS = 0.5
 MOVE_RETRY_SECONDS = 5.0
 FIGHT_MOVES = 3          # this many moves of one app within FIGHT_WINDOW seconds means something moves it back
@@ -83,6 +85,9 @@ class Engine:
         self._move_history: dict = {}
         self._warned_default = False
         self._loop_warned: set = set()
+        self.server_lost = False  # the audio server (PipeWire) went away: the window then restarts Sluice (see reconnect.py)
+        self._guard_streak = 0
+        self.mic_muted = False  # not saved either: Sluice always starts with the microphone live
         self.hear_broadcast = False  # not saved: it always starts off, so nobody is surprised by the wrong mix
         self._started = False
         self._last_links: set = set()
@@ -160,6 +165,8 @@ class Engine:
                 errors.append(message)
         if self.io.error:
             message, self.io.error = self.io.error, ""
+            if reconnect.is_lost_message(message):
+                self.server_lost = True
             if message != self._last_io_error:  # a failing callback repeats every block: log it once
                 log.error("audio: %s", message)
             self._last_io_error = message
@@ -174,8 +181,13 @@ class Engine:
 
     def _guard(self, fn, *args):
         try:
-            return fn(*args)
+            result = fn(*args)
+            self._guard_streak = 0
+            return result
         except Exception as exc:  # an audio-server hiccup must never kill the UI
+            self._guard_streak += 1
+            if self._guard_streak >= GUARD_STREAK_LOST and hasattr(self.io, "client"):
+                self.server_lost = True  # the same call failing again and again: the server is gone
             self._error(f"{type(exc).__name__}: {exc}")
             return None
 
@@ -434,13 +446,14 @@ class Engine:
         if force:
             self._applied_gains.clear()
         for channel in self.mixer.channels:
-            solo = 1.0 if channel.separate else None  # own outputs ignore faders and mutes: they are the plain signal
+            muted = self.mic_muted and bool(channel.devices)  # "Mute my microphone" silences every microphone channel, own outputs too
+            solo = (0.0 if muted else 1.0) if channel.separate else None  # otherwise own outputs ignore faders and mutes
             if self._applied_gains.get((channel.id, "solo"), "unset") != solo:
                 self._applied_gains[(channel.id, "solo")] = solo
                 self.graph.set_solo(channel.id, solo)
         for channel in self.mixer.channels:
             for mix in self.mixer.mixes:
-                gain = self.mixer.route_gain(channel, mix)
+                gain = 0.0 if (self.mic_muted and channel.devices) else self.mixer.route_gain(channel, mix)
                 if self._applied_gains.get((channel.id, mix.id)) != gain:
                     self._applied_gains[(channel.id, mix.id)] = gain
                     self.graph.set_gain(channel.id, mix.id, gain)
@@ -531,6 +544,55 @@ class Engine:
             instance.record_param(key, value)  # saved settings update at once
             self.graph.submit(partial(instance.apply_param, key, value))  # the live plugin on the audio thread
 
+    # ------------------------------------------------------------ measure my room
+    def measure_room_start(self, channel_id: str, seconds: float = room.LISTEN_SECONDS) -> None:
+        """Start listening to a channel's input (before its effects) for ``measure_room_finish``."""
+        self.mixer.channel(channel_id)  # raises for an unknown channel
+        if self.graph is None:
+            raise RuntimeError("audio is not running")
+        self.graph.start_capture(channel_id, seconds)
+
+    def measure_room_progress(self, channel_id: str) -> float:
+        return self.graph.capture_progress(channel_id) if self.graph is not None else 0.0
+
+    def measure_room_cancel(self, channel_id: str) -> None:
+        if self.graph is not None:
+            self.graph.cancel_capture(channel_id)
+
+    def measure_room_finish(self, channel_id: str, gate_effect_id: str) -> Optional[room.RoomResult]:
+        """None while still listening; then what the room sounded like and the gate threshold that suits it."""
+        if self.graph is None:
+            return None
+        audio = self.graph.take_capture(channel_id)
+        if audio is None:
+            return None
+        channel = self.mixer.channel(channel_id)
+        ahead = []
+        for effect in channel.effects:
+            if effect.id == gate_effect_id:
+                break
+            if effect.type not in ("echo_reducer", "noise_reducer"):  # they adapt over the first seconds, which would
+                ahead.append(effect)                                  # look like a disturbance; the gate is set above the raw noise
+        return room.analyse(audio, self.io.sample_rate, runner_for(ahead, self.io.sample_rate))
+
+    def measure_echo_finish(self, channel_id: str) -> Optional[room.EchoResult]:
+        """None while still listening; then how long the room's echo lasts (from a clap)."""
+        if self.graph is None:
+            return None
+        audio = self.graph.take_capture(channel_id)
+        if audio is None:
+            return None
+        return room.analyse_echo(audio, self.io.sample_rate)
+
+    def apply_noise_profile(self, channel_id: str, profile) -> None:
+        """Start this channel's Noise Reducers from the noise spectrum that Measure my room heard."""
+        if self.graph is None or profile is None:
+            return
+        for effect in self.mixer.channel(channel_id).effects:
+            instance = self._instances.get(effect.id)
+            if effect.type == "noise_reducer" and instance is not None and instance.stage is not None:
+                self.graph.submit(partial(instance.stage.set_profile, profile))
+
     # -------------------------------------------------------------- UI setters
     def set_level(self, channel_id: str, mix_id: str, db: float) -> None:
         self.mixer.set_level(channel_id, mix_id, db)
@@ -538,6 +600,11 @@ class Engine:
 
     def set_mute(self, channel_id: str, mix_id: str, mute: bool) -> None:
         self.mixer.channel(channel_id).mutes[mix_id] = mute
+        self._push_gains()
+
+    def set_mic_muted(self, muted: bool) -> None:
+        """Silence (or restore) every channel that has a microphone: in all mixes and in its own "Sluice (Mic)" output."""
+        self.mic_muted = bool(muted)
         self._push_gains()
 
     def set_linked(self, channel_id: str, linked: bool) -> None:

@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Check whether a newer sluice exists. Only ever runs when the user asks (Help > Check for updates).
 
-sluice has no download page of its own yet, so ``RELEASE_URL`` is empty. When one exists, put its address here
-(or set ``SLUICE_UPDATE_URL``). The address must answer with JSON in one of two shapes::
+``RELEASE_URL`` is the GitHub releases feed of the project (or set ``SLUICE_UPDATE_URL`` to use another one).
+The address must answer with JSON in one of these shapes::
 
     {"tag_name": "v0.4.0", "html_url": "https://..."}      (what GitHub's "latest release" API returns)
     [{"tag_name": "v0.4.0", "html_url": "https://..."}]    (GitHub's list of releases, newest first: use this one
@@ -21,6 +21,7 @@ from typing import Callable, Optional
 
 RELEASE_URL = "https://api.github.com/repos/Matt-B-007/Sluice/releases?per_page=5"
 MAX_BYTES = 1024 * 1024
+MAX_NOTES = 4000
 
 
 @dataclass
@@ -30,6 +31,7 @@ class UpdateResult:
     latest: str = ""
     page: str = ""   # where to download it
     message: str = ""
+    notes: str = ""  # what the newer version changes (the release's notes), if it published any
 
 
 def parse_version(text: str) -> tuple:
@@ -70,6 +72,7 @@ def check(current: str, url: Optional[str] = None, fetch: Optional[Callable[[str
                 raise ValueError("no releases found")
         latest = str(data.get("tag_name") or data.get("version") or "").strip()
         page = str(data.get("html_url") or data.get("url") or "")
+        notes = str(data.get("body") or "").strip()[:MAX_NOTES]
     except Exception as exc:  # offline, bad address, bad JSON: all just "could not check"
         return UpdateResult("error", current, message=str(exc) or type(exc).__name__)
     if not parse_version(latest):
@@ -77,4 +80,4 @@ def check(current: str, url: Optional[str] = None, fetch: Optional[Callable[[str
     if not page.lower().startswith("https://"):
         page = ""
     status = "available" if is_newer(latest, current) else "up_to_date"
-    return UpdateResult(status, current, latest.lstrip("vV"), page)
+    return UpdateResult(status, current, latest.lstrip("vV"), page, notes=notes if status == "available" else "")

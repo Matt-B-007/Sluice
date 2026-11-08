@@ -34,7 +34,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from . import __version__, logs, report, updates
+from . import __version__, logs, report, updates, whatsnew
 from .engine import Engine
 from .model import BUFFER_CHOICES, MAX_DB, MIN_DB, MONITOR, STREAM, Channel, Mix, Mixer, config_path, linear_to_db, list_backups
 from .ui_effects import EffectsDialog
@@ -705,7 +705,7 @@ class MixStrip(QFrame):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(6)
-        layout.addWidget(_label("FOR YOU" if mix.kind == MONITOR else "FOR YOUR AUDIENCE", "tag"))
+        layout.addWidget(_label("FOR YOU" if mix.kind == MONITOR else "FOR YOUR AUDIENCE" if mix.id == STREAM else "FOR YOUR RECORDER", "tag"))
         layout.addWidget(_label(mix.label, "title"))
 
         self.combo: Optional[DeviceCombo] = None
@@ -715,7 +715,7 @@ class MixStrip(QFrame):
             self.combo.activated.connect(self._on_device)
             layout.addWidget(_slot(self.combo))
         else:
-            layout.addWidget(_label("Audience hears this", "hint"))
+            layout.addWidget(_label("Audience hears this" if mix.id == STREAM else "Recorder hears this", "hint"))
             hint = _label(f"Record from\n“{mix.source_description}”", "hint")
             hint.setWordWrap(True)
             layout.addWidget(_slot(hint))
@@ -890,6 +890,15 @@ class MainWindow(QMainWindow):
         self.config_file = config_file
         self._closed = False
         self._quitting = False
+        # What's new: a start with no settings and no record is a new install (nothing has changed for them), so that
+        # is written down now; an older record, or settings without one, means an update, shown once the window is open.
+        self._config_existed = config_file is not None and config_file.exists()
+        self._reconnecting = False
+        self._tray = None
+        self._whats_new_done = config_file is None  # demo mode: nothing to remember
+        self._notes_dialog = None
+        if config_file is not None and not self._config_existed and not whatsnew.read_marker(config_file):
+            whatsnew.write_marker(config_file, __version__)
         self.controls = None  # set by attach_controls()
         self.setWindowTitle(f"Sluice {__version__}")
         self.setStyleSheet(STYLE)
@@ -937,6 +946,13 @@ class MainWindow(QMainWindow):
         self.status_label = QLabel(notice or "Ready")
         self.status_label.setObjectName("status")
         self.statusBar().addWidget(self.status_label, 1)
+        self.mic_button = QPushButton("Mic live")
+        self.mic_button.setCheckable(True)
+        self.mic_button.setFlat(True)
+        self.mic_button.setToolTip("Mute or unmute every microphone, including the Sluice (Mic) device other apps listen to (Ctrl+M).")
+        self.mic_button.clicked.connect(self.toggle_mic_mute)
+        self.statusBar().addPermanentWidget(self.mic_button)
+        self._show_mic_state()
         self.perf_label = QLabel("")
         self.perf_label.setObjectName("status")
         self.perf_label.setToolTip(
@@ -957,6 +973,7 @@ class MainWindow(QMainWindow):
                 strip.combo.about_to_show.connect(self._on_popup)
         self.repopulate_devices()
 
+        self._update_tray()  # the tray icon is there from the start if Sluice is set to run in the tray
         self.resize(1240, 720)
         self.meter_timer = QTimer(self)
         self.meter_timer.timeout.connect(self._update_meters)
@@ -1006,7 +1023,8 @@ class MainWindow(QMainWindow):
         closing = file_menu.addMenu("When I &close the window")
         close_group = QActionGroup(self)
         self.close_actions = {}
-        for key, text in (("quit", "Quit Sluice"), ("minimize", "Keep running, minimized to the taskbar")):
+        for key, text in (("quit", "Quit Sluice"), ("minimize", "Keep running, minimized to the taskbar"),
+                          ("tray", "Keep running in the system tray")):
             action = closing.addAction(text)
             action.setCheckable(True)
             action.setActionGroup(close_group)
@@ -1019,14 +1037,15 @@ class MainWindow(QMainWindow):
         self._action(mixer_menu, "&Add channel\u2026", self.add_channel, "Ctrl+N")
         self._action(mixer_menu, "&Recording devices for OBS\u2026", self.show_own_devices)
         mixer_menu.addSeparator()
+        self.mic_action = self._action(mixer_menu, "Mute my &microphone", self.toggle_mic_mute, "Ctrl+M", checkable=True)
         self.hear_action = self._action(mixer_menu, "&Hear Broadcast", self.toggle_hear_broadcast, "Ctrl+B", checkable=True)
         self.mute_actions = {}
         for mix in self.engine.mixer.mixes:
-            label = "Listen" if mix.kind == MONITOR else "Broadcast"
-            shortcut = "Ctrl+Shift+L" if mix.kind == MONITOR else "Ctrl+Shift+B"
-            self.mute_actions[mix.id] = self._action(mixer_menu, f"&Mute {label}", partial(self.toggle_mix_mute, mix.id),
+            shortcut = {MONITOR: "Ctrl+Shift+L", STREAM: "Ctrl+Shift+B"}.get(mix.id, "")
+            self.mute_actions[mix.id] = self._action(mixer_menu, f"&Mute {mix.label}", partial(self.toggle_mix_mute, mix.id),
                                                      shortcut, checkable=True)
         mixer_menu.addSeparator()
+        self.recording_action = self._action(mixer_menu, "Third mix: &Recording\u2026", self.toggle_recording_mix, checkable=True)
         self._action(mixer_menu, "&Refresh devices and apps", self.refresh_now, "F5")
         mixer_menu.aboutToShow.connect(self._refresh_mixer_menu)
 
@@ -1046,6 +1065,7 @@ class MainWindow(QMainWindow):
         self.help_menu = bar.addMenu("&Help")  # Controllers is inserted before this one by attach_controls()
         self._action(self.help_menu, "&Keyboard shortcuts", self.show_shortcuts, "F1")
         self.help_menu.addSeparator()
+        self.help_menu.addAction("What's new in this version\u2026", self.show_whats_new)
         self.help_menu.addAction("Check for updates\u2026", self.check_for_updates)
         self.help_menu.addAction("Save bug report\u2026", self.save_report)
         self.help_menu.addAction("Open log folder", self.open_log_folder)
@@ -1054,8 +1074,48 @@ class MainWindow(QMainWindow):
 
     def _refresh_mixer_menu(self) -> None:
         self.hear_action.setChecked(self.engine.hear_broadcast)
+        self.mic_action.setChecked(self.engine.mic_muted)
+        self.recording_action.setChecked(self.engine.mixer.has_recording_mix)
         for mix_id, action in self.mute_actions.items():
             action.setChecked(self.engine.mixer.mix(mix_id).mute)
+
+    def toggle_recording_mix(self) -> None:
+        mixer = self.engine.mixer
+        turn_on = not mixer.has_recording_mix
+        text = ("Add a third mix, \u201cRecording\u201d: a second virtual microphone, \u201cSluice (Recording)\u201d, with its own "
+                "faders and mutes, so a recorder can get a different blend from the one your audience hears."
+                if turn_on else "Remove the Recording mix and its virtual microphone.")
+        ask = QMessageBox(self)
+        ask.setWindowTitle("Recording mix")
+        ask.setText(text + "\n\nSluice has to restart to do this. Your settings are saved first.")
+        restart = ask.addButton("Restart now", QMessageBox.ButtonRole.AcceptRole)
+        ask.addButton("Not now", QMessageBox.ButtonRole.RejectRole)
+        ask.exec()
+        self.recording_action.setChecked(mixer.has_recording_mix)
+        if ask.clickedButton() is not restart:
+            return
+        mixer.set_recording_mix(turn_on)
+        from . import reconnect
+
+        self.shutdown()  # saves the settings
+        reconnect.restart_self()
+
+    def toggle_mic_mute(self) -> None:
+        self.engine.set_mic_muted(not self.engine.mic_muted)  # from the real state, like the other toggles
+        self._show_mic_state()
+        if self._tray is not None and self._tray.isVisible():
+            self._tray.setToolTip("Sluice" + (" (microphone muted)" if self.engine.mic_muted else ""))
+        self.say("Your microphone is muted everywhere, including Sluice (Mic)." if self.engine.mic_muted
+                 else "Your microphone is live.")
+
+    def _show_mic_state(self) -> None:
+        muted = self.engine.mic_muted
+        self.mic_button.blockSignals(True)
+        self.mic_button.setChecked(muted)
+        self.mic_button.blockSignals(False)
+        self.mic_button.setText("MIC MUTED" if muted else "Mic live")
+        self.mic_button.setStyleSheet("QPushButton { background: #b3262c; color: white; border: none; padding: 1px 8px; }" if muted
+                                      else "QPushButton { border: none; padding: 1px 8px; color: #8fd19e; }")
 
     def toggle_hear_broadcast(self) -> None:
         on = not self.engine.hear_broadcast  # from the real state, so a stale tick mark can never invert it
@@ -1068,7 +1128,7 @@ class MainWindow(QMainWindow):
         mix = self.engine.mixer.mix(mix_id)
         self.engine.set_master_mute(mix_id, not mix.mute)
         self.sync_from_model()
-        self.say(f"{'Listen' if mix.kind == MONITOR else 'Broadcast'} is {'muted' if mix.mute else 'on'}.")
+        self.say(f"{mix.label} is {'muted' if mix.mute else 'on'}.")
 
     def _refresh_buffer_menu(self) -> None:
         for frames, action in self.buffer_actions.items():
@@ -1234,8 +1294,68 @@ class MainWindow(QMainWindow):
 
     def set_close_action(self, mode: str) -> None:
         self.engine.mixer.close_action = mode
-        self.say("Closing the window will quit Sluice." if mode == "quit" else
-                 "Closing the window will keep Sluice running, minimized to the taskbar. Use File > Quit to exit.")
+        self._update_tray()
+        if mode == "quit":
+            self.say("Closing the window will quit Sluice.")
+        elif mode == "tray" and not self.tray_active:
+            self.say("No system tray was found on this desktop, so closing the window will minimize it to the taskbar instead. "
+                     "Use File > Quit to exit.")
+        elif mode == "tray":
+            self.say("Closing or minimizing the window will keep Sluice running in the system tray. Click its icon to bring "
+                     "the window back; right-click it for Quit.")
+        else:
+            self.say("Closing the window will keep Sluice running, minimized to the taskbar. Use File > Quit to exit.")
+
+    # ------------------------------------------------------------------ system tray
+    @property
+    def tray_active(self) -> bool:
+        """True while the tray icon is on screen: then closing or minimizing the window hides it into the tray."""
+        return self._tray is not None and self._tray.isVisible()
+
+    def _update_tray(self) -> None:
+        """Show the tray icon exactly while the close setting is 'tray' (and the desktop has a tray)."""
+        from PySide6.QtWidgets import QMenu, QSystemTrayIcon
+
+        want = self.engine.mixer.close_action == "tray" and not self._closed and QSystemTrayIcon.isSystemTrayAvailable()
+        if not want:
+            if self._tray is not None:
+                self._tray.hide()
+            return
+        if self._tray is None:
+            self._tray = QSystemTrayIcon(self.windowIcon(), self)
+            menu = QMenu(self)
+            self._tray_show = menu.addAction("Show Sluice", self.bring_to_front)
+            self._tray_mic = menu.addAction("Mute my microphone", self.toggle_mic_mute)
+            self._tray_mic.setCheckable(True)
+            menu.addSeparator()
+            menu.addAction("Quit", self.quit_app)
+            menu.aboutToShow.connect(self._refresh_tray_menu)
+            self._tray.setContextMenu(menu)
+            self._tray_menu = menu  # keep a reference: Qt does not own a tray icon's menu
+            self._tray.activated.connect(self._on_tray_activated)
+        self._tray.setToolTip("Sluice" + (" (microphone muted)" if self.engine.mic_muted else ""))
+        self._tray.show()
+
+    def _refresh_tray_menu(self) -> None:
+        self._tray_show.setText("Hide Sluice" if self.isVisible() and not self.isMinimized() else "Show Sluice")
+        self._tray_mic.setChecked(self.engine.mic_muted)
+
+    def _on_tray_activated(self, reason) -> None:
+        from PySide6.QtWidgets import QSystemTrayIcon
+
+        if reason == QSystemTrayIcon.ActivationReason.Trigger:  # a plain click: show it, or hide it if it is already in front
+            if self.isVisible() and not self.isMinimized() and self.isActiveWindow():
+                self.hide()
+            else:
+                self.bring_to_front()
+
+    def start_minimized(self) -> None:
+        """Start without showing the window: into the tray if that is how Sluice is set to run, else to the taskbar."""
+        self._update_tray()
+        if self.tray_active:
+            self.say("Sluice is running in the system tray.")
+        else:
+            self.showMinimized()
 
     def quit_app(self) -> None:
         """Really quit (File > Quit, Ctrl+Q), whatever closing the window is set to do."""
@@ -1285,6 +1405,9 @@ class MainWindow(QMainWindow):
             strip.sync_from_model()
         for strip in self.mix_strips:
             strip.sync_from_model()
+        self._show_mic_state()  # a controller or `sluice ctl mic-mute` may have changed it
+        if self._tray is not None and self._tray.isVisible():
+            self._tray.setToolTip("Sluice" + (" (microphone muted)" if self.engine.mic_muted else ""))
 
     # ---------------------------------------------------------------- channels
     def rebuild_channels(self) -> None:
@@ -1338,7 +1461,32 @@ class MainWindow(QMainWindow):
         for strip in self.mix_strips:
             strip.meter.push(levels.get(f"mix:{strip.mix.id}", 0.0))
 
+    def _begin_reconnect(self) -> None:
+        from . import reconnect
+
+        self._reconnecting = True
+        self._reconnect_waited = 0.0
+        self.say("The audio server (PipeWire) stopped. Waiting for it to come back: Sluice will then restart itself.")
+        self._reconnect_timer = QTimer(self)
+        self._reconnect_timer.setInterval(int(reconnect.POLL_SECONDS * 1000))
+        self._reconnect_timer.timeout.connect(self._try_reconnect)
+        self._reconnect_timer.start()
+
+    def _try_reconnect(self) -> None:
+        from . import reconnect
+
+        self._reconnect_waited += reconnect.POLL_SECONDS
+        if reconnect.server_is_back():
+            self._reconnect_timer.stop()
+            self.shutdown()  # saves the settings first
+            reconnect.restart_self()
+        elif self._reconnect_waited > reconnect.GIVE_UP_SECONDS:
+            self._reconnect_timer.stop()
+            self.say("The audio server did not come back. Start the audio server, then restart Sluice.")
+
     def _tick_engine(self) -> None:
+        if self.engine.server_lost and not self._reconnecting and not self._closed:
+            self._begin_reconnect()
         changed = self.engine.tick()
         if "devices" in changed:
             self.repopulate_devices()
@@ -1376,19 +1524,37 @@ class MainWindow(QMainWindow):
 
         threading.Thread(target=work, name="sluice-update-check", daemon=True).start()
 
+    # -------------------------------------------------------------- what's new
+    def show_notes(self, title: str, heading: str, markdown: str, main_label: str = "", main_url: str = "") -> None:
+        from .ui_whatsnew import NotesDialog
+
+        self._notes_dialog = NotesDialog(title, heading, markdown, main_label, main_url, self)
+        self._notes_dialog.open()  # does not block: a start-up notice must never hold up the window
+
+    def show_whats_new(self) -> None:
+        notes = whatsnew.notes_for(__version__) or "No release notes are included with this build. See the releases page for the list of changes."
+        self.show_notes(f"What's new in Sluice {__version__}", f"What's new in Sluice {__version__}", notes)
+
+    def _maybe_show_whats_new(self) -> None:
+        """Once after an update, when the window is really on screen (a start minimized at login waits until it is opened)."""
+        if self._whats_new_done or self._closed or self.config_file is None:
+            return
+        if not self.isVisible() or self.isMinimized():
+            return
+        self._whats_new_done = True
+        marker = whatsnew.read_marker(self.config_file)
+        text = whatsnew.what_to_show(self._config_existed, marker, __version__)
+        whatsnew.write_marker(self.config_file, __version__)
+        if text:
+            self.show_notes(f"What's new in Sluice {__version__}", f"Sluice was updated to {__version__}. What's new:", text)
+
     def _show_update_result(self, result) -> None:
         if result.status == "available":
             self.say(f"Version {result.latest} is available (you have {result.current}).")
-            box = QMessageBox(QMessageBox.Icon.Information, "Update available",
-                              f"Sluice {result.latest} is available. You are running {result.current}.", parent=self)
-            if result.page:
-                open_button = box.addButton("Open download page", QMessageBox.ButtonRole.AcceptRole)
-                box.addButton(QMessageBox.StandardButton.Close)
-                box.exec()
-                if box.clickedButton() is open_button:
-                    QDesktopServices.openUrl(QUrl(result.page))
-            else:
-                box.exec()
+            self.show_notes(
+                "Update available", f"Sluice {result.latest} is available. You are running {result.current}.",
+                result.notes or "No release notes were published for this version.",
+                "Open download page" if result.page else "", result.page)
         elif result.status == "up_to_date":
             self.say(f"Sluice {result.current} is the latest version.")
             QMessageBox.information(self, "Up to date", f"You are running the latest version ({result.current}).")
@@ -1426,6 +1592,8 @@ class MainWindow(QMainWindow):
         if self._closed:
             return
         self._closed = True
+        if self._tray is not None:
+            self._tray.hide()  # no ghost icon after Sluice is gone
         self.meter_timer.stop()
         self.engine_timer.stop()
         self.autosave_timer.stop()
@@ -1438,10 +1606,14 @@ class MainWindow(QMainWindow):
 
         app = QGuiApplication.instance()
         saving = bool(app is not None and app.isSavingSession())  # True during a logout or shutdown: always let it close
-        if self.engine.mixer.close_action == "minimize" and not self._quitting and not self._closed and not saving:
+        if self.engine.mixer.close_action in ("minimize", "tray") and not self._quitting and not self._closed and not saving:
             event.ignore()
-            self.showMinimized()
-            self.say("Sluice is still running. Click it in the taskbar to bring it back, or use File > Quit.")
+            if self.tray_active:
+                self.hide()
+                self.say("Sluice is still running in the system tray.")
+            else:
+                self.showMinimized()
+                self.say("Sluice is still running. Click it in the taskbar to bring it back, or use File > Quit.")
             return
         self.shutdown()
         event.accept()
@@ -1457,7 +1629,14 @@ class MainWindow(QMainWindow):
 
     def showEvent(self, event) -> None:
         self._set_meters_running(not self.isMinimized())
+        if not self._whats_new_done:
+            QTimer.singleShot(700, self._maybe_show_whats_new)
         super().showEvent(event)
+
+    def _minimize_to_tray(self) -> None:
+        if self.tray_active and self.isMinimized() and not self._closed:
+            self.hide()
+            self.setWindowState(self.windowState() & ~Qt.WindowState.WindowMinimized)  # so showing it again is not minimized
 
     def hideEvent(self, event) -> None:
         self._set_meters_running(False)
@@ -1466,4 +1645,6 @@ class MainWindow(QMainWindow):
     def changeEvent(self, event) -> None:
         if event.type() == QEvent.Type.WindowStateChange:
             self._set_meters_running(self.isVisible() and not self.isMinimized())
+            if self.tray_active and self.isMinimized() and not self._closed:
+                QTimer.singleShot(0, self._minimize_to_tray)
         super().changeEvent(event)

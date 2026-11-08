@@ -11,6 +11,24 @@ An open-source virtual audio mixer for Linux (PipeWire). Put your mic, games, mu
 > [issue](https://github.com/Matt-B-007/Sluice/issues) with the file. The newest version is on the
 > [releases page](https://github.com/Matt-B-007/Sluice/releases).
 
+## What's new in 0.9.0
+
+Takes noise and echo out of your voice, not only out of the gaps between words. (The full list for every version is in
+[CHANGELOG.md](CHANGELOG.md); Sluice also shows it once after an update, and under *Help > What's new in this version*.)
+
+- **Echo Reducer and Noise Reducer**: two new effects that lower a room's echo tail and its steady noise (fan, air
+  conditioner, road hiss) while you talk, with a *Compare* button, a live "turning your voice down by X dB" readout and
+  a clap-based *Measure my room's echo*. They are in the recommended voice chain; press *Use the recommended voice
+  chain* to add them to an existing Mic channel. See *Effects*.
+- **Presets** for the voice chain, and your own.
+- **A system tray icon** (*File > When I close the window > Keep running in the system tray*).
+- **Mute my microphone** (status bar button, Ctrl+M, `sluice ctl mic-mute`), including the *Sluice (Mic)* device.
+- **A third mix, "Recording"**, for a recorder that should hear a different blend from your audience.
+- **Games from Lutris, Heroic/Epic and Bottles** in the App or game list.
+- **Sluice reconnects by itself** after PipeWire is restarted.
+- Everything from 0.8.0 is still here: *Measure my room*, the noisy-room defaults, Wine/Proton game matching, the
+  lighter CPU use and the what's-new window.
+
 ## What it does
 
 - **Channels** (a new install starts with Mic, Browser, Game, Chat, Music and System; add as many more as you like). Each channel has a list of
@@ -27,11 +45,13 @@ An open-source virtual audio mixer for Linux (PipeWire). Put your mic, games, mu
   **LINK** moves both faders together.
 - **Broadcast as a microphone**: the Broadcast mix appears as a device called **Sluice (Broadcast)**.
   Pick it as the audio source in OBS, Discord, Zoom, a browser, anything.
-- **Separate recording devices**: any channel can also be its own microphone ("Sluice (Mic)", "Sluice (Game)
-  only", ...), so OBS or another recorder can record just that channel on its own track. See *Recording one channel
-  on its own*.
-- **Effects on every channel**: gain, high-pass, noise gate, 3-band EQ, compressor, limiter, and **VST3 plugins**.
-  The built-in ones always run in the best order and start from sensible values for a speaking voice. See *Effects*.
+- **Your microphone as its own device**: **Sluice (Mic)** carries just your microphone after its effects, for OBS,
+  Discord, games and browsers. Any other channel can be offered the same way ("Sluice (Game)", "Sluice (Music)", ...),
+  so a recorder can capture it on its own track. See *Recording one channel on its own*.
+- **Effects on every channel**: gain, high-pass, echo reducer, noise reducer, noise gate, 3-band EQ, compressor, limiter, and **VST3 plugins**.
+  The built-in ones always run in the best order, and their starting values are chosen for a voice in an ordinary,
+  noisy, echoing room (fan, air conditioner, TV, traffic), not a studio. A **Measure my room** button sets the noise
+  gate for your room and microphone. See *Effects*.
 - **A launcher for the desktop**: *File > Add Sluice to the applications menu* (or `sluice --install-desktop`) gives
   Sluice an icon and an entry in your launcher, so you can start it like any other app.
 - **Hardware control**: drive faders and mutes from a **Stream Deck** (or any button that can run a command) and from
@@ -44,12 +64,13 @@ An open-source virtual audio mixer for Linux (PipeWire). Put your mic, games, mu
 
 ## Status: please read
 
-Version 0.6. The mixing engine, effects, routing, PulseAudio control and UI are covered by about 260 automated
-tests, and the interface has been run and screenshotted. On CachyOS (PipeWire, Elgato Wave XLR Pro) the mic, the
-Broadcast mix, Hear Broadcast, Steam game detection and the faders have been confirmed by hand. Not yet confirmed on
-real hardware: the *Recording devices for OBS* outputs, controller support, VST3 plugins, and every distribution other
-than Arch. If something does not work, use **Help > Save bug report** (or `sluice --report`) and send the file:
-see *Logs and bug reports* below.
+Version 0.9.0, a beta. The mixing engine, effects, routing, PulseAudio control and UI are covered by more than 370 automated
+tests, and the interface has been run and screenshotted. On CachyOS (PipeWire, Elgato Wave XLR Pro) these have been
+confirmed by hand: the microphone, **Sluice (Mic)** and **Sluice (Broadcast)** in OBS, Hear Broadcast, the faders,
+Steam game detection and routing (Counter-Strike 2 through Proton), starting from the applications menu, installing from
+a release zip and the update check. Not yet confirmed on real hardware: controller support, VST3 plugins, recording
+devices for channels other than Mic, and every distribution other than Arch. If something does not work, use
+**Help > Save bug report** (or `sluice --report`) and send the file: see *Logs and bug reports* below.
 
 ## Install
 
@@ -62,7 +83,7 @@ and other musl-based systems (the Python audio packages have no wheels for them)
 Open the [latest release](https://github.com/Matt-B-007/Sluice/releases) and download the zip named **`sluice-vX.Y.Z.zip`** from the *Assets* list (not the green *Code* button, and not the *Source code* links, which unpack into a differently named folder). Or `git clone` the repository. Then:
 
 ```bash
-unzip sluice-v0.7.0.zip && cd sluice
+unzip sluice-v0.9.0.zip && cd sluice
 ./install.sh              # shows the package command for your distribution and asks before running it
 ./install.sh --dry-run    # only shows what it would do
 ```
@@ -171,14 +192,19 @@ effect the next time Sluice starts. *File > Export settings* never makes backups
 ## Closing the window
 
 *File > When I close the window* chooses what the window's close button does: **Quit Sluice** (the default; the virtual
-devices are removed and your apps go back to your normal output), or **Keep running, minimized to the taskbar**, so the
-mixer keeps working while the window is out of the way (click it in the taskbar to bring it back). *File > Quit*
-(Ctrl+Q) always quits. The choice is saved with your settings.
+devices are removed and your apps go back to your normal output), **Keep running, minimized to the taskbar**, so the
+mixer keeps working while the window is out of the way (click it in the taskbar to bring it back), or **Keep running in
+the system tray**. In tray mode Sluice puts an icon in the system tray; closing *or minimizing* the window hides it
+there, a click on the icon shows or hides the window, and a right-click offers *Show/Hide Sluice*, *Mute my microphone*
+and *Quit*. Starting Sluice a second time also brings the window back, and *Start minimized* at login starts in the
+tray. If your desktop has no system tray (some GNOME setups need an extension for it), Sluice says so and minimizes to the
+taskbar instead, so the window can never get lost. *File > Quit* (Ctrl+Q) always quits. The choice is saved with your
+settings. The tray was tested with a simulated tray only, not on a real KDE or GNOME desktop.
 
 ## Starting at login
 
 *File > Start when I log in* has three choices: do not start automatically, start with the window open, or start
-**minimized to the taskbar** (the mixer keeps running; click it in the taskbar to open it). The same from a terminal:
+**minimized to the taskbar** (the mixer keeps running; click it in the taskbar to open it; with *Keep running in the system tray* chosen, it starts in the tray instead). The same from a terminal:
 `sluice --autostart off|window|minimized`, and `sluice --minimized` starts minimized once. At login Sluice waits up to
 30 seconds for PipeWire, so it does not fall back to demo mode because the sound system was a moment late. Starting
 Sluice again while it is already running (from the menu, or at login) simply brings the open window to the front.
@@ -187,21 +213,25 @@ The choice is a file in `~/.config/autostart/`, which any desktop's start-up set
 ## First run, step by step
 
 1. Start `sluice`. In the **Listen** mix, pick your headphones in the device list (or leave *Default*).
-2. **Mic** channel: it already uses your default microphone. Add effects with the *Effects* button
-   (noise gate, then compressor is a good start). Its Listen mute is on so you do not hear yourself.
+2. **Mic** channel: it already uses your default microphone and already has the recommended voice chain (open
+   *Effects* to see or change it). Its Listen mute is on so you do not hear yourself. Open *Effects > Noise Gate* and
+   press **Measure my room...** once, with your usual background noise on and while you stay quiet: it sets the gate for
+   your room and microphone (see *Effects* below).
 3. Play some music. It appears in **Playing now**. Click it and choose **Music**. (Or on the Music channel:
    *+ Add device or app > App or game*.) From then on that app always goes to the Music channel,
    even after a restart.
 4. Lower **Music** in the *Broadcast* column only (turn **LINK** off first) and your audience hears it quietly
    while you hear it at full volume.
-5. In OBS add an *Audio Input Capture* and choose **Sluice (Broadcast)**.
+5. In OBS add an *Audio Input Capture* and choose **Sluice (Broadcast)** (everything your audience should hear), or
+   **Sluice (Mic)** (just your microphone, with its effects).
 
 Apps that are not on any channel keep playing straight to your default output, as usual.
 
 ## Testing it safely
 
 Sluice does not edit your PipeWire or WirePlumber configuration and does not change your default devices.
-Its only files are its settings (`~/.config/sluice/config.json`), its logs and a lock file. While it runs it
+Its only files are its settings (`~/.config/sluice/config.json` and the backups beside it, plus `controls.json`, `presets.json` and a small `last_version` note there), its logs, a lock file, and,
+only if you ask for them, the applications-menu launcher and the start-at-login entry. While it runs it
 adds virtual devices called `sluice_*`, makes connections it owns, and moves **only the apps you assign** to a
 channel. Everything is removed when it quits.
 
@@ -226,8 +256,9 @@ To watch what it is doing while you test: `tail -f ~/.local/state/sluice/sluice.
   `sluice --cleanup` also removes devices left behind by the old name (pwmix).
 - **Audio still odd?** `systemctl --user restart pipewire pipewire-pulse wireplumber` resets PipeWire's running
   state (all audio is interrupted for a moment; none of your files are touched).
-- **Uninstall:** delete the Sluice folder (the virtual environment is inside it), then
-  `rm -rf ~/.config/sluice ~/.local/state/sluice`. Nothing was installed outside it.
+- **Uninstall:** first run `.venv/bin/sluice --uninstall-desktop` from the Sluice folder (it removes the applications-menu
+  entry, the start-at-login entry, the launcher script and the icons), then delete the Sluice folder (the virtual
+  environment is inside it), then `rm -rf ~/.config/sluice ~/.local/state/sluice`. Nothing else was installed.
   If you used it under its old name, `~/.config/pwmix` and `~/.local/state/pwmix` can go too.
 
 ## The menus
@@ -235,20 +266,26 @@ To watch what it is doing while you test: `tail -f ~/.local/state/sluice/sluice.
 | Menu | What is in it |
 |---|---|
 | **File** | Save settings (Ctrl+S), Export settings, Import settings, Restore earlier settings, Open settings folder, Add Sluice to the applications menu, Start when I log in, When I close the window, Quit (Ctrl+Q) |
-| **Mixer** | Add channel (Ctrl+N), Recording devices for OBS, Hear Broadcast (Ctrl+B), Mute Listen (Ctrl+Shift+L), Mute Broadcast (Ctrl+Shift+B), Refresh devices and apps (F5) |
-| **View** | Full screen (F11), Reset window size |
+| **Mixer** | Add channel (Ctrl+N), Recording devices for OBS, Mute my microphone (Ctrl+M), Hear Broadcast (Ctrl+B), Mute Listen (Ctrl+Shift+L), Mute Broadcast (Ctrl+Shift+B), Third mix: Recording, Refresh devices and apps (F5) |
+| **View** | Full screen (F11), Reset window size, Audio buffer |
 | **Controllers** | MIDI controllers and Stream Deck |
-| **Help** | Keyboard shortcuts (F1), Check for updates, Save bug report, Open log folder, About |
+| **Help** | Keyboard shortcuts (F1), What's new in this version, Check for updates, Save bug report, Open log folder, About |
 
-Settings are saved automatically when you quit. **Import settings** checks the file, keeps your current settings as
+Settings are saved automatically a few seconds after every change and when you quit (see *Saving*). **Import settings** checks the file, keeps your current settings as
 `config.before-import.json`, and takes effect the next time Sluice starts; quitting does not overwrite the imported file.
 
 ## Version and updates
 
 The version is in the window title, at the right of the status bar and in **Help > About Sluice**. Please include it
-in bug reports. **Help > Check for updates** only runs when you click it. Sluice has no download address to check yet,
-so for now it says so, and new versions arrive as a new zip file. When a release page exists it will be set in
-`sluice/updates.py` (or with the `SLUICE_UPDATE_URL` environment variable).
+in bug reports. **Help > Check for updates** only runs when you click it: it asks GitHub for the newest release
+(pre-releases included) and tells you whether yours is current. If a newer one exists it shows **what that version
+changes** (its release notes) with a button to open the download page. Nothing is sent except that request. To update,
+download the new zip from the releases page, unpack it and run `./install.sh` again; your settings stay where they are.
+For a different release feed, set `SLUICE_UPDATE_URL`.
+
+**After an update**, Sluice shows what is new in the version you now have, once (a brand-new install is not shown it, and
+a start minimized at login waits until you open the window). **Help > What's new in this version** shows it again. The
+notes come from `CHANGELOG.md`, which is also what the GitHub release page shows.
 
 When you remove an app from a channel it goes back to playing straight to your normal output, outside the mixer, so
 you will still hear it. To silence an app in the mix instead, keep it on its channel and mute the channel.
@@ -284,6 +321,7 @@ program, because the virtual environment is not on your `PATH`:
 /path/to/sluice/.venv/bin/sluice ctl master broadcast --step=-3                # the Broadcast master
 /path/to/sluice/.venv/bin/sluice ctl master-mute broadcast on                  # on, off or toggle
 /path/to/sluice/.venv/bin/sluice ctl assign firefox music                      # send an app to a channel ('none' releases it)
+/path/to/sluice/.venv/bin/sluice ctl mic-mute toggle                           # mute every microphone, Sluice (Mic) included (on, off, toggle)
 /path/to/sluice/.venv/bin/sluice ctl hear-broadcast                            # check the audience mix in your own output (on, off, toggle)
 /path/to/sluice/.venv/bin/sluice ctl status                                    # print every level and mute
 ```
@@ -311,19 +349,82 @@ Rode or other device that shows up as a USB MIDI device should work through MIDI
 Built-in effects always run in this order, which is the usual order for a voice, and you cannot put them out of it:
 
 1. **Gain**: trim the level going in.
-2. **High-pass** (80 Hz): remove rumble, desk thumps and breath noise below the voice.
-3. **Noise Gate** (closes below -45 dB): silence the room between words. Set the threshold just above your room noise.
-4. **3-Band EQ**: starts with a small cut around 300 Hz (less "boxy") and a little lift above 10 kHz (more air).
-5. **Compressor** (3:1, threshold -18 dB, attack 10 ms, release 100 ms): takes a few dB off the loud parts so you
+2. **High-pass** (100 Hz): removes rumble, desk thumps and breath noise below the voice. It is two filters in a row
+   (12 dB per octave), because a single one falls too slowly to touch the 50-100 Hz hum of an air conditioner, a fan or traffic.
+3. **Echo Reducer** (room echo time 0.6 s, reduction up to 9 dB): lowers the tail of the room's echo, the part that
+   keeps going after a word ends, while you talk. It judges how fast your room's echo fades from the setting *Room echo
+   time* (about 0.3 s for a carpeted room, 0.6 to 1 s for bare walls); set it to your room. It cannot remove the echo
+   that arrives in the first moments of a word. **Measure my room's echo...** (on this page): clap once, sharply, close
+   to the microphone, and stay quiet for 4 seconds; Sluice reads how fast the clap's echo dies away and offers a value.
+   On simulated rooms it was within about 15% of the true value in a quiet room (usually within 5%); in a loud room it
+   says the clap was not clear instead of guessing (the clap has to stand at least 35 dB above the room's noise).
+4. **Noise Reducer** (up to 12 dB): follows the steady part of the room's noise (fan, air conditioner, road hiss) and turns
+   it down, also while you talk. It learns the noise from the quietest moments of the last second or two, so it
+   needs a few seconds after it starts. It cannot tell a TV or other people talking from you.
+5. **Noise Gate** (threshold -30 dB, 4:1, attack 3 ms, release 100 ms): quiets the room between words. The 4:1
+   ratio is gentle, so it fades the noise out instead of chopping word endings, and the short release cuts the
+   echo tail between words.
+6. **3-Band EQ**: a small cut around 250 Hz (the "boom" an echoing room adds), a slight cut below 120 Hz and a
+   little air above 10 kHz.
+7. **Compressor** (3:1, threshold -18 dB, attack 10 ms, release 100 ms): takes a few dB off the loud parts so you
    stay even; 2 dB of makeup gain brings the level back up.
-6. **Limiter** (ceiling -2 dB): catches the occasional shout.
+8. **Limiter** (ceiling -2 dB): catches the occasional shout.
 
-These starting values come from common voice-chain and OBS microphone guides; where the guides differ (for example
-whether the gate comes before or after the compressor), Sluice gates first so the compressor does not lift the room
-noise before the gate sees it. They are starting points: every value can be changed, and every effect can be
-bypassed or removed. A new install puts this chain on the Mic channel. On any channel, *Effects > Use the recommended
-voice chain* puts it back (it replaces the built-in effects there and keeps VST3 plugins). VST3 plugins can be moved
-up and down with the arrows and are never reordered.
+**These defaults are built for a noisy, echoing room** (an air conditioner or fan, a TV, road noise, bare walls), not a
+studio. They were compared against the older defaults on a simulated room (`python tools/tune_room.py` repeats the
+test): the old gate, at -45 dB, never closed in a room that noisy, while the new one quiets the noise between words
+by about 15 dB in a typical room and more with a quiet mic (but hardly at all in a very noisy room or with a hot mic: see *Measure my room* below). Two honest limits:
+
+- **Software cannot fully remove noise or echo that happens while you are talking.** The gate quiets the room
+  *between* words. The Echo Reducer and Noise Reducer work while you talk, but only modestly: on simulated noisy,
+  echoing rooms the pair made the voice cleaner by about 0.5 to 3.5 dB (`python tools/tune_reducers.py` repeats the test, with
+  computer-made speech, so judge by ear as well), most for a fan, air conditioner or road noise and least for a TV, which
+  is speech like you. Together they add 16 ms of delay and use about 3% of one CPU core while sound is going
+  through. If your voice sounds thin or watery, lower their *Reduction*. Moving the mic closer to your mouth is still
+  the best fix there is, and it works better than any setting.
+- **The gate threshold is the one setting that depends on your microphone.** How loud your room looks to the gate
+  depends on your mic's gain, so no fixed number suits everybody. That is what **Measure my room** is for (below). By hand:
+  if the room still comes through between words, raise the threshold (for example -26 dB); if the start or end of your
+  words is cut off, lower it (for example -36 dB).
+
+Everything else came from common voice-chain and OBS microphone guides; where they differ (for example whether the
+gate comes before or after the compressor), Sluice gates first so the compressor does not lift the room noise before
+the gate sees it. In the simulated rooms a gentler compressor (2:1, no makeup) left the voice about 2 dB closer to the
+noise and a harder one (4:1) made no difference, so the compressor stays as it was; the EQ was set by ear for how a
+voice sounds in an echoing room, not measured. Every value can be changed, and every effect can be bypassed or removed.
+A new install puts this chain on the Mic channel. On any channel, *Effects > Use the recommended voice chain* puts it
+back at these values (it replaces the built-in effects there and keeps VST3 plugins). **Settings you already have are
+kept when you update**, so an existing install keeps its old values until you press that button. VST3 plugins can be
+moved up and down with the arrows and are never reordered.
+
+**Presets, Compare and the readout.** *Presets* (in the Effects window) applies ready-made settings to the effects on
+the channel: *Noisy, echoing room* (the default), *Very noisy or echoing room* (more reduction and a longer echo time;
+in the simulated rooms it scored only about 0.1 to 0.2 dB better than the default, so try it by ear), *Light touch* and
+*Quiet room* (both reducers off). *Save these settings as a preset* keeps your own in `presets.json` beside your
+settings. Presets never change the gate threshold. On the reducers' pages, *Compare* switches both off and on again so
+you can hear what they do while you talk, and a line shows how much each is turning your voice's frequencies down right now.
+The two reducers are processed together in one pass when they are next to each other (they are), which is cheaper
+than two and gives the 16 ms of delay; in the test the combined pass scored about 0.2 dB lower than running them one after
+the other, which seemed a fair price.
+
+**Measure my room.** (When you accept the result, the Noise Reducer on the same channel also starts from the noise it heard.) Select *Noise Gate* in the Effects window and press **Measure my room...**. Leave your usual
+background noise on (the fan, the air conditioner, the TV), stay quiet for 5 seconds, and Sluice listens to the
+microphone, looks at how loud the room's noise gets, and offers a threshold just above it (4 dB over the loud end of the
+noise). In the six simulated rooms (`python tools/tune_room.py` repeats it) the threshold it set cut steady noise by
+17 to 18 dB in five of them, 12 dB in the one so loud that a gate can only do part of the job, and never touched quiet
+speech. You choose whether to use it, and double-clicking the slider puts the default back. It tells you plainly when:
+
+- **you talked, coughed or a door banged** during the measurement (the result would be too high and could cut your
+  voice, so it asks you to try again);
+- **it heard nothing at all** (the microphone is muted, or not the one selected), or the recording was too short to judge;
+- **the room is loud**, with noise close to the level of your speech: it sets the highest safe threshold, says that a
+  gate can only quiet part of that noise, and suggests moving the microphone closer to your mouth or turning its gain down;
+- **the room is very quiet**: it sets a low threshold and says the gate will hardly need to work.
+
+It only listens to this channel's microphone, only while the window is open, and keeps nothing: the recording is thrown
+away as soon as the number is worked out. It measures the signal as it reaches the gate: it passes the recording through the built-in effects ahead of the gate
+that are switched on (normally Gain and High-pass), and not through VST3 plugins. It listens before the Echo Reducer and Noise Reducer, because they adapt during the first seconds, so the threshold is set above the raw noise and stays on the safe side.
+Repeat it whenever the room or your microphone gain changes.
 
 **Typing values and resetting.** Every slider has a box beside it: click it, type a number (units are fine, `-20`,
 `-20 dB`, `3:1`, `250 ms`), and press Enter. **Double-click a slider to put it back to its default.** The same works
@@ -348,7 +449,7 @@ moment.
 
 ## VST3 plugins
 
-*Effects > Add > VST3 plugin* lists plugins found in `~/.vst3`, `/usr/lib/vst3`, `/usr/local/lib/vst3`, the folders in
+*Effects > Add > VST3 plugin* lists plugins found in `~/.vst3`, `/usr/lib/vst3`, `/usr/lib64/vst3`, `/usr/local/lib/vst3`, the folders in
 the `VST3_PATH` environment variable, and any folder you add yourself (the *Where does Sluice look?* button in that
 list, or *Browse*). On Linux a VST3 is a folder ending in `.vst3`. Sliders for the plugin's parameters are shown, and
 *Open plugin window* shows its own interface. Plugin settings are saved with your layout.
@@ -365,7 +466,7 @@ Sluice at the folder yabridge writes to (usually `~/.vst3/yabridge`). That route
 ```
  capture devices ---------------\
                                  >-- sluice:in_<channel> -- effects --+-- Listen mix    --> headphones
- apps -> "Sluice (<channel>)" sink -/   (pipewire-jack client)          +-- Broadcast mix --> Sluice (Broadcast) feed
+ apps -> "Sluice (<channel>) output" /   (pipewire-jack client)          +-- Broadcast mix --> Sluice (Broadcast) feed
         (its monitor is linked in)                                                          |
                                                           apps record "Sluice (Broadcast)" <-'
 ```
@@ -389,18 +490,28 @@ behind by a crash are cleaned up on the next start, or with `sluice --cleanup`.
 - Added latency is about two blocks, fine for streaming, noticeable if you monitor your own mic through it.
 - The mix limiter is a simple peak limiter; there is no lookahead, so very large overloads sound harsh.
 - Renaming a channel briefly re-creates its virtual device.
-- The installed-programs list reads the desktop-entry files and Steam's game manifests. Games from Lutris,
-  Heroic, Bottles and similar launchers are not listed yet: type the name in the *App or game* search, or use the *Playing now* bar for those.
-  A program is recognised by its binary, its app name or (Steam) its game id; if one does not move, check the
-  names in the log (`moved ...` lines) and add it by name.
+- The installed-programs list reads the desktop-entry files, Steam's game manifests, and the game lists of Lutris,
+  Heroic/Epic (legendary) and Bottles. **The Lutris, Epic and Bottles readers were written from the launchers'
+  file formats and tested only on files made in those formats, not with the real launchers**; Heroic's GOG games and
+  other launchers are not listed: type the name in the *App or game* search, or use the *Playing now* bar for those.
+  A program is recognised by its binary, its app name or (Steam) its game id; Windows programs run through Wine or
+  Proton (named like `cs2.exe`) match with or without the `.exe`. If one does not move, check the names in the log
+  (`moved ...` lines) and add it by name.
 - Meters show peaks per channel (after effects and fader), not per source.
-- Only two mixes (Listen and Broadcast) for now.
+- Two mixes (Listen and Broadcast), or three with *Mixer > Third mix: Recording*, which needs a restart of Sluice.
 - **Chat is muted on Broadcast by default.** If a voice-chat app (Discord, etc.) plays into *Chat* and records from
   *Sluice (Broadcast)*, un-muting Chat on Broadcast would send people their own voice back to them.
-- **Your mic is always open on Broadcast.** There is no push-to-talk or mute hotkey yet; use the Mic channel's mute.
+- **Mute and push-to-talk.** *Mute my microphone* (button, Ctrl+M) works inside the Sluice window. A key that works
+  while a game has focus must come from your desktop: bind `sluice ctl mic-mute toggle` (see *Controllers*). Real
+  push-to-talk (open only while a key is held) needs a desktop that can run a command on key press *and* on release:
+  sway (`bindsym` and `bindsym --release`) and Hyprland (`bind` and `bindr`) can; KDE and GNOME shortcuts cannot. Bind
+  the press to `sluice ctl mic-mute off` and the release to `sluice ctl mic-mute on`, and start Sluice muted with
+  `sluice ctl mic-mute on` in your login script. This has not been tried on a real desktop.
 - **Bluetooth headsets:** if the headset switches profile (music vs. call quality) the device is re-created and
   Sluice re-links it within a couple of seconds; expect a short gap.
-- If PipeWire or pipewire-pulse is **restarted** while Sluice runs, restart Sluice too: it does not reconnect yet.
+- If PipeWire is **restarted** while Sluice runs, Sluice notices, waits up to 3 minutes for it to come back, saves your
+  settings and starts itself again (the window closes and reopens). This is tested with simulated failures only, not
+  with a real PipeWire restart. If only pipewire-pulse is restarted, restart Sluice by hand.
 - Sluice puts apps back on your normal output when it quits. If WirePlumber keeps moving an app away from its
   channel, Sluice notices, leaves that app alone for a minute and says so in the status bar and log.
 
@@ -437,11 +548,16 @@ a larger size in *View > Audio buffer*, close heavy plugins, or check that nothi
 
 ## Resource use
 
-Sluice is built to sit quietly behind a game. With the demo mixer on a small virtual machine it uses roughly
-9% of one core while the window is open and visible; meters stop redrawing when the window is minimised or hidden.
+Sluice is built to sit quietly behind a game. Measured with the demo mixer (`tools/benchmark.py`): the audio
+callback uses about 7% of its time budget with every channel playing (the Mic channel's full voice chain, with the two
+reducers, is most of that) and about 1.5% when everything is silent, the
+window uses roughly 1% of one core while visible and about 0.1% hidden, and the whole program takes about 110 MB of
+memory, most of it Qt, numpy and the effects engine. Meters stop redrawing when the window is minimised or hidden, a
+channel with no sound for 6 seconds stops running its effects, and the controller reader sleeps unless a controller is
+plugged in.
 What you can tune: *View > Audio buffer* (larger = lighter on the CPU, a little more delay; 512 is the default, 1024
 is fine for listening only), fewer effects on channels you do not use, and VST3 plugins, which are the usual heavy part.
-Background work is a 2-second device check and a 0.5-second rules check, with link repair every 6 seconds.
+Background work is a 2-second device check and a 0.5-second rules check, with link repair every 10 seconds.
 
 ## Putting it on GitHub
 
@@ -452,7 +568,7 @@ integration, a release workflow and issue templates.
 
 ```bash
 pip install -e ".[dev]"
-pytest                                                    # about 260 tests, no audio server needed
+pytest                                                    # more than 330 tests, no audio server needed
 QT_QPA_PLATFORM=offscreen sluice --demo --screenshot out.png
 ```
 
@@ -465,20 +581,29 @@ QT_QPA_PLATFORM=offscreen sluice --demo --screenshot out.png
 | `sluice/linker.py` | `pw-link` wrapper |
 | `sluice/backend.py` | PulseAudio control: devices, virtual sinks, moving apps (and a fake for tests) |
 | `sluice/engine.py` | keeps everything above in sync with the model |
+| `sluice/__main__.py`, `sluice/__init__.py` | start-up, the command-line flags, the version |
 | `sluice/ui.py`, `ui_effects.py` | PySide6 interface |
 | `sluice/apps.py`, `sluice/ui_apps.py` | the installed apps and games list, and its picker |
 | `sluice/control.py` | `sluice ctl` and the control socket |
 | `sluice/midi.py`, `sluice/ui_controls.py` | MIDI input, bindings, and the Controllers window |
 | `sluice/diagnose.py` | `--diagnose` |
 | `sluice/distro.py`, `sluice/jackfix.py` | per-distribution package names and the Debian JACK library fix |
-| `sluice/desktop.py` | the applications-menu launcher and icons |
+| `sluice/desktop.py` | the applications-menu launcher, start-at-login entry and icons |
+| `sluice/updates.py` | the *Check for updates* request |
+| `sluice/whatsnew.py`, `sluice/ui_whatsnew.py`, `sluice/data/CHANGELOG.md` | release notes: reading them, the What's new window, and the copy of `CHANGELOG.md` that ships inside the package |
+| `sluice/spectral.py` | the Echo Reducer and Noise Reducer (spectral processing, numpy only) |
+| `sluice/presets.py` | the built-in and your own effect presets |
+| `sluice/reconnect.py` | waiting for the audio server and restarting Sluice after it was restarted |
+| `sluice/room.py`, `sluice/ui_room.py` | *Measure my room*: the analysis and its window |
+| `tools/` | `benchmark.py` (CPU and memory), `tune_room.py` (how the effect defaults were chosen), `tune_reducers.py` (scores the two reducers; needs `pystoi` and `espeakng-loader`), `set-github-repo.sh` (fills in your GitHub name) |
 | `sluice/ui_widgets.py` | typed-value boxes and double-click-reset sliders |
 | `sluice/logs.py`, `sluice/report.py` | the log files, crash hooks and `--report` |
 
 ## Roadmap
 
-Presets/profiles, more than two mixes, per-app volume inside a channel, a de-esser, global hotkeys, a tray icon,
-start-with-login, auto-assigning apps by rules, and an AUR package (so it installs like any other app).
+A gate and reducers that keep adjusting themselves while you play (today *Measure my room* is a one-time
+measurement), a global hotkey inside Sluice itself (Wayland has no standard way yet), per-app volume inside a channel,
+a de-esser, auto-assigning apps by rules, and an AUR package (so it installs like any other app).
 
 ## Name
 

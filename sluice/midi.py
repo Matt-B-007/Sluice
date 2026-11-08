@@ -254,6 +254,9 @@ class MidiHub:
             log.info("MIDI input removed: %s", path)
         self._denied &= found
 
+    def has_inputs(self) -> bool:
+        return bool(self._ports)
+
     def _close(self, path: str) -> None:
         port = self._ports.pop(path, None)
         if port is not None:

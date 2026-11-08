@@ -60,3 +60,16 @@ def test_the_shipped_update_address_is_https_and_points_at_the_release_list():
     from sluice import updates
 
     assert updates.RELEASE_URL.startswith("https://api.github.com/repos/") and updates.RELEASE_URL.endswith("/releases?per_page=5")
+
+
+def test_the_notes_of_a_newer_release_come_with_the_answer_and_only_then():
+    release = {"tag_name": "v9.0.0", "html_url": "https://example.com/r", "body": "  - **Big news.**\n"}
+    newer = check("0.8.0", url="https://x.example/releases", fetch=lambda url, timeout: [release])
+    assert newer.status == "available" and newer.notes == "- **Big news.**"
+    same = check("9.0.0", url="https://x.example/releases", fetch=lambda url, timeout: [release])
+    assert same.status == "up_to_date" and same.notes == ""
+    long = dict(release, body="x" * 20000)
+    assert len(check("0.8.0", url="https://x.example/releases", fetch=lambda url, timeout: [long]).notes) == 4000
+    none = dict(release)
+    del none["body"]
+    assert check("0.8.0", url="https://x.example/releases", fetch=lambda url, timeout: [none]).notes == ""
