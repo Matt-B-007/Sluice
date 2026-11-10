@@ -8,6 +8,8 @@ from PySide6.QtCore import QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QPushButton, QTextBrowser, QVBoxLayout, QWidget
 
+from . import themes
+
 RELEASES_URL = "https://github.com/Matt-B-007/Sluice/releases"
 
 
@@ -30,8 +32,7 @@ class NotesDialog(QDialog):
         layout.addWidget(self.heading)
         self.view = QTextBrowser()
         self.view.setOpenExternalLinks(True)
-        self.view.setStyleSheet("QTextBrowser { color: #d7dce2; background: #14171c; border: 1px solid #2a2f38; padding: 6px; }")
-        self.view.document().setDefaultStyleSheet("a { color: #6aa9ff; } code { color: #e6c07b; }")
+        self.view.document().setDefaultStyleSheet(f"a {{ color: {themes.color('link')}; }} code {{ color: {themes.color('code')}; }}")
         self.view.setMarkdown(markdown)
         layout.addWidget(self.view, 1)
         buttons = QHBoxLayout()

@@ -173,3 +173,66 @@ def analyse_echo(audio: np.ndarray, sample_rate: int) -> EchoResult:
     rt60 = float(np.clip(-60.0 / slope, MIN_ECHO, MAX_ECHO))
     return EchoResult("ok", round(rt60, 2),
                       f"Your room's echo takes about {rt60:.1f} seconds to die away.")
+
+
+# ------------------------------------------------------------------------------------------- voice level
+VOICE_SECONDS = 6.0        # how long to listen while the person talks
+VOICE_TARGET_DB = -20.0    # the average level of speech (the louder pieces) that suits a stream or a recording
+VOICE_PEAK_DB = -3.0       # the loudest moments should stay below this, or there is no room left before clipping
+VOICE_RAISE_DB = 3.0       # a voice this far under the target is called quiet
+VOICE_LOWER_DB = 1.5       # ...and this far over it (or too close to clipping) is called loud
+VOICE_BLOCK_MS = 50
+VOICE_SPREAD_DB = 8.0      # talking must rise this far above the room's pauses, or it was not really measured
+
+
+@dataclass
+class VoiceResult:
+    status: str            # "ok", "too_quiet", "too_loud", "no_speech" or "silent"
+    level_db: float        # the average level of the talking, in dB below full scale
+    peak_db: float         # the loudest moment
+    change_db: float       # how much to raise (positive) or lower (negative) the microphone's level
+    message: str
+
+    @property
+    def usable(self) -> bool:
+        return self.status in ("too_quiet", "too_loud")
+
+
+def analyse_voice(audio: np.ndarray, sample_rate: int) -> VoiceResult:
+    """``audio`` is (2, n) from the microphone, before any effect, while the person talks normally for a few seconds."""
+    audio = np.asarray(audio, dtype=np.float32)[:, int(SKIP_SECONDS * sample_rate):]
+    if audio.shape[1] < 2 * sample_rate:
+        return VoiceResult("silent", NOTHING_DB, NOTHING_DB, 0.0, "That was too short to measure. Please try again.")
+    peak = float(np.max(np.abs(audio)))
+    if peak < 10 ** (NOTHING_DB / 20):
+        return VoiceResult("silent", NOTHING_DB, NOTHING_DB, 0.0,
+                           "I heard nothing at all. Is the right microphone selected and not muted? "
+                           "(Check the Mic channel's input and the mute buttons.)")
+    # The loudest moments are judged the way speech has them (the loud end of every 10 ms piece), so that one click, cough
+    # or knock does not decide how much room the voice has.
+    peak_db = float(np.percentile(_block_peaks_db(audio, sample_rate), 99))
+    size = max(1, int(sample_rate * VOICE_BLOCK_MS / 1000))
+    blocks = audio.shape[1] // size
+    power = np.mean(audio[:, : blocks * size].reshape(2, blocks, size) ** 2, axis=(0, 2))
+    block_db = 10.0 * np.log10(np.maximum(power, 1e-12))
+    loud_end = float(np.percentile(block_db, 95))
+    spoken = block_db[block_db > loud_end - 15.0]  # the pieces where you were really talking, not the pauses
+    if float(np.percentile(block_db, 95) - np.percentile(block_db, 10)) < VOICE_SPREAD_DB or len(spoken) < 10:
+        return VoiceResult("no_speech", loud_end, float(peak_db), 0.0,
+                           "I could not tell your voice from the room. Please try again, talking in your normal voice the "
+                           "whole time, as if you were on a call.")
+    level = float(10.0 * np.log10(np.mean(10 ** (spoken / 10.0))))
+    headroom = VOICE_PEAK_DB - float(peak_db)  # how much louder it could get before the peaks leave no room
+    change = min(VOICE_TARGET_DB - level, headroom)
+    facts = f"Your voice averages about {level:.0f} dB, with its loudest moments near {peak_db:.0f} dB."
+    if change >= VOICE_RAISE_DB:
+        return VoiceResult("too_quiet", level, float(peak_db), round(change, 1),
+                           f"{facts} That is on the quiet side: for streaming and recording aim for about "
+                           f"{VOICE_TARGET_DB:.0f} dB. Raise the microphone's level by about {change:.0f} dB (in your sound "
+                           "settings, with the knob on your interface, or let Sluice add it). A voice this quiet also leaves "
+                           "the Compressor with nothing to do.")
+    if change <= -VOICE_LOWER_DB:
+        return VoiceResult("too_loud", level, float(peak_db), round(change, 1),
+                           f"{facts} That is loud enough to risk clipping on your loudest words. Lower the microphone's "
+                           f"level by about {-change:.0f} dB.")
+    return VoiceResult("ok", level, float(peak_db), 0.0, f"{facts} That is a good level: no change needed.")

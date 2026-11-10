@@ -294,8 +294,9 @@ def test_help_menu_saves_a_bug_report(ui, tmp_path, monkeypatch):
     from sluice import __version__
 
     assert [a.text().replace("&", "") for a in help_menu.actions() if a.text()] == [
-        "Keyboard shortcuts", "What's new in this version\u2026", "Check for updates\u2026", "Update automatically when a new version is found",
-        "Go back to the previous version\u2026", "Save bug report\u2026", "Open log folder", f"About Sluice {__version__}"]
+        "Keyboard shortcuts", "What's new in this version\u2026", "Check for updates\u2026",
+        "Go back to the previous version\u2026", "Save bug report\u2026", "Open log folder", "Report a problem\u2026",
+        "Join the Discord\u2026", "Project page on GitHub\u2026", f"About Sluice {__version__}"]
     target = tmp_path / "report.txt"
     win.save_report_to(target)
     assert target.read_text().startswith("sluice bug report")
@@ -518,11 +519,17 @@ def test_menu_bar_has_the_usual_menus_in_the_usual_order(ui):
 
     win.attach_controls(FakeControls())
     names = [a.text().replace("&", "") for a in win.menuBar().actions()]
-    assert names == ["File", "Mixer", "View", "Controllers", "Help"]
+    assert names == ["File", "Mixer", "Settings", "View", "Help"]
     assert _texts(_menu(win, "File")) == ["Save settings", "Export settings…", "Import settings…",
-                                          "Restore earlier settings", "Open settings folder",
-                                          "Add Sluice to the applications menu", "Start when I log in", "When I close the window", "Quit"]
-    assert "Add channel…" in _texts(_menu(win, "Mixer")) and "Hear Broadcast" in _texts(_menu(win, "Mixer"))
+                                          "Restore earlier settings", "Open settings folder", "Quit"]
+    assert _texts(_menu(win, "Mixer"))[:4] == ["Add channel…", "Refresh devices and apps", "Recording devices for OBS…",
+                                               "Third mix: Recording…"]
+    assert "Hear Broadcast" in _texts(_menu(win, "Mixer")) and "Mute my microphone" in _texts(_menu(win, "Mixer"))
+    assert _texts(_menu(win, "Settings")) == [
+        "Theme", "Audio buffer", "Start when I log in", "When I close the window", "Add Sluice to the applications menu",
+        "Update automatically when a new version is found", "MIDI controllers and Stream Deck…",
+        "Reset all settings to the defaults…"]
+    assert _texts(_menu(win, "View")) == ["Full screen", "Reset window size"]
 
 
 def test_mixer_menu_toggles_follow_the_real_state(ui):
@@ -675,7 +682,7 @@ def test_file_menu_adds_and_removes_the_applications_menu_entry(ui, tmp_path, mo
     win, _, _ = ui
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "share"))
     monkeypatch.setattr(desktop.shutil, "which", lambda _name: None)
-    action = next(a for a in _menu(win, "File").actions() if "applications menu" in a.text())
+    action = next(a for a in _menu(win, "Settings").actions() if "applications menu" in a.text())
     win._refresh_file_menu()
     assert not action.isChecked()
     action.trigger()
@@ -775,7 +782,7 @@ def test_a_settled_meter_does_not_repaint():
 
 def test_view_menu_picks_the_audio_buffer(ui):
     win, _, engine = ui
-    menu = next(a.menu() for a in _menu(win, "View").actions() if a.menu() and "buffer" in a.text())
+    menu = next(a.menu() for a in _menu(win, "Settings").actions() if a.menu() and "buffer" in a.text())
     win._refresh_buffer_menu()
     assert [a.isChecked() for a in menu.actions()] == [False, True, False, False]  # 512 is the default
     next(a for a in menu.actions() if "1024" in a.text()).trigger()
@@ -901,16 +908,21 @@ def test_closing_quits_by_default(ui):
 
 
 # ------------------------------------------------------------- 0.9.0 additions
-def test_the_mic_button_and_menu_item_mute_the_microphone(ui):
+def _mic_button(win):
+    return next(s for s in win.strips if s.channel.id == "mic").mic_button
+
+
+def test_the_mic_strip_button_and_menu_item_mute_the_microphone(ui):
     win, _, engine = ui
-    assert win.mic_button.text() == "Mic live" and not engine.mic_muted
-    win.mic_button.click()
-    assert engine.mic_muted and win.mic_button.text() == "MIC MUTED" and win.mic_button.isChecked()
+    button = _mic_button(win)
+    assert button.text() == "Mic live" and not engine.mic_muted
+    button.click()
+    assert engine.mic_muted and button.text() == "MIC MUTED" and button.isChecked()
     win.mic_action.trigger()
-    assert not engine.mic_muted and win.mic_button.text() == "Mic live"
+    assert not engine.mic_muted and button.text() == "Mic live"
     engine.set_mic_muted(True)  # something else (a controller, `sluice ctl mic-mute`) changed it
     win.sync_from_model()
-    assert win.mic_button.text() == "MIC MUTED"
+    assert button.text() == "MIC MUTED"
 
 
 def test_the_mixer_menu_offers_the_recording_mix_and_the_mic_mute(ui):

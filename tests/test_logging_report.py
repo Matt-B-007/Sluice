@@ -154,7 +154,7 @@ def test_engine_logs_dropouts_and_audio_errors_once(rig, caplog):
         engine.take_errors()
         io.error = "callback failed"
         engine.take_errors()  # same error again: logged only once
-    assert caplog.text.count("audio dropouts") == 1 and "3 new" in caplog.text
+    assert caplog.text.count("audio dropouts") == 1 and "3 in the last" in caplog.text
     assert caplog.text.count("callback failed") == 1
 
 

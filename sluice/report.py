@@ -43,6 +43,14 @@ def sluice_blocks(text: str) -> str:
     return "\n".join(kept) if kept else "(no sluice ports or links found)"
 
 
+def last_pw_top_round(text: str, limit: int = 40) -> str:
+    """From ``pw-top -b -n 2`` keep the last round: the first has no timings yet, the second shows who is busy or erring."""
+    lines = text.splitlines()
+    starts = [i for i, line in enumerate(lines) if line.split()[:2] == ["S", "ID"]]
+    kept = lines[starts[-1]:] if starts else lines
+    return "\n".join(kept[:limit]) or "(no output)"
+
+
 def _grep(text: str, needle: str) -> str:
     lines = [line for line in text.splitlines() if needle in line]
     return "\n".join(lines) if lines else f"(nothing mentioning {needle})"
@@ -78,6 +86,11 @@ def build_report(log_lines: int = LOG_LINES) -> str:
     parts.append(_section("PipeWire", _run(["pipewire", "--version"])))
     parts.append(_section("WirePlumber", _run(["wireplumber", "--version"])))
     parts.append(_section("pactl info", _run(["pactl", "info"])))
+    parts.append(_section("PipeWire clock and buffer size (pw-metadata -n settings)",
+                          _grep(_run(["pw-metadata", "-n", "settings"]), "clock")))
+    top = _run(["pw-top", "-b", "-n", "2"], timeout=10.0)
+    parts.append(_section("Who is busy or erring right now (pw-top; ERR is dropouts per program)",
+                          top if top.startswith("(") else last_pw_top_round(top)))
     parts.append(_section("Sinks (pactl list short sinks)", _run(["pactl", "list", "short", "sinks"])))
     parts.append(_section("Sources (pactl list short sources)", _run(["pactl", "list", "short", "sources"])))
     parts.append(_section("sluice modules loaded", _grep(_run(["pactl", "list", "short", "modules"]), "sluice")))

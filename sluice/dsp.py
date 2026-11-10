@@ -89,6 +89,9 @@ class Capture:
         return self.pos >= self.size
 
 
+RECENT_DECAY = 0.9985  # per block (about 100 a second): the held peak falls roughly 2 dB a second
+
+
 class ChannelDsp:
     def __init__(self, channel_id: str) -> None:
         self.id = channel_id
@@ -98,6 +101,7 @@ class ChannelDsp:
         self.solo_gain: Optional[float] = None  # None: no own output; else the gain of the "<channel> only" output
         self.solo_applied = 0.0
         self.peak = 0.0
+        self.recent = 0.0  # the peak after the effects, falling slowly (about 2 dB a second): "is anything loud enough?"
         self.asleep = False  # the chain was skipped for silence; it is woken when sound returns
         self.quiet_frames = 0  # how long the input has been digital silence (an idle app sends exact zeros)
         self.capture: Optional[Capture] = None  # set while "Measure my room" is listening
@@ -281,6 +285,7 @@ class Graph:
                 channel.board is None or channel.quiet_frames > self.sample_rate * SILENCE_TAIL_SECONDS
             ):
                 channel.asleep = channel.board is not None
+                channel.recent *= RECENT_DECAY
                 if silence is None or silence.shape[1] != frames:
                     silence = np.zeros((2, frames), dtype=np.float32)
                 for mid in outputs:
@@ -308,6 +313,7 @@ class Graph:
                     audio = np.nan_to_num(audio, nan=0.0, posinf=0.0, neginf=0.0)
                     level = float(np.max(np.abs(audio)))
                 channel.peak = max(channel.peak, level)
+                channel.recent = max(level, channel.recent * RECENT_DECAY)
             for mid, out in outputs.items():
                 target = channel.gains.get(mid, 0.0)
                 previous = channel.applied.get(mid, target)

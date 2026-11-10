@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Ask a question or chat on Discord
+    url: https://discord.gg/awDvJ5Vj2S
+    about: Questions and problems you are not sure are bugs. Use the Sluice support forum, and do not post sluice --report files there.

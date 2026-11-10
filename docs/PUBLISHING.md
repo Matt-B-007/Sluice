@@ -37,7 +37,7 @@ GitHub's "latest release" address skips pre-releases and every 0.x version is pu
 git init -b main
 git add .
 git status                                # read the list: no .venv, no zip, no report
-git commit -m "Sluice 0.9.1 (beta)"
+git commit -m "Sluice 0.9.2 (beta)"
 git remote add origin https://github.com/Matt-B-007/Sluice.git
 git push -u origin main
 ```
@@ -51,13 +51,13 @@ the next step. If it is red, open it and send me the log.
 ## 5. Publish the beta release
 
 ```bash
-git tag v0.9.1
-git push origin v0.9.1
+git tag v0.9.2
+git push origin v0.9.2
 ```
 
 The *Release* workflow checks that the tag matches the version in the code, builds the package, writes the release notes
-from `CHANGELOG.md`, and attaches the files, including the checksum that the in-app updater needs, to a new release titled **Sluice 0.9.1 (beta)** and marked **Pre-release**. It stops with a message if `CHANGELOG.md` has no `## 0.9.1` section. Find it under **Releases** on the
-repository page. People install from the zip attached to it (`sluice-v0.9.1.zip`, with `sluice-v0.9.1.zip.sha256` beside it), then run `./install.sh`.
+from `CHANGELOG.md`, and attaches the files, including the checksum that the in-app updater needs, to a new release titled **Sluice 0.9.2 (beta)** and marked **Pre-release**. It stops with a message if `CHANGELOG.md` has no `## 0.9.2` section. Find it under **Releases** on the
+repository page. People install from the zip attached to it (`sluice-v0.9.2.zip`, with `sluice-v0.9.2.zip.sha256` beside it), then run `./install.sh`.
 
 Edit the release on the website if you like, for example to add a line such as: *Beta: it works on one CachyOS system with an
 Elgato Wave XLR; please report anything else with `sluice --report`.*

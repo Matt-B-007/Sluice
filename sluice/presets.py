@@ -110,3 +110,79 @@ def apply(engine, channel_id: str, entries: list) -> int:
             engine.set_effect_bypass(channel_id, effect.id, bool(entry.get("bypass", False)))
         changed += 1
     return changed
+
+
+# ---------------------------------------------------------------- which one is in use, and what it did
+EFFECT_LABELS = {"echo_reducer": "Echo Reducer", "noise_reducer": "Noise Reducer", "eq": "EQ", "noise_gate": "Noise Gate",
+                 "compressor": "Compressor", "highpass": "High-pass", "limiter": "Limiter", "gain": "Gain"}
+TOLERANCE = 1e-3
+
+
+def short_name(name: str) -> str:
+    """The name as shown on a button: without the '(the default)' note."""
+    return name.replace(" (the default)", "")
+
+
+def current_value(effect, key: str):
+    """A saved parameter, or its default when it was never changed."""
+    if key in effect.params:
+        return effect.params[key]
+    from .effects import BUILTINS
+
+    definition = BUILTINS.get(effect.type)
+    spec = next((p for p in definition.params if p.key == key), None) if definition else None
+    return None if spec is None else spec.default
+
+
+def matches(effects: list, entries: list) -> bool:
+    """True when the channel's built-in effects are exactly what these entries would set (a missing effect counts as off)."""
+    builtin = [e for e in effects if e.kind == "builtin"]
+    used: set = set()
+    found = False
+    for entry in entries:
+        effect = next((e for e in builtin if e.type == entry["type"] and e.id not in used), None)
+        if effect is None:
+            if entry.get("bypass", False):
+                continue
+            return False
+        used.add(effect.id)
+        found = True
+        if bool(entry.get("bypass", False)) != bool(effect.bypass):
+            return False
+        for key, wanted in entry.get("params", {}).items():
+            if entry["type"] == "noise_gate" and key == "threshold_db":
+                continue
+            have = current_value(effect, key)
+            if have is None or abs(float(have) - float(wanted)) > TOLERANCE:
+                return False
+    return found
+
+
+def active_name(effects: list, user: Optional[dict] = None) -> Optional[str]:
+    """The name of the preset the channel's effects currently match, or None. Your own presets are looked at first: you
+    saved those on purpose, and they say more about the channel than the built-in ones do."""
+    candidates = dict(user or {})
+    for name, (_description, entries) in BUILT_IN.items():
+        candidates.setdefault(name, entries)
+    for name, entries in candidates.items():
+        if matches(effects, entries):
+            return name
+    return None
+
+
+def summary(entries: list) -> str:
+    """'Echo Reducer 5 dB, 0.4 s; Noise Reducer 6 dB': what a preset sets, for the message after applying it."""
+    parts = []
+    for entry in entries:
+        label = EFFECT_LABELS.get(entry["type"], entry["type"])
+        if entry.get("bypass", False):
+            parts.append(f"{label} off")
+            continue
+        params = entry.get("params", {})
+        bits = []
+        if "reduction_db" in params:
+            bits.append(f"{params['reduction_db']:g} dB")
+        if "reverb_time" in params:
+            bits.append(f"{params['reverb_time']:g} s")
+        parts.append(f"{label} {', '.join(bits)}".strip() if bits else label)
+    return "; ".join(parts)

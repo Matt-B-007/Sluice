@@ -17,6 +17,7 @@ import os
 import platform
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -123,7 +124,7 @@ def _enable_faulthandler() -> None:
         if _fault_file is not None:
             _fault_file.close()
         _fault_file = open(crash_path(), "a", encoding="utf-8")
-        _fault_file.write(f"--- sluice session started (pid {os.getpid()}) ---\n")
+        _fault_file.write(f"--- sluice session started {time.strftime('%Y-%m-%d %H:%M:%S')} (pid {os.getpid()}) ---\n")
         _fault_file.flush()
         faulthandler.enable(file=_fault_file, all_threads=True)
     except OSError:

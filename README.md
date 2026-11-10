@@ -10,19 +10,26 @@ An open-source virtual audio mixer for Linux (PipeWire). Put your mic, games, mu
 > tests, but it has had little testing elsewhere. Please report problems: run `sluice --report` and open an
 > [issue](https://github.com/Matt-B-007/Sluice/issues) with the file. The newest version is on the
 > [releases page](https://github.com/Matt-B-007/Sluice/releases).
+>
+> **Questions, chat or a problem you are not sure is a bug?** Join the [Discord server](https://discord.gg/awDvJ5Vj2S)
+> and use the Sluice support forum. Please do not post the `sluice --report` file there: it contains device and app
+> names, so offer it in a private ticket instead.
 
-## What's new in 0.9.1
+## What's new in 0.9.2
 
-Sluice can update itself. (The full list for every version is in [CHANGELOG.md](CHANGELOG.md); Sluice also shows it once
-after an update, and under *Help > What's new in this version*.)
+Themes, a tidier menu bar, and clearer answers about dropouts and voice level. (The full list for every version is in
+[CHANGELOG.md](CHANGELOG.md); Sluice also shows it once after an update, and under *Help > What's new in this version*.)
 
-- **Update now**: *Help > Check for updates* shows what the new version changes, and an **Update now** button downloads
-  it, checks it against its checksum, and restarts into it. No zip to download and unpack.
-- **Update automatically** (off by default): Sluice downloads a newer version in the background and installs it when
-  you close it.
-- **Go back to the previous version** if an update does not suit you (`sluice --rollback` if Sluice will not start).
-- Releases are titled "Sluice 0.9.1 (beta)" and carry a checksum file.
-- Everything from 0.9.0 is still here: the **Echo Reducer** and **Noise Reducer** effects (with *Compare*, a live
+- **Themes**: *Settings > Theme* has Dark (the default), Light, High contrast, Retro Purple and *Match my system*, and
+  you can import your own. See *Themes*.
+- **Menus reorganised** into File, Mixer, Settings, View and Help, with *Reset all settings to the defaults*, and links to
+  report a problem, the Discord and the project page under *Help*.
+- **Third mix as a "+" strip** beside Listen and Broadcast; **Mute my microphone** is now on the Mic strip.
+- **Presets** show which one is active and jump to the reducer page after you apply one.
+- **Dropouts**: the status bar says whether a dropout was mostly Sluice or mostly something else on your computer.
+- **Check my voice level** and a hint when the **Compressor** has nothing to do.
+- Self-update (0.9.1) is unchanged: *Help > Check for updates* > **Update now**.
+- Everything from before is still here: the **Echo Reducer** and **Noise Reducer** effects (with *Compare*, a live
   readout and a clap-based *Measure my room's echo*), presets for the voice chain, the **system tray** icon,
   **Mute my microphone** (status bar, Ctrl+M, `sluice ctl mic-mute`), a third **Recording** mix, games from Lutris,
   Heroic/Epic and Bottles, and reconnecting by itself after PipeWire restarts. Press *Use the recommended voice chain*
@@ -54,7 +61,7 @@ after an update, and under *Help > What's new in this version*.)
 - **A launcher for the desktop**: *File > Add Sluice to the applications menu* (or `sluice --install-desktop`) gives
   Sluice an icon and an entry in your launcher, so you can start it like any other app.
 - **Hardware control**: drive faders and mutes from a **Stream Deck** (or any button that can run a command) and from
-  **MIDI** faders, knobs and pads. See *Controllers* below.
+  **MIDI** faders, knobs and pads. See *Controllers* below (*Settings > MIDI controllers and Stream Deck*).
 - **Hear what your audience hears**: the *Hear Broadcast* button on the Listen mix plays the Broadcast mix in your
   own output so you can check it, and *Listen* returns when you turn it off. It always starts off.
 - Peak meters everywhere, a limiter on each mix, and your layout is saved to `~/.config/sluice/config.json`.
@@ -63,7 +70,7 @@ after an update, and under *Help > What's new in this version*.)
 
 ## Status: please read
 
-Version 0.9.1, a beta. The mixing engine, effects, routing, PulseAudio control and UI are covered by more than 410 automated
+Version 0.9.2, a beta. The mixing engine, effects, routing, PulseAudio control and UI are covered by more than 570 automated
 tests, and the interface has been run and screenshotted. On CachyOS (PipeWire, Elgato Wave XLR Pro) these have been
 confirmed by hand: the microphone, **Sluice (Mic)** and **Sluice (Broadcast)** in OBS, Hear Broadcast, the faders,
 Steam game detection and routing (Counter-Strike 2 through Proton), starting from the applications menu, installing from
@@ -82,7 +89,7 @@ and other musl-based systems (the Python audio packages have no wheels for them)
 Open the [latest release](https://github.com/Matt-B-007/Sluice/releases) and download the zip named **`sluice-vX.Y.Z.zip`** from the *Assets* list (not the green *Code* button, and not the *Source code* links, which unpack into a differently named folder). Or `git clone` the repository. Then:
 
 ```bash
-unzip sluice-v0.9.1.zip && cd sluice
+unzip sluice-v0.9.2.zip && cd sluice
 ./install.sh              # shows the package command for your distribution and asks before running it
 ./install.sh --dry-run    # only shows what it would do
 ```
@@ -264,14 +271,48 @@ To watch what it is doing while you test: `tail -f ~/.local/state/sluice/sluice.
 
 | Menu | What is in it |
 |---|---|
-| **File** | Save settings (Ctrl+S), Export settings, Import settings, Restore earlier settings, Open settings folder, Add Sluice to the applications menu, Start when I log in, When I close the window, Quit (Ctrl+Q) |
-| **Mixer** | Add channel (Ctrl+N), Recording devices for OBS, Mute my microphone (Ctrl+M), Hear Broadcast (Ctrl+B), Mute Listen (Ctrl+Shift+L), Mute Broadcast (Ctrl+Shift+B), Third mix: Recording, Refresh devices and apps (F5) |
-| **View** | Full screen (F11), Reset window size, Audio buffer |
-| **Controllers** | MIDI controllers and Stream Deck |
-| **Help** | Keyboard shortcuts (F1), What's new in this version, Check for updates, Update automatically, Go back to the previous version, Save bug report, Open log folder, About |
+| **File** | Save settings (Ctrl+S), Export settings, Import settings, Restore earlier settings, Open settings folder, Quit (Ctrl+Q) |
+| **Mixer** | Add channel (Ctrl+N), Refresh devices and apps (F5), Recording devices for OBS, Third mix: Recording, Mute my microphone (Ctrl+M), Hear Broadcast (Ctrl+B), Mute Listen (Ctrl+Shift+L), Mute Broadcast (Ctrl+Shift+B) |
+| **Settings** | Theme, Audio buffer, Start when I log in, When I close the window, Add Sluice to the applications menu, Update automatically, MIDI controllers and Stream Deck, Reset all settings to the defaults |
+| **View** | Full screen (F11), Reset window size |
+| **Help** | Keyboard shortcuts (F1), What's new in this version, Check for updates, Go back to the previous version, Save bug report, Open log folder, Report a problem, Join the Discord, Project page on GitHub, About |
 
 Settings are saved automatically a few seconds after every change and when you quit (see *Saving*). **Import settings** checks the file, keeps your current settings as
 `config.before-import.json`, and takes effect the next time Sluice starts; quitting does not overwrite the imported file.
+
+## Themes
+
+*Settings > Theme* lists **Dark** (the default), **Light**, **High contrast**, **Retro Purple** and **Match my system**
+(follows your desktop's light or dark setting while Sluice runs). A check mark shows the one in use. The level
+meters' green-to-red colours, the Mute red and the Limiter teal are the same in every theme so they always mean the same thing.
+
+**Import theme** reads a JSON file that only contains colours, and **Export current theme** writes one to start from:
+
+```json
+{"name": "My theme", "base": "dark", "colors": {"bg": "#101418", "text": "#e6e9ee", "accent": "#4aa3ff"}}
+```
+
+`base` is `dark` or `light` and fills in every colour you leave out. Colours are `#rgb` or `#rrggbb`; unknown names are
+ignored, files over 64 KB are refused, and if the text would be hard to read Sluice says so and asks before adding it.
+Imported themes live in `~/.config/sluice/themes/` (*Open theme folder*); *Remove an imported theme* deletes one.
+
+## Dropouts
+
+A dropout (an "xrun") means the audio was late once. Any program can cause one, not only Sluice. After three or more,
+the status bar says whether Sluice's own processing was close to the time it has ("mostly Sluice") or not ("mostly
+elsewhere"). To see who is responsible, run `pw-top` in a terminal while it happens, or raise *Settings > Audio buffer*
+to Large (1024 frames). *Save bug report* includes the PipeWire buffer settings and a `pw-top` snapshot.
+
+## OBS levels
+
+Leave the OBS faders for Sluice's devices at 0 dB and do the mixing in Sluice. Changing a fader in OBS lowers what is recorded without
+lowering what you hear, and it is easy to forget it is there.
+
+## Check my voice level
+
+On the Noise Gate and Compressor pages, **Check my voice level...** listens while you talk normally for a few seconds and
+tells you whether to raise or lower the microphone, keeping peaks under -3 dB. It can apply the change with the channel's
+Gain effect. A Compressor whose threshold is above your voice shows "not doing anything right now" under its controls.
 
 ## Version and updates
 
@@ -344,7 +385,7 @@ dial or touch strip on newer models can repeat a command depends on that program
 with 0 on success, 1 if Sluice refused it (the reason is printed), and 2 if Sluice is not running. It talks to a private
 socket in `$XDG_RUNTIME_DIR` that only your user can open, and it needs no extra packages.
 
-**MIDI faders, knobs and pads.** Open **Controllers > MIDI controllers and Stream Deck...**, choose what the control
+**MIDI faders, knobs and pads.** Open **Settings > MIDI controllers and Stream Deck...**, choose what the control
 should do, press **Learn**, and then move the fader, turn the knob or press the button on your device. Fader/knob
 bindings use an audio taper (top = 0 dB). Endless encoders send "turn" steps, with a configurable dB per click.
 Buttons toggle a mute when pressed. Bindings are saved in `~/.config/sluice/controls.json`.
@@ -580,7 +621,7 @@ integration, a release workflow and issue templates.
 
 ```bash
 pip install -e ".[dev]"
-pytest                                                    # more than 330 tests, no audio server needed
+pytest                                                    # more than 570 tests, no audio server needed
 QT_QPA_PLATFORM=offscreen sluice --demo --screenshot out.png
 ```
 
@@ -606,7 +647,8 @@ QT_QPA_PLATFORM=offscreen sluice --demo --screenshot out.png
 | `sluice/spectral.py` | the Echo Reducer and Noise Reducer (spectral processing, numpy only) |
 | `sluice/presets.py` | the built-in and your own effect presets |
 | `sluice/reconnect.py` | waiting for the audio server and restarting Sluice after it was restarted |
-| `sluice/room.py`, `sluice/ui_room.py` | *Measure my room*: the analysis and its window |
+| `sluice/room.py`, `sluice/ui_room.py` | *Measure my room* and *Check my voice level*: the analysis and its windows |
+| `sluice/themes.py` | the colour themes, the style sheet built from them, and theme import and export |
 | `tools/` | `benchmark.py` (CPU and memory), `tune_room.py` (how the effect defaults were chosen), `tune_reducers.py` (scores the two reducers; needs `pystoi` and `espeakng-loader`), `set-github-repo.sh` (fills in your GitHub name) |
 | `sluice/ui_widgets.py` | typed-value boxes and double-click-reset sliders |
 | `sluice/logs.py`, `sluice/report.py` | the log files, crash hooks and `--report` |

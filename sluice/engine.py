@@ -30,13 +30,15 @@ from .dsp import Graph
 from .effects import EffectInstance, runner_for
 from .linker import Linker
 from . import reconnect, room
-from .model import MONITOR, PREFIX, STREAM, VOICE_CHAIN, Channel, Effect, Mix, Mixer, canonical_order, voice_chain_effects
+from .model import (MONITOR, PREFIX, STREAM, VOICE_CHAIN, Channel, Effect, Mix, Mixer, canonical_order, linear_to_db,
+                    voice_chain_effects)
 
 log = logging.getLogger("sluice.engine")
 
 REFRESH_SECONDS = 2.0
 GUARD_STREAK_LOST = 6  # this many failed audio-server calls in a row, with no success between, means the server is gone
 RELINK_EVERY = 5  # re-check the connections every 5th device refresh (10 s) unless something changed sooner
+XRUN_LOG_SECONDS = 10.0  # dropouts are summed up into one log line per this many seconds
 SETTLE_SECONDS = 8.0  # dropouts while starting up or loading effects are expected and are not shown in the status bar
 CHANGE_SETTLE_SECONDS = 3.0  # the same quiet time after a change such as adding an effect
 RULES_SECONDS = 0.5
@@ -94,6 +96,12 @@ class Engine:
         self._last_failed: set = set()
         self._logged_xruns = 0
         self._xrun_base = 0
+        self._ours_base = 0
+        self._pending_xruns = 0           # dropouts not yet written to the log (they are summed up, not logged one by one)
+        self._pending_since = 0.0
+        self._last_xrun_log = float("-inf")
+        self._xrun_hint_given = False
+        self._load = (0.0, 0.0)           # (average, worst) share of a block that Sluice's own work uses, recently
         self._known_inputs: Optional[set] = None
         self._notices: list = []
         self._quiet_until = 0.0
@@ -126,6 +134,8 @@ class Engine:
     def shutdown(self, save_to: Optional[Path] = None) -> None:
         """Stop audio, optionally save the settings (plugin state is read once audio has stopped), clean up."""
         log.info("shutting down")
+        if self._pending_xruns:
+            self._log_dropouts(time.monotonic())
         self._started = False
         self.io.stop()
         if save_to is not None:
@@ -196,9 +206,36 @@ class Engine:
         notices, self._notices = self._notices, []
         return notices
 
+    def dropout_counts(self) -> tuple:
+        """(dropouts shown in the status bar, how many of them came while Sluice itself was running late)."""
+        total = max(0, self.io.xruns - self._xrun_base)
+        return total, min(total, max(0, self.io.xruns_ours - self._ours_base))
+
     def status_text(self) -> str:
         io = self.io
-        return f"{io.sample_rate} Hz · {io.blocksize} frames · {max(0, io.xruns - self._xrun_base)} dropouts"
+        total, ours = self.dropout_counts()
+        text = f"{io.sample_rate} Hz · {io.blocksize} frames · {total} {'dropout' if total == 1 else 'dropouts'}"
+        if total >= 3:  # one or two say nothing about who is to blame
+            if ours * 2 >= total:
+                text += " · mostly Sluice"
+            elif ours * 4 <= total:
+                text += " · mostly elsewhere"
+        return text
+
+    def dropout_tooltip(self) -> str:
+        total, ours = self.dropout_counts()
+        text = ("A dropout is a moment the audio could not keep up: you may hear a click or a gap. It can come from Sluice or "
+                "from any other program or device in the audio system. Dropouts while starting or changing effects are not "
+                "counted.")
+        average, worst = self._load
+        if average > 0:
+            text += f"\n\nSluice's own audio work is using about {average * 100:.0f}% of each block (worst recently: {worst * 100:.0f}%)."
+        if total:
+            text += (f"\n\nOf the {total}, {ours} came while Sluice was running late and {total - ours} while it was keeping up, "
+                     "which points at something else: another program, a busy USB device, or the system itself.")
+            text += ("\n\nTo find the cause, run  pw-top  in a terminal and watch the ERR column. To give everything more room, "
+                     "choose a larger size in Settings > Audio buffer, or remove heavy effects.")
+        return text
 
     # ----------------------------------------------------------------- devices
     def refresh_devices(self) -> bool:
@@ -418,13 +455,34 @@ class Engine:
         if relink or self._link_retry:
             self.apply_links()
         xruns = self.io.xruns
+        average, worst = self.io.take_load()
+        if average or worst:
+            self._load = (0.7 * self._load[0] + 0.3 * average if self._load[0] else average, max(worst, self._load[1] * 0.9))
         if now < self._quiet_until:
             self._xrun_base = xruns
+            self._ours_base = self.io.xruns_ours
         if xruns > self._logged_xruns:
-            log.warning("audio dropouts: %d new (%d total). Try a larger buffer: PIPEWIRE_LATENCY=1024/48000 sluice",
-                        xruns - self._logged_xruns, xruns)
+            if not self._pending_xruns:
+                self._pending_since = now
+            self._pending_xruns += xruns - self._logged_xruns
             self._logged_xruns = xruns
+        if self._pending_xruns and now - self._last_xrun_log >= XRUN_LOG_SECONDS:
+            self._log_dropouts(now)
         return changed
+
+    def _log_dropouts(self, now: float) -> None:
+        """One line for every stretch of dropouts, not one per half second: a long burst used to fill the whole log."""
+        total, ours = self.io.xruns, self.io.xruns_ours
+        average, worst = self._load
+        log.warning("audio dropouts: %d in the last %.0f s (%d since Sluice started; %d of those while Sluice itself was running "
+                    "late). Sluice's own work uses about %.0f%% of a block, worst %.0f%%.",
+                    self._pending_xruns, max(1.0, now - self._pending_since), total, ours, average * 100, worst * 100)
+        if not self._xrun_hint_given:
+            self._xrun_hint_given = True
+            log.warning("if dropouts keep coming: run pw-top and look at the ERR column to see which program is behind them, or "
+                        "use Settings > Audio buffer > Large")
+        self._pending_xruns = 0
+        self._last_xrun_log = now
 
     # ------------------------------------------------------------- graph sync
     def _settling(self, seconds: float) -> None:
@@ -583,6 +641,20 @@ class Engine:
         if audio is None:
             return None
         return room.analyse_echo(audio, self.io.sample_rate)
+
+    def measure_voice_finish(self, channel_id: str) -> Optional[room.VoiceResult]:
+        """None while still listening; then how loud the person's talking was and how far to move the microphone's level."""
+        if self.graph is None:
+            return None
+        audio = self.graph.take_capture(channel_id)
+        if audio is None:
+            return None
+        return room.analyse_voice(audio, self.io.sample_rate)
+
+    def channel_recent_peak_db(self, channel_id: str) -> Optional[float]:
+        """The channel's peak after its effects over the last couple of seconds, in dB (None when it is not running)."""
+        channel = self.graph.channels.get(channel_id) if self.graph is not None else None
+        return None if channel is None else linear_to_db(channel.recent)
 
     def apply_noise_profile(self, channel_id: str, profile) -> None:
         """Start this channel's Noise Reducers from the noise spectrum that Measure my room heard."""

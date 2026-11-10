@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.9.2
+Themes, a tidier menu bar, and clearer answers about dropouts and voice level.
+- **Themes.** *Settings > Theme*: Dark (the default, same look as before), Light, High contrast, Retro Purple, and
+  *Match my system*. The active one has a check mark. *Import theme* reads a small JSON file (colours only; unknown
+  entries are ignored and a low-contrast theme asks before it is added), *Export current theme* writes one you can edit,
+  *Remove an imported theme* and *Open theme folder* manage them. The level meters' green-to-red colours, Mute red and
+  the Limiter teal stay the same in every theme.
+- **Menus reorganised** into File, Mixer, Settings, View and Help. Everything chosen once (theme, audio buffer, start
+  at login, closing behaviour, applications menu, automatic updates, MIDI controllers and Stream Deck) is under
+  *Settings*, which also has **Reset all settings to the defaults** (your old settings are kept as
+  `config.before-reset.json`; presets and controller assignments are kept). *Help* gains *Report a problem*,
+  *Join the Discord* and *Project page on GitHub*. "Start minimized" now says what it does.
+- **Third mix as a "+" strip** next to Listen and Broadcast: press it to add the Recording mix, and use the strip's
+  menu to remove it. Three mixes now fit without cutting anything off.
+- **Mute my microphone on the Mic strip** (the status-bar button is gone). Ctrl+M and the menu still work.
+- **Presets** show the active one on the button ("Presets: Podcast"), say what they changed, and jump to the reducer page.
+- **Dropouts explained.** Sluice measures how long its own work takes: after three or more dropouts the status bar says
+  "mostly Sluice" or "mostly elsewhere", and the tooltip explains how to look with `pw-top`. "1 dropout" is singular,
+  and the log keeps one summary line per 10 seconds instead of one per dropout. Bug reports now include the PipeWire
+  buffer settings and `pw-top`; crash logs carry timestamps.
+- **Check my voice level** (Noise Gate and Compressor pages): talk for a few seconds and Sluice tells you how much gain
+  to add or take off, and can do it with the channel's Gain effect.
+- **Compressor hint** when the Compressor is not doing anything because your voice never reaches its threshold.
+- README: a note on OBS faders (leave them at 0 dB, mix in Sluice).
+- No measurable change in CPU or memory compared with 0.9.1.
+
 ## 0.9.1
 Sluice can now update itself, and the release page is named after the version.
 - **Update now.** *Help > Check for updates* shows what the new version changes and, when it can, an **Update now**

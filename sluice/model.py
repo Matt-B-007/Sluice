@@ -223,6 +223,7 @@ class Mixer:
         self.vst3_folders: list = []  # extra places to look for VST3 plugins, added by the user
         self.buffer_frames = DEFAULT_BUFFER  # used the next time Sluice starts
         self.auto_update = False  # download new releases in the background and install them when Sluice closes (off by default)
+        self.theme = "dark"  # a theme id: dark, light, contrast, purple, system, or custom:<name> (an imported file)
         self.close_action = DEFAULT_CLOSE  # "quit", "minimize" (keep running in the taskbar) or "tray" (keep running in the system tray)
 
     # ------------------------------------------------------------------ the optional third mix
@@ -372,6 +373,7 @@ class Mixer:
             "buffer_frames": self.buffer_frames,
             "close_action": self.close_action,
             "auto_update": self.auto_update,
+            "theme": self.theme,
             "channels": [
                 {
                     "id": c.id,
@@ -419,6 +421,9 @@ class Mixer:
         if data.get("close_action") in CLOSE_CHOICES:
             mixer.close_action = data["close_action"]
         mixer.auto_update = data.get("auto_update") is True
+        theme = data.get("theme")
+        if isinstance(theme, str) and 0 < len(theme) <= 80:
+            mixer.theme = theme  # an id that no longer exists simply shows the default theme
         folders = data.get("vst3_folders")
         if isinstance(folders, list):
             mixer.vst3_folders = [f for f in folders if isinstance(f, str) and f][:50]

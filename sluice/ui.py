@@ -11,7 +11,8 @@ import time
 from typing import Optional
 
 from PySide6.QtCore import QEasingCurve, QEvent, QObject, QPropertyAnimation, QRectF, Qt, QTimer, QUrl, Signal
-from PySide6.QtGui import QAction, QActionGroup, QColor, QDesktopServices, QFontMetrics, QKeySequence, QLinearGradient, QPainter, QPixmap
+from PySide6.QtGui import (QAction, QActionGroup, QColor, QDesktopServices, QFontMetrics, QGuiApplication, QKeySequence,
+                           QLinearGradient, QPainter, QPalette, QPixmap)
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -35,9 +36,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from . import __version__, logs, report, selfupdate, updates, whatsnew
+from . import __version__, logs, report, selfupdate, themes, updates, whatsnew
 from .engine import Engine
-from .model import BUFFER_CHOICES, MAX_DB, MIN_DB, MONITOR, STREAM, Channel, Mix, Mixer, config_path, linear_to_db, list_backups
+from .model import BUFFER_CHOICES, MAX_DB, MIN_DB, MONITOR, RECORDING, STREAM, Channel, Mix, Mixer, config_path, linear_to_db, list_backups
 from .ui_effects import EffectsDialog
 from .ui_widgets import ReadoutEdit
 
@@ -45,100 +46,25 @@ log = logging.getLogger("sluice.ui")
 AUTOSAVE_MS = 5000  # how often to look for unsaved changes
 AUTO_UPDATE_DELAY_MS = 20000  # the automatic update (if switched on) looks once, this long after start-up
 NONE_DATA = "__none__"  # combo item data for "no device" (Qt dislikes None)
-CHANNEL_WIDTH = 180
+MIC_ROW = 26  # height of the mic mute row on a channel strip that has a microphone
+SOURCES_HEIGHT = 84  # the list of a channel's devices and apps (a microphone channel gives MIC_ROW and its spacing to the button)
+DEFAULT_SIZE = (1300, 720)  # wide enough for five channels beside the mixes and the "+ Recording mix" strip
+ADD_MIX_WIDTH = 84  # the "+ Recording mix" placeholder next to the mix strips
+CHANNEL_WIDTH = 180          # a channel strip with two mixes (Listen and Broadcast)
+CHANNEL_WIDTH_THREE = 232    # ...and with the optional third one: three fader columns need the room
 MIX_WIDTH = 132
-MIX_TAGS = {MONITOR: "LISTEN", STREAM: "BROADCAST"}
+MIX_TAGS = {MONITOR: "LISTEN", STREAM: "BROADCAST", RECORDING: "RECORDING"}
+MIX_NAMES = {MONITOR: "Listen: what you hear", STREAM: "Broadcast: what your audience hears",
+             RECORDING: "Recording: what your recorder hears"}
+DISCORD_URL = "https://discord.gg/awDvJ5Vj2S"
+PROJECT_URL = "https://github.com/Matt-B-007/Sluice"
+ISSUES_URL = PROJECT_URL + "/issues"
 
-STYLE = """
-QMainWindow, QWidget#root, QScrollArea, QWidget#channels { background: #181b20; }
-QWidget { color: #d7dce2; font-size: 12px; }
-QFrame#strip, QFrame#mix, QFrame#apps {
-    background: #232830; border: 1px solid #373d47; border-radius: 8px;
-}
-QFrame#mix { background: #20262e; }
-QFrame#apps { border-radius: 6px; }
-QFrame#chip { background: #2c323c; border: 1px solid #3d4551; border-radius: 4px; }
-QFrame#accent { border: none; border-radius: 2px; }
-QLabel { background: transparent; }
-QLabel#title { font-size: 15px; font-weight: 700; color: #f0f3f6; }
-QLabel#tag { font-size: 9px; font-weight: 600; letter-spacing: 1px; color: #7d8795; }
-QLabel#hint { font-size: 10px; color: #8a93a0; }
-QLabel#chiptext { font-size: 11px; background: transparent; }
-QLabel#readout { font-family: monospace; font-size: 11px; color: #e8eef5;
-    background: #12151a; border: 1px solid #2e343d; border-radius: 4px; padding: 2px 0; }
-QLineEdit#readout { font-family: monospace; font-size: 11px; color: #e8eef5; background: #12151a;
-    border: 1px solid #2e343d; border-radius: 4px; padding: 2px 0; }
-QLineEdit#readout:focus { border-color: #5b8def; }
-QLabel#status { color: #8a93a0; padding: 2px 8px; }
-QLabel#demo { color: #1b1300; background: #f5c542; font-weight: 700; padding: 3px 10px; }
-QFrame#divider { background: #373d47; max-width: 1px; }
 
-QPushButton {
-    background: #303641; color: #aab2bd; border: 1px solid #454c58;
-    border-radius: 4px; padding: 4px 8px; font-weight: 600;
-}
-QPushButton:hover { border-color: #6f7887; }
-QPushButton:checked { color: #0e1014; border-color: transparent; }
-QPushButton::menu-indicator { image: none; width: 0; }
-QPushButton#mute:checked  { background: #ef5258; }
-QPushButton#limiter:checked { background: #35d0c0; }
-QPushButton#link:checked { background: #8aa0b8; }
-QPushButton#add { border-style: dashed; color: #8a93a0; background: transparent; }
-QPushButton#addchannel { border: 2px dashed #3d4551; color: #8a93a0; background: transparent;
-    border-radius: 8px; font-size: 13px; }
-QPushButton#addchannel:hover { border-color: #6f7887; color: #d7dce2; }
-QPushButton#app { padding: 3px 10px; border-radius: 11px; }
-QPushButton#appassigned { padding: 3px 10px; border-radius: 11px; color: #e8eef5; background: #2f4a6b; }
-QToolButton { background: transparent; border: none; color: #8a93a0; font-weight: 700; padding: 0 4px; }
-QToolButton:hover { color: #ef5258; }
-QToolButton#menu:hover { color: #e8eef5; }
-QToolButton::menu-indicator { image: none; width: 0; }
+def channel_width(mix_count: int) -> int:
+    return CHANNEL_WIDTH if mix_count <= 2 else CHANNEL_WIDTH_THREE
 
-QComboBox {
-    background: #12151a; border: 1px solid #373d47; border-radius: 4px; padding: 3px 6px;
-}
-QComboBox:hover { border-color: #6f7887; }
-QComboBox QAbstractItemView {
-    background: #1b1f26; border: 1px solid #454c58; selection-background-color: #34507a;
-}
-QMenu { background: #1b1f26; border: 1px solid #454c58; padding: 4px; }
-QMenu::item { padding: 5px 18px; border-radius: 3px; }
-QMenu::item:selected { background: #34507a; }
-QMenu::item:disabled { color: #5d6672; }
-QMenuBar { background: #181b20; color: #aab2bd; }
-QMenuBar::item:selected { background: #2c323c; }
-QDialog { background: #1d2127; }
-QListWidget { background: #12151a; border: 1px solid #373d47; border-radius: 4px; }
-QListWidget::item { padding: 5px; }
-QListWidget::item:selected { background: #34507a; }
-QLineEdit { background: #11141a; border: 1px solid #2c333d; border-radius: 6px; padding: 5px 8px; color: #e6e9ef; selection-background-color: #3b5b8f; }
-QLineEdit:focus { border-color: #5b8def; }
-QCheckBox { spacing: 8px; color: #c9ced8; }
-QCheckBox::indicator { width: 14px; height: 14px; border: 1px solid #3d4551; border-radius: 3px; background: #11141a; }
-QCheckBox::indicator:checked { background: #5b8def; border-color: #5b8def; }
-QListWidget { background: #11141a; border: 1px solid #2c333d; border-radius: 6px; padding: 4px; color: #e6e9ef; outline: 0; }
-QListWidget::item { padding: 5px 6px; border-radius: 4px; }
-QListWidget::item:selected { background: #2d3a52; color: #ffffff; }
-QListWidget::item:hover:!selected { background: #1d222b; }
-QScrollBar:horizontal { background: #1f232a; height: 12px; border-radius: 6px; margin: 0 2px; }
-QScrollBar::handle:horizontal { background: #3d4551; border-radius: 6px; min-width: 48px; }
-QScrollBar::handle:horizontal:hover { background: #56606f; }
-QScrollBar::handle:horizontal:pressed { background: #6b7688; }
-QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { background: transparent; }
-QScrollBar:vertical { background: transparent; width: 8px; }
-QScrollBar::handle:vertical { background: #3d4551; border-radius: 4px; min-height: 24px; }
-QScrollBar::add-line, QScrollBar::sub-line { width: 0; height: 0; }
-
-QSlider::groove:vertical { background: #0e1014; position: absolute; left: 12px; right: 12px;
-    border-radius: 3px; }
-QSlider::add-page:vertical { background: #2c5f48; border-radius: 3px; }
-QSlider::handle:vertical { background: #dfe4ea; height: 22px; margin: 0 -9px;
-    border-radius: 4px; border: 1px solid #8a93a0; }
-QSlider::handle:vertical:hover { background: #ffffff; }
-QSlider::groove:horizontal { background: #0e1014; height: 6px; border-radius: 3px; }
-QSlider::sub-page:horizontal { background: #2c5f48; border-radius: 3px; }
-QSlider::handle:horizontal { background: #dfe4ea; width: 14px; margin: -5px 0; border-radius: 4px; }
-"""
+STYLE = themes.build_style(themes.DARK)  # the default look; MainWindow.apply_theme() sets the chosen one
 
 
 def level_fraction(linear: float) -> float:
@@ -197,6 +123,16 @@ class LevelMeter(QWidget):
         self._peak_age = 0
         self._lit: Optional[QPixmap] = None  # the full-height coloured bar with its segment lines, drawn once per size
         self._painted = None  # (bar height, peak line) as last drawn: nothing is repainted unless this changes
+        self._well = QColor(themes.color("well"))
+        self._peak_color = QColor(themes.color("strong"))
+
+    def refresh_theme(self) -> None:
+        """Pick up the colours of the theme in use (the well behind the bar, the lines between its segments, the peak line)."""
+        self._well = QColor(themes.color("well"))
+        self._peak_color = QColor(themes.color("strong"))
+        self._lit = None
+        self._painted = None
+        self.update()
 
     def _shown(self) -> tuple:
         height = self.height()
@@ -220,7 +156,7 @@ class LevelMeter(QWidget):
             gradient.setColorAt(0.84, QColor("#f5c542"))
             gradient.setColorAt(1.00, QColor("#ef5258"))
             p.fillRect(QRectF(0, 0, width, height), gradient)
-            p.setPen(QColor("#0e1014"))  # thin dark lines give the segmented look
+            p.setPen(self._well)  # thin lines in the colour of the well give the segmented look
             for y in range(0, height, 3):
                 p.drawLine(0, y, width, y)
             p.end()
@@ -242,7 +178,7 @@ class LevelMeter(QWidget):
     def paintEvent(self, _event) -> None:
         p = QPainter(self)
         rect = self.rect()
-        p.fillRect(rect, QColor("#0e1014"))
+        p.fillRect(rect, self._well)
         height = rect.height()
         fill, peak = self._shown()
         if fill > 0:
@@ -250,7 +186,7 @@ class LevelMeter(QWidget):
             p.drawPixmap(0, top, self._lit_pixmap(), 0, int(top * self.devicePixelRatioF()),
                          int(rect.width() * self.devicePixelRatioF()), int(fill * self.devicePixelRatioF()))
         if peak >= 0:
-            p.setPen(QColor("#e8eef5"))
+            p.setPen(self._peak_color)
             p.drawLine(rect.left(), rect.bottom() - peak, rect.right(), rect.bottom() - peak)
         p.end()
         self._painted = (fill, peak)
@@ -430,8 +366,9 @@ class ChannelStrip(QFrame):
     def __init__(self, channel: Channel, engine: Engine, window: "MainWindow") -> None:
         super().__init__()
         self.setObjectName("strip")
-        self.setFixedWidth(CHANNEL_WIDTH)
+        self.setFixedWidth(channel_width(len(engine.mixer.mixes)))
         self.channel, self.engine, self.window = channel, engine, window
+        self.compact = len(engine.mixer.mixes) > 2  # three fader columns share the strip: smaller numbers
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
@@ -473,6 +410,18 @@ class ChannelStrip(QFrame):
         head.addWidget(menu_button)
         layout.addLayout(head)
 
+        # A channel with a microphone gets the mute button for every microphone, right on the strip. The row it takes comes
+        # out of the sources list below it, so the faders line up across all strips whether or not the button is showing.
+        self.mic_button = QPushButton()
+        self.mic_button.setObjectName("micmute")
+        self.mic_button.setCheckable(True)
+        self.mic_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.mic_button.setToolTip("Mute or unmute every microphone, including the Sluice (Mic) device other apps listen to "
+                                   "(Ctrl+M).")
+        self.mic_button.clicked.connect(lambda _checked=False: self.window.toggle_mic_mute())
+        self.mic_row = _slot(self.mic_button, MIC_ROW)
+        layout.addWidget(self.mic_row)
+
         # Sources: devices and apps feeding this channel.
         layout.addWidget(_label("SOURCES", "tag"))
         self.sources_box = QWidget()
@@ -483,7 +432,7 @@ class ChannelStrip(QFrame):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setFixedHeight(84)
+        self.sources_scroll = scroll
         scroll.setWidget(self.sources_box)
         scroll.setStyleSheet("background: transparent;")
         self.sources_box.setStyleSheet("background: transparent;")
@@ -522,7 +471,9 @@ class ChannelStrip(QFrame):
     def _build_column(self, mix: Mix) -> QVBoxLayout:
         column = QVBoxLayout()
         column.setSpacing(4)
-        column.addWidget(_label(MIX_TAGS.get(mix.id, mix.label.upper()), "tag"))
+        tag = _label(MIX_TAGS.get(mix.id, mix.label.upper()), "tag")
+        tag.setToolTip(MIX_NAMES.get(mix.id, mix.label))
+        column.addWidget(tag)
         fader, meter = Fader(), LevelMeter()
         fader.gainChanged.connect(partial(self._on_level, mix.id))
         row = QHBoxLayout()
@@ -533,6 +484,7 @@ class ChannelStrip(QFrame):
         row.addStretch(1)
         column.addLayout(row, 1)
         readout = ReadoutEdit(None)
+        readout.setProperty("compact", self.compact)
         readout.setToolTip("Click and type a level in dB (for example -12), then press Enter")
         readout.entered.connect(partial(self._typed_level, mix.id))
         column.addWidget(readout)
@@ -559,6 +511,17 @@ class ChannelStrip(QFrame):
             hint = _label("Nothing yet.\nAdd a mic, or an app\nthat should play here.", "hint")
             self.sources_layout.addWidget(hint)
         self._update_fx_button()
+        has_mic = bool(self.channel.devices)
+        self.mic_row.setVisible(has_mic)
+        self.sources_scroll.setFixedHeight(SOURCES_HEIGHT - MIC_ROW - 6 if has_mic else SOURCES_HEIGHT)
+        self.show_mic_state()
+
+    def show_mic_state(self) -> None:
+        muted = self.engine.mic_muted
+        self.mic_button.blockSignals(True)
+        self.mic_button.setChecked(muted)
+        self.mic_button.blockSignals(False)
+        self.mic_button.setText("MIC MUTED" if muted else "Mic live")
 
     def _device_text(self, device: str) -> tuple:
         if device == "":
@@ -694,11 +657,12 @@ class ChannelStrip(QFrame):
             self.mutes[mix_id].setChecked(bool(channel.mutes.get(mix_id)))
         for widget in widgets:
             widget.blockSignals(False)
+        self.show_mic_state()
 
 
 # ------------------------------------------------------------------------ mixes
 class MixStrip(QFrame):
-    def __init__(self, mix: Mix, engine: Engine) -> None:
+    def __init__(self, mix: Mix, engine: Engine, on_remove=None) -> None:
         super().__init__()
         self.setObjectName("mix")
         self.setFixedWidth(MIX_WIDTH)
@@ -707,8 +671,24 @@ class MixStrip(QFrame):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(6)
-        layout.addWidget(_label("FOR YOU" if mix.kind == MONITOR else "FOR YOUR AUDIENCE" if mix.id == STREAM else "FOR YOUR RECORDER", "tag"))
-        layout.addWidget(_label(mix.label, "title"))
+        layout.addWidget(_label("FOR YOU" if mix.kind == MONITOR else "FOR YOUR AUDIENCE" if mix.id == STREAM else "FOR RECORDING", "tag"))
+        title = _label(mix.label, "title")
+        if on_remove is None:
+            layout.addWidget(title)
+        else:  # the optional third mix can be taken away again from its own strip
+            head = QHBoxLayout()
+            head.setSpacing(0)
+            head.addWidget(title, 1)
+            menu_button = QToolButton()
+            menu_button.setObjectName("menu")
+            menu_button.setText("⋮")
+            menu_button.setToolTip("Options for this mix")
+            menu_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+            menu = QMenu(menu_button)
+            menu.addAction("Remove the Recording mix\u2026", on_remove)
+            menu_button.setMenu(menu)
+            head.addWidget(menu_button)
+            layout.addLayout(head)
 
         self.combo: Optional[DeviceCombo] = None
         if mix.kind == MONITOR:
@@ -887,6 +867,25 @@ class SmoothScrollArea(QScrollArea):
         event.accept()
 
 
+def _palette_for(colors: dict) -> QPalette:
+    """Qt's own palette in the theme's colours, for the widgets the style sheet does not reach (dialogs, tooltips)."""
+    palette = QPalette()
+    role = QPalette.ColorRole
+
+    def c(name: str) -> QColor:
+        return QColor(colors[name])
+
+    for which, name in ((role.Window, "bg"), (role.WindowText, "text"), (role.Base, "input"), (role.AlternateBase, "panel"),
+                        (role.Text, "list_text"), (role.Button, "button"), (role.ButtonText, "button_text"),
+                        (role.ToolTipBase, "popup"), (role.ToolTipText, "text"), (role.Highlight, "select"),
+                        (role.HighlightedText, "select_text"), (role.Link, "link"), (role.PlaceholderText, "text_dim"),
+                        (role.BrightText, "strong")):
+        palette.setColor(which, c(name))
+    for which in (role.WindowText, role.Text, role.ButtonText):
+        palette.setColor(QPalette.ColorGroup.Disabled, which, c("text_off"))
+    return palette
+
+
 # ------------------------------------------------------------------ main window
 class MainWindow(QMainWindow):
     def __init__(self, engine: Engine, config_file: Optional[Path] = None, notice: str = "") -> None:
@@ -906,7 +905,10 @@ class MainWindow(QMainWindow):
             whatsnew.write_marker(config_file, __version__)
         self.controls = None  # set by attach_controls()
         self.setWindowTitle(f"Sluice {__version__}")
-        self.setStyleSheet(STYLE)
+        self.apply_theme()  # before anything is built, so every widget (and the meters) starts in the chosen colours
+        hints = QGuiApplication.styleHints()
+        if hasattr(hints, "colorSchemeChanged"):  # "Match my system" follows the desktop while Sluice is running
+            hints.colorSchemeChanged.connect(self._on_system_scheme_changed)
         self._keep_settings_file = False  # set after "Import settings": quitting must not overwrite what was imported
         self._build_menus()
         self._update_check = updates.check  # replaced in tests
@@ -944,9 +946,22 @@ class MainWindow(QMainWindow):
         divider = QFrame()
         divider.setObjectName("divider")
         top.addWidget(divider)
-        self.mix_strips = [MixStrip(m, engine) for m in engine.mixer.mixes]
+        self.mix_strips = [MixStrip(m, engine, self.toggle_recording_mix if m.id == RECORDING else None)
+                           for m in engine.mixer.mixes]
         for strip in self.mix_strips:
             top.addWidget(strip)
+        self.add_mix_button: Optional[QPushButton] = None
+        if not engine.mixer.has_recording_mix:  # the optional third mix, one click away next to Listen and Broadcast
+            self.add_mix_button = QPushButton("+\nAdd a\nRecording\nmix")
+            self.add_mix_button.setObjectName("addmix")
+            self.add_mix_button.setFixedWidth(ADD_MIX_WIDTH)
+            self.add_mix_button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
+            self.add_mix_button.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.add_mix_button.setToolTip("Add a third mix, \u201cRecording\u201d: a second virtual microphone with its own faders "
+                                           "and mutes, so a recorder can get a different blend from the one your audience hears. "
+                                           "Sluice restarts to add it.")
+            self.add_mix_button.clicked.connect(self.toggle_recording_mix)
+            top.addWidget(self.add_mix_button)
         outer.addLayout(top, 1)
 
         self.apps_bar = AppsBar(engine, self)
@@ -958,19 +973,9 @@ class MainWindow(QMainWindow):
         self.status_label = QLabel(notice or "Ready")
         self.status_label.setObjectName("status")
         self.statusBar().addWidget(self.status_label, 1)
-        self.mic_button = QPushButton("Mic live")
-        self.mic_button.setCheckable(True)
-        self.mic_button.setFlat(True)
-        self.mic_button.setToolTip("Mute or unmute every microphone, including the Sluice (Mic) device other apps listen to (Ctrl+M).")
-        self.mic_button.clicked.connect(self.toggle_mic_mute)
-        self.statusBar().addPermanentWidget(self.mic_button)
-        self._show_mic_state()
         self.perf_label = QLabel("")
         self.perf_label.setObjectName("status")
-        self.perf_label.setToolTip(
-            "A dropout is a moment the audio could not keep up: you may hear a click or a gap.\n"
-            "Dropouts while starting or changing effects are not counted. If the number keeps climbing,\n"
-            "choose a larger size in View > Audio buffer, or remove heavy effects.")
+        self.perf_label.setToolTip(self.engine.dropout_tooltip())
         self.statusBar().addPermanentWidget(self.perf_label)
         version = QLabel(f"v{__version__}")
         version.setObjectName("status")
@@ -986,7 +991,7 @@ class MainWindow(QMainWindow):
         self.repopulate_devices()
 
         self._update_tray()  # the tray icon is there from the start if Sluice is set to run in the tray
-        self.resize(1240, 720)
+        self.resize(*DEFAULT_SIZE)
         self.meter_timer = QTimer(self)
         self.meter_timer.timeout.connect(self._update_meters)
         self.meter_timer.start(33)
@@ -1019,20 +1024,45 @@ class MainWindow(QMainWindow):
         self.restore_menu.aboutToShow.connect(self._fill_restore_menu)
         self._action(file_menu, "Open settings &folder", self.open_settings_folder)
         file_menu.addSeparator()
-        self.launcher_action = self._action(file_menu, "Add Sluice to the &applications menu", self.toggle_launcher, checkable=True)
-        startup = file_menu.addMenu("Start when I &log in")
+        self._action(file_menu, "&Quit", self.quit_app, QKeySequence.StandardKey.Quit)
+
+        mixer_menu = bar.addMenu("&Mixer")
+        self._action(mixer_menu, "&Add channel\u2026", self.add_channel, "Ctrl+N")
+        self._action(mixer_menu, "&Refresh devices and apps", self.refresh_now, "F5")
+        self._action(mixer_menu, "&Recording devices for OBS\u2026", self.show_own_devices)
+        self.recording_action = self._action(mixer_menu, "Third mix: &Recording\u2026", self.toggle_recording_mix, checkable=True)
+        mixer_menu.addSeparator()
+        self.mic_action = self._action(mixer_menu, "Mute my &microphone", self.toggle_mic_mute, "Ctrl+M", checkable=True)
+        self.hear_action = self._action(mixer_menu, "&Hear Broadcast", self.toggle_hear_broadcast, "Ctrl+B", checkable=True)
+        self.mute_actions = {}
+        for mix in self.engine.mixer.mixes:
+            shortcut = {MONITOR: "Ctrl+Shift+L", STREAM: "Ctrl+Shift+B"}.get(mix.id, "")
+            self.mute_actions[mix.id] = self._action(mixer_menu, f"&Mute {mix.label}", partial(self.toggle_mix_mute, mix.id),
+                                                     shortcut, checkable=True)
+        mixer_menu.aboutToShow.connect(self._refresh_mixer_menu)
+
+        # Settings: everything that is chosen once and then left alone.
+        self.settings_menu = settings_menu = bar.addMenu("&Settings")
+        self.theme_menu = settings_menu.addMenu("&Theme")
+        self.theme_menu.aboutToShow.connect(self._fill_theme_menu)
+        buffer_menu = settings_menu.addMenu("Audio &buffer")
+        self.buffer_actions = {}
+        labels = {256: "Smallest (256 frames): lowest delay, most CPU", 512: "Small (512 frames): the default",
+                  1024: "Large (1024 frames): less CPU", 2048: "Largest (2048 frames): least CPU, most delay"}
+        for frames in BUFFER_CHOICES:
+            self.buffer_actions[frames] = self._action(buffer_menu, labels[frames], partial(self.set_buffer, frames), checkable=True)
+        buffer_menu.aboutToShow.connect(self._refresh_buffer_menu)
+        startup = settings_menu.addMenu("Start when I &log in")
         group = QActionGroup(self)
         self.autostart_actions = {}
         for key, text in (("off", "Do not start automatically"), ("window", "Start with the window open"),
-                          ("minimized", "Start minimized to the taskbar")):
+                          ("minimized", "Start minimized (to the system tray if that is switched on)")):
             action = startup.addAction(text)
             action.setCheckable(True)
             action.setActionGroup(group)
             action.triggered.connect(lambda _c=False, key=key: self.set_autostart(key))
             self.autostart_actions[key] = action
-        file_menu.aboutToShow.connect(self._refresh_file_menu)
-        file_menu.addSeparator()
-        closing = file_menu.addMenu("When I &close the window")
+        closing = settings_menu.addMenu("When I &close the window")
         close_group = QActionGroup(self)
         self.close_actions = {}
         for key, text in (("quit", "Quit Sluice"), ("minimize", "Keep running, minimized to the taskbar"),
@@ -1042,59 +1072,185 @@ class MainWindow(QMainWindow):
             action.setActionGroup(close_group)
             action.triggered.connect(lambda _c=False, key=key: self.set_close_action(key))
             self.close_actions[key] = action
-        file_menu.addSeparator()
-        self._action(file_menu, "&Quit", self.quit_app, QKeySequence.StandardKey.Quit)
-
-        mixer_menu = bar.addMenu("&Mixer")
-        self._action(mixer_menu, "&Add channel\u2026", self.add_channel, "Ctrl+N")
-        self._action(mixer_menu, "&Recording devices for OBS\u2026", self.show_own_devices)
-        mixer_menu.addSeparator()
-        self.mic_action = self._action(mixer_menu, "Mute my &microphone", self.toggle_mic_mute, "Ctrl+M", checkable=True)
-        self.hear_action = self._action(mixer_menu, "&Hear Broadcast", self.toggle_hear_broadcast, "Ctrl+B", checkable=True)
-        self.mute_actions = {}
-        for mix in self.engine.mixer.mixes:
-            shortcut = {MONITOR: "Ctrl+Shift+L", STREAM: "Ctrl+Shift+B"}.get(mix.id, "")
-            self.mute_actions[mix.id] = self._action(mixer_menu, f"&Mute {mix.label}", partial(self.toggle_mix_mute, mix.id),
-                                                     shortcut, checkable=True)
-        mixer_menu.addSeparator()
-        self.recording_action = self._action(mixer_menu, "Third mix: &Recording\u2026", self.toggle_recording_mix, checkable=True)
-        self._action(mixer_menu, "&Refresh devices and apps", self.refresh_now, "F5")
-        mixer_menu.aboutToShow.connect(self._refresh_mixer_menu)
+        self.launcher_action = self._action(settings_menu, "Add Sluice to the &applications menu", self.toggle_launcher, checkable=True)
+        self.auto_update_action = self._action(settings_menu, "&Update automatically when a new version is found",
+                                               self.toggle_auto_update, checkable=True)
+        settings_menu.addSeparator()
+        self.controllers_separator = settings_menu.addSeparator()  # "MIDI controllers and Stream Deck" is added here by attach_controls()
+        self._action(settings_menu, "&Reset all settings to the defaults\u2026", self.reset_settings)
+        settings_menu.aboutToShow.connect(self._refresh_settings_menu)
 
         view_menu = bar.addMenu("&View")
         self.fullscreen_action = self._action(view_menu, "&Full screen", self.toggle_fullscreen, "F11", checkable=True)
         self._action(view_menu, "&Reset window size", self.reset_window_size)
-        view_menu.addSeparator()
-        buffer_menu = view_menu.addMenu("Audio &buffer")
-        self.buffer_actions = {}
-        labels = {256: "Smallest (256 frames): lowest delay, most CPU", 512: "Small (512 frames): the default",
-                  1024: "Large (1024 frames): less CPU", 2048: "Largest (2048 frames): least CPU, most delay"}
-        for frames in BUFFER_CHOICES:
-            self.buffer_actions[frames] = self._action(buffer_menu, labels[frames], partial(self.set_buffer, frames), checkable=True)
-        buffer_menu.aboutToShow.connect(self._refresh_buffer_menu)
         view_menu.aboutToShow.connect(lambda: self.fullscreen_action.setChecked(self.isFullScreen()))
 
-        self.help_menu = bar.addMenu("&Help")  # Controllers is inserted before this one by attach_controls()
+        self.help_menu = bar.addMenu("&Help")
         self._action(self.help_menu, "&Keyboard shortcuts", self.show_shortcuts, "F1")
         self.help_menu.addSeparator()
         self.help_menu.addAction("What's new in this version\u2026", self.show_whats_new)
         self.help_menu.addAction("Check for updates\u2026", self.check_for_updates)
-        self.auto_update_action = self._action(self.help_menu, "Update automatically when a new version is found",
-                                               self.toggle_auto_update, checkable=True)
         self.rollback_action = self._action(self.help_menu, "Go back to the previous version\u2026", self.rollback_update)
         self.help_menu.aboutToShow.connect(self._refresh_update_menu)
+        self.help_menu.addSeparator()
         self.help_menu.addAction("Save bug report\u2026", self.save_report)
         self.help_menu.addAction("Open log folder", self.open_log_folder)
+        self.help_menu.addAction("Report a problem\u2026", partial(self.open_link, ISSUES_URL))
         self.help_menu.addSeparator()
+        self.help_menu.addAction("Join the Discord\u2026", partial(self.open_link, DISCORD_URL))
+        self.help_menu.addAction("Project page on GitHub\u2026", partial(self.open_link, PROJECT_URL))
         self.help_menu.addAction(f"About Sluice {__version__}", self.show_about)
+
+    def open_link(self, url: str) -> None:
+        if not QDesktopServices.openUrl(QUrl(url)):
+            QMessageBox.information(self, "Open link", f"Sluice could not open your browser. The address is:\n\n{url}")
 
     def _refresh_mixer_menu(self) -> None:
         self.hear_action.setChecked(self.engine.hear_broadcast)
         self.mic_action.setChecked(self.engine.mic_muted)
         self.recording_action.setChecked(self.engine.mixer.has_recording_mix)
-        self.auto_update_action.setChecked(self.engine.mixer.auto_update)
         for mix_id, action in self.mute_actions.items():
             action.setChecked(self.engine.mixer.mix(mix_id).mute)
+
+    def _refresh_settings_menu(self) -> None:
+        self._refresh_file_menu()
+        self.auto_update_action.setChecked(self.engine.mixer.auto_update)
+
+    # ------------------------------------------------------------------ themes
+    def _system_is_dark(self) -> bool:
+        hints = QGuiApplication.styleHints()
+        scheme = getattr(hints, "colorScheme", None)  # Qt 6.5 and newer; an older one has no word on it: stay dark
+        return scheme is None or scheme() != Qt.ColorScheme.Light
+
+    def _themes_folder(self) -> Optional[Path]:
+        return themes.themes_dir(self.config_file)
+
+    def current_theme(self) -> "themes.Theme":
+        return themes.resolve(self.engine.mixer.theme, self._system_is_dark(), self._themes_folder())
+
+    def apply_theme(self, theme_id: Optional[str] = None) -> "themes.Theme":
+        """Show a theme now (or the one saved in the settings): the style sheet, the palette and the meters."""
+        if theme_id is not None:
+            self.engine.mixer.theme = theme_id
+        theme = self.current_theme()
+        themes.set_current(theme.colors)
+        self.setStyleSheet(themes.build_style(theme.colors))
+        app = QGuiApplication.instance()
+        if app is not None:
+            app.setPalette(_palette_for(theme.colors))
+        for meter in self.findChildren(LevelMeter):
+            meter.refresh_theme()
+        return theme
+
+    def _on_system_scheme_changed(self, *_args) -> None:
+        if self.engine.mixer.theme == themes.SYSTEM and not self._closed:
+            self.apply_theme()
+
+    def _fill_theme_menu(self) -> None:
+        menu = self.theme_menu
+        menu.clear()
+        group = QActionGroup(menu)
+        chosen = self.engine.mixer.theme
+
+        def add(theme_id: str, text: str, tip: str = "") -> None:
+            action = menu.addAction(text)
+            action.setCheckable(True)
+            action.setActionGroup(group)
+            action.setChecked(chosen == theme_id)
+            if tip:
+                action.setToolTip(tip)
+            action.triggered.connect(lambda _c=False, theme_id=theme_id: self.choose_theme(theme_id))
+
+        for theme in themes.BUILT_IN.values():
+            add(theme.id, theme.name)
+        add(themes.SYSTEM, themes.SYSTEM_LABEL, "Dark or Light, following your desktop's own setting")
+        custom = themes.custom_themes(self._themes_folder())
+        if custom:
+            menu.addSeparator()
+            for theme in custom:
+                add(theme.id, theme.name)
+        if chosen.startswith(themes.CUSTOM_PREFIX) and not any(t.id == chosen for t in custom):
+            menu.addSeparator()
+            missing = menu.addAction("An imported theme that is no longer in the themes folder (showing Dark)")
+            missing.setCheckable(True)
+            missing.setChecked(True)
+            missing.setEnabled(False)
+        menu.addSeparator()
+        menu.addAction("&Import theme\u2026", self.import_theme)
+        menu.addAction("&Export current theme\u2026", self.export_theme)
+        if custom:
+            remove = menu.addMenu("&Remove an imported theme")
+            for theme in custom:
+                remove.addAction(theme.name, partial(self.remove_theme, theme.id))
+        menu.addAction("Open theme &folder", self.open_theme_folder)
+        menu.setToolTipsVisible(True)
+
+    def choose_theme(self, theme_id: str) -> None:
+        theme = self.apply_theme(theme_id)
+        if theme_id == themes.SYSTEM:
+            self.say(f"Theme: following your system (right now {theme.name}).")
+        else:
+            self.say(f"Theme: {theme.name}.")
+
+    def import_theme_from(self, path) -> "themes.Theme":
+        """Check a theme file, keep a copy in the themes folder and switch to it. Raises ThemeError."""
+        folder = self._themes_folder()
+        if folder is None:
+            raise themes.ThemeError("Demo mode does not keep imported themes.")
+        theme, notes = themes.load_file(path)
+        problems = themes.contrast_problems(theme.colors)
+        if problems:
+            ask = QMessageBox.question(
+                self, "Hard to read",
+                f"The theme \u201c{theme.name}\u201d may be hard to read:\n\n" + "\n".join("\u2022 " + p for p in problems[:4])
+                + "\n\nUse it anyway? You can switch back in Settings > Theme.")
+            if ask != QMessageBox.StandardButton.Yes:
+                raise themes.ThemeError("The theme was not imported.")
+        stored = themes.save_custom(theme, folder)
+        self.apply_theme(stored.id)
+        self.say(f"Theme \u201c{stored.name}\u201d imported and in use." + (f" ({'; '.join(notes[:3])}.)" if notes else ""))
+        return stored
+
+    def import_theme(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(self, "Import theme", str(Path.home()), "Themes (*.json)")
+        if not path:
+            return
+        try:
+            self.import_theme_from(path)
+        except themes.ThemeError as exc:
+            QMessageBox.warning(self, "Could not import the theme", str(exc))
+
+    def export_theme_to(self, path) -> None:
+        theme = self.current_theme()
+        name = theme.name if theme.id.startswith(themes.CUSTOM_PREFIX) else f"{theme.name} copy"
+        data = themes.export_dict(themes.Theme(theme.id, name, theme.base, theme.colors))
+        Path(path).write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        self.say(f"Theme saved to {path}. Edit the colours, then use Settings > Theme > Import theme.")
+
+    def export_theme(self) -> None:
+        path, _ = QFileDialog.getSaveFileName(self, "Export current theme", str(Path.home() / "sluice-theme.json"),
+                                              "Themes (*.json)")
+        if path:
+            try:
+                self.export_theme_to(path)
+            except OSError as exc:
+                QMessageBox.warning(self, "Could not save the theme", str(exc))
+
+    def remove_theme(self, theme_id: str) -> None:
+        if themes.remove_custom(theme_id, self._themes_folder()):
+            if self.engine.mixer.theme == theme_id:
+                self.apply_theme(themes.DEFAULT)
+            self.say("Theme removed.")
+        else:
+            self.say("That theme could not be removed.")
+
+    def open_theme_folder(self) -> None:
+        folder = self._themes_folder()
+        if folder is None:
+            self.say("Demo mode does not keep imported themes.")
+            return
+        folder.mkdir(parents=True, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
 
     def toggle_recording_mix(self) -> None:
         mixer = self.engine.mixer
@@ -1126,13 +1282,8 @@ class MainWindow(QMainWindow):
                  else "Your microphone is live.")
 
     def _show_mic_state(self) -> None:
-        muted = self.engine.mic_muted
-        self.mic_button.blockSignals(True)
-        self.mic_button.setChecked(muted)
-        self.mic_button.blockSignals(False)
-        self.mic_button.setText("MIC MUTED" if muted else "Mic live")
-        self.mic_button.setStyleSheet("QPushButton { background: #b3262c; color: white; border: none; padding: 1px 8px; }" if muted
-                                      else "QPushButton { border: none; padding: 1px 8px; color: #8fd19e; }")
+        for strip in self.strips:
+            strip.show_mic_state()
 
     def toggle_hear_broadcast(self) -> None:
         on = not self.engine.hear_broadcast  # from the real state, so a stale tick mark can never invert it
@@ -1174,7 +1325,7 @@ class MainWindow(QMainWindow):
     def reset_window_size(self) -> None:
         if self.isFullScreen():
             self.showNormal()
-        self.resize(1240, 720)
+        self.resize(*DEFAULT_SIZE)
 
     def show_shortcuts(self) -> None:
         rows = [("Ctrl+S", "Save settings"), ("Ctrl+N", "Add a channel"), ("Ctrl+B", "Hear Broadcast on or off"),
@@ -1183,7 +1334,7 @@ class MainWindow(QMainWindow):
         table = "".join(f"<tr><td><b>{key}</b>&nbsp;&nbsp;&nbsp;</td><td>{what}</td></tr>" for key, what in rows)
         QMessageBox.information(self, "Keyboard shortcuts", f"<table>{table}</table><br>"
                                 "Faders: scroll the mouse wheel over one, or use the arrow keys when it is selected.<br>"
-                                "For buttons and knobs outside the app, see <b>Controllers</b>.")
+                                "For buttons and knobs outside the app, see <b>Settings > MIDI controllers and Stream Deck</b>.")
 
     # ------------------------------------------------------------------- settings files
     def _snapshot(self) -> str:
@@ -1292,6 +1443,31 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Could not restore", str(exc))
             return
         self.say("Earlier settings restored. Close Sluice and start it again to use them.")
+
+    def reset_settings(self) -> None:
+        """Put the settings back to how a fresh Sluice starts. The current ones are kept; it takes effect at the next start."""
+        import shutil
+
+        if self.config_file is None:
+            self.say("Demo mode: there are no saved settings to reset.")
+            return
+        ask = QMessageBox.question(
+            self, "Reset all settings",
+            "Put every setting back to how a fresh Sluice starts?\n\nThat means the default channels, levels, effects, theme "
+            "and options. Your effect presets and controller assignments are kept.\n\nYour current settings are kept as "
+            "config.before-reset.json, and the change takes effect the next time Sluice starts.")
+        if ask != QMessageBox.StandardButton.Yes:
+            return
+        self._autosave()  # what you have now is on disk first, so the copy below is the latest
+        try:
+            if self.config_file.exists():
+                shutil.copy2(self.config_file, self.config_file.with_name("config.before-reset.json"))
+            Mixer.default().save(self.config_file)
+        except OSError as exc:
+            QMessageBox.warning(self, "Could not reset the settings", str(exc))
+            return
+        self._keep_settings_file = True  # quitting must not write the old settings back over the fresh ones
+        self.say("Settings reset. Close Sluice and start it again to use them. Your old settings are in config.before-reset.json.")
 
     def bring_to_front(self) -> None:
         self.setWindowState(self.windowState() & ~Qt.WindowState.WindowMinimized)
@@ -1412,9 +1588,9 @@ class MainWindow(QMainWindow):
     # ---------------------------------------------------------------- outside control
     def attach_controls(self, controls) -> None:
         self.controls = controls
-        menu = QMenu("&Controllers", self)
-        menu.addAction("MIDI controllers and Stream Deck\u2026", controls.show_dialog)
-        self.menuBar().insertMenu(self.help_menu.menuAction(), menu)  # File, Mixer, View, Controllers, Help
+        action = QAction("&MIDI controllers and Stream Deck\u2026", self.settings_menu)
+        action.triggered.connect(lambda _checked=False: controls.show_dialog())
+        self.settings_menu.insertAction(self.controllers_separator, action)
 
     def sync_from_model(self) -> None:
         """Show the model's current values (after something other than the mouse changed them)."""
@@ -1514,7 +1690,10 @@ class MainWindow(QMainWindow):
             self.status_label.setText(errors[-1])
         for notice in self.engine.take_notices():
             self.status_label.setText(notice)
-        self.perf_label.setText(self.engine.status_text())
+        text = self.engine.status_text()
+        if text != self.perf_label.text():  # the tooltip explains the number, so it only changes when the number does
+            self.perf_label.setText(text)
+            self.perf_label.setToolTip(self.engine.dropout_tooltip())
 
     # ------------------------------------------------------------------- help
     def say(self, text: str) -> None:
@@ -1529,7 +1708,9 @@ class MainWindow(QMainWindow):
             self, "About Sluice",
             f"<b>Sluice {__version__}</b><br>An open-source virtual audio mixer for PipeWire.<br><br>"
             f"License: GPL-3.0-or-later<br>Python {platform.python_version()}, PySide6 {pyside_version}<br>"
-            f"Log: {logs.log_path()}",
+            f"Log: {logs.log_path()}<br><br>"
+            f'<a href="{PROJECT_URL}">Project page</a> &nbsp;·&nbsp; <a href="{DISCORD_URL}">Join the Discord</a> '
+            f'&nbsp;·&nbsp; <a href="{ISSUES_URL}">Report a problem</a>',
         )
 
     def check_for_updates(self) -> None:
@@ -1767,6 +1948,12 @@ class MainWindow(QMainWindow):
         if self._closed:
             return
         self._closed = True
+        hints = QGuiApplication.styleHints()
+        if hasattr(hints, "colorSchemeChanged"):
+            try:
+                hints.colorSchemeChanged.disconnect(self._on_system_scheme_changed)
+            except (RuntimeError, TypeError):
+                pass
         if self._tray is not None:
             self._tray.hide()  # no ghost icon after Sluice is gone
         self.meter_timer.stop()

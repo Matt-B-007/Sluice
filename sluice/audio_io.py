@@ -21,6 +21,7 @@ import numpy as np
 log = logging.getLogger("sluice.audio")
 
 CLIENT = "sluice"
+SLOW_BLOCK = 0.7  # a block that used more than this share of its time counts as Sluice running late
 
 
 def in_port_names(channel_id: str) -> tuple:
@@ -40,7 +41,13 @@ class AudioIO(ABC):
     sample_rate = 48000
     blocksize = 512
     xruns = 0
+    xruns_ours = 0  # dropouts that came while one of Sluice's own blocks was running long (the rest came from elsewhere)
     error = ""
+
+    def take_load(self) -> tuple:
+        """(average, worst) share of a block's time Sluice's own audio work used since the last call, 0..1+.
+        (0, 0) when the backend does not measure it."""
+        return 0.0, 0.0
 
     @abstractmethod
     def sync_ports(self, channel_ids: list, mix_ids: list) -> None:
@@ -160,7 +167,9 @@ class JackIO(AudioIO):
         self.blocksize = int(self.client.blocksize)
         log.info("JACK client '%s' connected: %d Hz, %d frames per block", client_name, self.sample_rate, self.blocksize)
         self.xruns = 0
+        self.xruns_ours = 0
         self.error = ""
+        self._init_timing()
         self._in: dict = {}
         self._out: dict = {}
         self._graph = None
@@ -210,10 +219,28 @@ class JackIO(AudioIO):
         except Exception as exc:
             log.warning("JACK close failed: %s", exc)
 
+    def _init_timing(self) -> None:
+        self._period = self.blocksize / self.sample_rate  # seconds one block lasts
+        self._busy_sum = 0.0   # seconds spent in our own audio work since take_load() was last called
+        self._busy_peak = 0.0
+        self._blocks = 0
+        self._last_busy = 0.0
+        self._block_start = 0.0
+        self._in_block = False
+
+    def take_load(self) -> tuple:
+        blocks, total, peak = self._blocks, self._busy_sum, self._busy_peak
+        self._blocks, self._busy_sum, self._busy_peak = 0, 0.0, 0.0
+        if not blocks:
+            return 0.0, 0.0
+        return total / blocks / self._period, peak / self._period
+
     def _process(self, frames: int) -> None:
         graph = self._graph
         if graph is None:
             return
+        start = time.perf_counter()  # two clock reads per block: how long our own work takes, to tell our dropouts from others
+        self._block_start, self._in_block = start, True
         try:
             inputs = {cid: np.stack((left.get_array(), right.get_array())) for cid, (left, right) in self._in.items()}
             outputs = graph.process(inputs, frames)
@@ -233,9 +260,21 @@ class JackIO(AudioIO):
                     right.get_array()[:] = 0.0
                 except Exception:
                     pass
+        busy = time.perf_counter() - start
+        self._in_block = False
+        self._last_busy = busy
+        self._busy_sum += busy
+        self._blocks += 1
+        if busy > self._busy_peak:
+            self._busy_peak = busy
 
     def _on_xrun(self, _delay: float) -> None:
         self.xruns += 1
+        # Ours if the block that was running (or had just run) used most of its time: Sluice was the slow one. If it was
+        # quick, the server was waiting for somebody else.
+        busy = time.perf_counter() - self._block_start if self._in_block else self._last_busy
+        if busy > SLOW_BLOCK * self._period:
+            self.xruns_ours += 1
 
     def _on_shutdown(self, _status, reason: str) -> None:
         self.error = f"Audio server shut down: {reason}"

@@ -39,8 +39,6 @@ class MeasureRoomDialog(QDialog):
         self.bar.setRange(0, 100)
         self.bar.setTextVisible(False)
         self.bar.setFixedHeight(10)
-        self.bar.setStyleSheet("QProgressBar { background: #0e1014; border: 1px solid #2a2f38; border-radius: 5px; }"
-                               "QProgressBar::chunk { background: #3d8bff; border-radius: 4px; }")
         layout.addWidget(self.bar)
         buttons = QHBoxLayout()
         buttons.addStretch(1)
@@ -205,3 +203,35 @@ class MeasureEchoDialog(MeasureRoomDialog):
 
     def _apply(self, result) -> None:
         self._on_use(result.reverb_time)
+
+
+class MeasureVoiceDialog(MeasureRoomDialog):
+    """Talk normally: how loud the voice is, and how far to move the microphone's level (for the Compressor to have work)."""
+
+    TITLE = "Check my voice level — {channel}"
+    SECONDS = room.VOICE_SECONDS
+
+    def __init__(self, engine, channel, on_use: Callable[[float], None], parent: Optional[QWidget] = None) -> None:
+        super().__init__(engine, channel, "", 0.0, on_use, parent)
+
+    def _intro_text(self) -> str:
+        return (f"Press Start, then talk in your normal voice, as if you were on a call, for {room.VOICE_SECONDS:.0f} seconds. "
+                "Read something out loud if you like.\n\nSluice measures how loud your voice is at the microphone, before any "
+                "effect, and tells you how much to raise or lower the level. Too quiet a voice leaves the Compressor and "
+                "Limiter with nothing to do, and the noise is relatively louder.")
+
+    def _listening_text(self) -> str:
+        return "Listening... please keep talking."
+
+    def _finish(self):
+        return self.engine.measure_voice_finish(self.channel.id)
+
+    def _question(self, result) -> str:
+        verb = "Add" if result.change_db > 0 else "Take off"
+        return f"\n{verb} {abs(result.change_db):.0f} dB now, using the Gain effect on this channel?"
+
+    def _use_label(self, result) -> str:
+        return f"{'Add' if result.change_db > 0 else 'Take off'} {abs(result.change_db):.0f} dB"
+
+    def _apply(self, result) -> None:
+        self._on_use(result.change_db)
