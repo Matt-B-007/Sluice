@@ -389,7 +389,7 @@ def test_sluice_rollback_on_the_command_line(tmp_path, monkeypatch, capsys):
     root = make_root(tmp_path)
     monkeypatch.setattr(selfupdate, "install_root", lambda *a: root)
     monkeypatch.setattr(entry, "_acquire_lock", lambda: object())
-    monkeypatch.setattr(entry.logs, "setup", lambda debug=False: None)
+    monkeypatch.setattr(entry.logs, "setup", lambda debug=False, session=True: None)
     monkeypatch.setattr(entry.logs, "shutdown", lambda: None)
     assert entry.main(["--rollback"]) == 1 and "no earlier version" in capsys.readouterr().err
     stage_it(root, FakeNet(tmp_path))

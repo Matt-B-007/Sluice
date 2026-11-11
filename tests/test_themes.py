@@ -51,8 +51,8 @@ def test_switching_back_to_a_theme_reuses_its_style_sheet():
 
 # ------------------------------------------------------------------- reading a theme file
 def test_a_theme_file_only_needs_a_name_and_the_colours_it_changes():
-    theme, notes = themes.parse({"name": "Midnight", "colors": {"accent": "#7c5cff"}})
-    assert theme.name == "Midnight" and theme.base == "dark" and notes == []
+    theme, notes = themes.parse({"name": "Moonlight", "colors": {"accent": "#7c5cff"}})
+    assert theme.name == "Moonlight" and theme.base == "dark" and notes == []
     assert theme.colors["accent"] == "#7c5cff"
     assert theme.colors["bg"] == themes.DARK["bg"]  # left out: from the base theme
     light, _ = themes.parse({"name": "Paper", "base": "light", "colors": {}})
@@ -144,13 +144,13 @@ def test_a_theme_that_only_changes_the_accent_is_still_readable():
 # ------------------------------------------------------------------- the folder of imported themes
 def test_imported_themes_are_stored_listed_and_removed(tmp_path):
     folder = tmp_path / "themes"
-    theme, _ = themes.parse({"name": "Midnight", "colors": {"accent": "#7c5cff"}})
+    theme, _ = themes.parse({"name": "Moonlight", "colors": {"accent": "#7c5cff"}})
     stored = themes.save_custom(theme, folder)
-    assert stored.id == "custom:midnight" and (folder / "midnight.json").is_file()
+    assert stored.id == "custom:moonlight" and (folder / "moonlight.json").is_file()
     listed = themes.custom_themes(folder)
-    assert [t.id for t in listed] == ["custom:midnight"] and listed[0].colors["accent"] == "#7c5cff"
-    assert themes.resolve("custom:midnight", True, folder).name == "Midnight"
-    assert themes.remove_custom("custom:midnight", folder) and themes.custom_themes(folder) == []
+    assert [t.id for t in listed] == ["custom:moonlight"] and listed[0].colors["accent"] == "#7c5cff"
+    assert themes.resolve("custom:moonlight", True, folder).name == "Moonlight"
+    assert themes.remove_custom("custom:moonlight", folder) and themes.custom_themes(folder) == []
 
 
 def test_importing_the_same_name_again_replaces_it(tmp_path):
@@ -256,9 +256,9 @@ def test_the_theme_menu_lists_the_themes_and_ticks_the_one_in_use(win):
     menu = _theme_menu(win)
     items = [(a.text().replace("&", ""), a.isChecked()) for a in menu.actions() if a.text() and a.isCheckable()]
     assert items == [("Dark", True), ("Light", False), ("High contrast", False), ("Retro Purple", False),
-                     ("Match my system", False)]
+                     ("Midnight Blue", False), ("Amber Console", False), ("Paper", False), ("Match my system", False)]
     tail = [a.text().replace("&", "") for a in menu.actions() if a.text() and not a.isCheckable()]
-    assert tail == ["Import theme…", "Export current theme…", "Open theme folder"]
+    assert tail == ["Import theme…", "Export current theme…", "Open theme folder", "Get more themes…"]
 
 
 def test_choosing_a_theme_changes_the_window_the_setting_and_the_tick(win):
@@ -330,13 +330,13 @@ def _write(path, **data):
 
 
 def test_importing_a_theme_stores_it_applies_it_and_lists_it(win, tmp_path):
-    source = _write(tmp_path / "mine.json", name="Midnight", colors={"accent": "#7c5cff"})
+    source = _write(tmp_path / "mine.json", name="Moonlight", colors={"accent": "#7c5cff"})
     stored = win.import_theme_from(source)
-    assert stored.id == "custom:midnight" and win.engine.mixer.theme == "custom:midnight"
-    assert (tmp_path / "themes" / "midnight.json").is_file()
+    assert stored.id == "custom:moonlight" and win.engine.mixer.theme == "custom:moonlight"
+    assert (tmp_path / "themes" / "moonlight.json").is_file()
     assert "#7c5cff" in win.styleSheet() and "imported" in win.status_label.text()
     menu = _theme_menu(win)
-    assert ("Midnight", True) in [(a.text(), a.isChecked()) for a in menu.actions() if a.isCheckable()]
+    assert ("Moonlight", True) in [(a.text(), a.isChecked()) for a in menu.actions() if a.isCheckable()]
     assert any(a.menu() and "Remove" in a.text() for a in menu.actions())
 
 
@@ -384,9 +384,9 @@ def test_export_writes_a_file_that_imports_back(win, tmp_path):
 
 
 def test_removing_the_theme_in_use_goes_back_to_dark(win, tmp_path):
-    win.import_theme_from(_write(tmp_path / "m.json", name="Midnight", colors={"accent": "#7c5cff"}))
-    win.remove_theme("custom:midnight")
-    assert win.engine.mixer.theme == "dark" and not (tmp_path / "themes" / "midnight.json").exists()
+    win.import_theme_from(_write(tmp_path / "m.json", name="Moonlight", colors={"accent": "#7c5cff"}))
+    win.remove_theme("custom:moonlight")
+    assert win.engine.mixer.theme == "dark" and not (tmp_path / "themes" / "moonlight.json").exists()
     assert themes.DARK["bg"] in win.styleSheet()
 
 
@@ -420,3 +420,36 @@ def test_the_dialogs_that_set_their_own_colours_use_the_theme(win):
     dialog = ui_whatsnew.NotesDialog("t", "h", "see `code` and [a link](https://example.com)", "", "", win)
     css = dialog.view.document().defaultStyleSheet()
     assert themes.LIGHT["link"] in css and themes.LIGHT["code"] in css
+
+
+def test_get_more_themes_opens_the_collection_on_the_project_page(win, monkeypatch):
+    from PySide6.QtGui import QDesktopServices
+
+    from sluice import ui
+
+    opened = []
+    monkeypatch.setattr(QDesktopServices, "openUrl", lambda url: opened.append(url.toString()) or True)
+    menu = _theme_menu(win)
+    action = next(a for a in menu.actions() if a.text().replace("&", "") == "Get more themes…")
+    action.trigger()
+    assert opened == [ui.THEMES_URL] and ui.THEMES_URL == ui.PROJECT_URL + "/tree/main/themes"
+
+
+def test_an_imported_copy_of_a_built_in_theme_shows_the_built_in_one_ticked(win, tmp_path):
+    folder = tmp_path / "themes"
+    folder.mkdir()
+    (folder / "midnight-blue.json").write_text(json.dumps(themes.export_dict(themes.BUILT_IN["midnight"])))
+    win.engine.mixer.theme = "custom:midnight-blue"
+    menu = _theme_menu(win)
+    items = [(a.text().replace("&", ""), a.isChecked()) for a in menu.actions() if a.text() and a.isCheckable()]
+    assert items.count(("Midnight Blue", True)) == 1 and sum(1 for n, _ in items if n == "Midnight Blue") == 1
+    assert win.current_theme().name == "Midnight Blue"
+
+
+def test_the_window_tick_sends_the_heartbeat(win, monkeypatch):
+    from sluice import logs
+
+    beats = []
+    monkeypatch.setattr(logs, "heartbeat", lambda: beats.append(1))
+    win._tick_engine()
+    assert beats == [1]

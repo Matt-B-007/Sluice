@@ -1024,7 +1024,7 @@ def test_reconnecting_restarts_only_when_the_server_answers(ui, monkeypatch):
 
     win, _, engine = ui
     restarted = []
-    monkeypatch.setattr(reconnect, "restart_self", lambda: restarted.append(1))
+    monkeypatch.setattr(reconnect, "restart_self", lambda show_window=False: restarted.append(1))
     answers = iter([False, True])
     monkeypatch.setattr(reconnect, "server_is_back", lambda: next(answers))
     win._begin_reconnect()

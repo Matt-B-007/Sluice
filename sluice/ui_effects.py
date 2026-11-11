@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
 )
 
 from .effects import BUILTINS, ParamInfo, builtin_names, scan_vst3, vst3_plugin_names, vst3_search_paths
-from . import presets, themes
+from . import logs, presets, themes
 from .model import MIN_DB, VOICE_CHAIN, Effect, new_effect_id
 from .ui_room import MeasureEchoDialog, MeasureRoomDialog, MeasureVoiceDialog
 from .ui_widgets import ReadoutEdit, ResetSlider
@@ -549,14 +549,14 @@ class EffectsDialog(QDialog):
             self.engine.mixer.vst3_folders.append(path)
             found = scan_vst3(vst3_search_paths(self.engine.mixer.vst3_folders))
             QMessageBox.information(self, "Plugin folder added",
-                                    f"{path} was added. Sluice now finds {len(found)} VST3 plugin(s) in all its folders.\n"
+                                    f"{logs.short_path(path)} was added. Sluice now finds {len(found)} VST3 plugin(s) in all its folders.\n"
                                     "Open Add > VST3 plugin to see them.")
 
     def _show_vst3_folders(self) -> None:
         lines = []
         for folder in vst3_search_paths(self.engine.mixer.vst3_folders):
             count = len(scan_vst3([folder])) if folder.is_dir() else None
-            lines.append(f"{folder}   ({'does not exist' if count is None else f'{count} plugin(s)'})")
+            lines.append(f"{logs.short_path(folder)}   ({'does not exist' if count is None else f'{count} plugin(s)'})")
         QMessageBox.information(
             self, "Where Sluice looks for VST3 plugins",
             "\n".join(lines) + "\n\nThese are the folders Linux VST3 hosts normally use, so a plugin that REAPER or another "

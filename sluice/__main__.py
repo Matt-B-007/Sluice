@@ -95,7 +95,7 @@ def _report(target: str) -> int:
     from .report import write_report
 
     path = write_report(Path(target).expanduser() if target else None)
-    print(f"Saved {path}\nIt contains device names, app names and plugin paths: look it over before sharing.")
+    print(f"Saved {logs.short_path(path)}\nYour user name, computer name and serial numbers are replaced. It still has device names, app names and plugin paths: look it over before sharing.")
     return 0
 
 
@@ -168,6 +168,8 @@ def _run_gui(args, log_file: Optional[Path]) -> int:
                       f"{hint}. Then run sluice --diagnose.")
     system, io, linker = parts
     is_demo = not hasattr(io, "client")
+    if not is_demo:
+        logs.begin_session()  # only a real window, and only once it holds the lock
     if log_file is not None:
         print(f"sluice: logging to {log_file}", file=sys.stderr)
 
@@ -262,7 +264,9 @@ def main(argv: Optional[list] = None) -> int:
     parser.add_argument("--screenshot", metavar="PNG", help=argparse.SUPPRESS)  # developer option
     args = parser.parse_args(args_list)
 
-    log_file = logs.setup(debug=args.debug)
+    is_command = bool(args.diagnose or args.cleanup or args.rollback or args.autostart or args.install_desktop
+                      or args.uninstall_desktop or args.report is not None)
+    log_file = logs.setup(debug=args.debug, session=not is_command)
     try:
         if args.diagnose:
             from .diagnose import report

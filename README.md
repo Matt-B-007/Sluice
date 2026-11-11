@@ -15,20 +15,22 @@ An open-source virtual audio mixer for Linux (PipeWire). Put your mic, games, mu
 > and use the Sluice support forum. Please do not post the `sluice --report` file there: it contains device and app
 > names, so offer it in a private ticket instead.
 
-## What's new in 0.9.2
+## What's new in 0.9.3
 
-Themes, a tidier menu bar, and clearer answers about dropouts and voice level. (The full list for every version is in
+A clearer bug report, a way to tell when a session ended badly, and more themes. (The full list for every version is in
 [CHANGELOG.md](CHANGELOG.md); Sluice also shows it once after an update, and under *Help > What's new in this version*.)
 
-- **Themes**: *Settings > Theme* has Dark (the default), Light, High contrast, Retro Purple and *Match my system*, and
-  you can import your own. See *Themes*.
-- **Menus reorganised** into File, Mixer, Settings, View and Help, with *Reset all settings to the defaults*, and links to
-  report a problem, the Discord and the project page under *Help*.
-- **Third mix as a "+" strip** beside Listen and Broadcast; **Mute my microphone** is now on the Mic strip.
-- **Presets** show which one is active and jump to the reducer page after you apply one.
-- **Dropouts**: the status bar says whether a dropout was mostly Sluice or mostly something else on your computer.
-- **Check my voice level** and a hint when the **Compressor** has nothing to do.
-- Self-update (0.9.1) is unchanged: *Help > Check for updates* > **Update now**.
+- **After an update, the window comes back.** *Update now* and the other restarts you ask for reopen Sluice with its
+  window showing, even if it was started minimized at login.
+- **Sluice notices a session that did not end normally** and logs when it was last seen running.
+- **A better bug report**: this session's log first, the crash log dated and matched to its session, CPU and USB
+  details, and the programs with dropouts named at the top of the `pw-top` section.
+- **Private by default**: the About window shows `~` for your home folder, and the bug report replaces your user name,
+  computer name, serial numbers and Bluetooth addresses.
+- **More themes**: Midnight Blue, Amber Console and Paper are built in, and *Settings > Theme > Get more themes...*
+  opens a collection of 30 you can import.
+- Self-update (0.9.1) and everything from 0.9.2 (themes, the reorganised menus, dropout attribution, *Check my voice
+  level*) are unchanged.
 - Everything from before is still here: the **Echo Reducer** and **Noise Reducer** effects (with *Compare*, a live
   readout and a clap-based *Measure my room's echo*), presets for the voice chain, the **system tray** icon,
   **Mute my microphone** (status bar, Ctrl+M, `sluice ctl mic-mute`), a third **Recording** mix, games from Lutris,
@@ -70,7 +72,7 @@ Themes, a tidier menu bar, and clearer answers about dropouts and voice level. (
 
 ## Status: please read
 
-Version 0.9.2, a beta. The mixing engine, effects, routing, PulseAudio control and UI are covered by more than 570 automated
+Version 0.9.3, a beta. The mixing engine, effects, routing, PulseAudio control and UI are covered by more than 600 automated
 tests, and the interface has been run and screenshotted. On CachyOS (PipeWire, Elgato Wave XLR Pro) these have been
 confirmed by hand: the microphone, **Sluice (Mic)** and **Sluice (Broadcast)** in OBS, Hear Broadcast, the faders,
 Steam game detection and routing (Counter-Strike 2 through Proton), starting from the applications menu, installing from
@@ -89,7 +91,7 @@ and other musl-based systems (the Python audio packages have no wheels for them)
 Open the [latest release](https://github.com/Matt-B-007/Sluice/releases) and download the zip named **`sluice-vX.Y.Z.zip`** from the *Assets* list (not the green *Code* button, and not the *Source code* links, which unpack into a differently named folder). Or `git clone` the repository. Then:
 
 ```bash
-unzip sluice-v0.9.2.zip && cd sluice
+unzip sluice-v0.9.3.zip && cd sluice
 ./install.sh              # shows the package command for your distribution and asks before running it
 ./install.sh --dry-run    # only shows what it would do
 ```
@@ -282,8 +284,10 @@ Settings are saved automatically a few seconds after every change and when you q
 
 ## Themes
 
-*Settings > Theme* lists **Dark** (the default), **Light**, **High contrast**, **Retro Purple** and **Match my system**
-(follows your desktop's light or dark setting while Sluice runs). A check mark shows the one in use. The level
+*Settings > Theme* lists **Dark** (the default), **Light**, **High contrast**, **Retro Purple**, **Midnight Blue**,
+**Amber Console**, **Paper** and **Match my system** (follows your desktop's light or dark setting while Sluice runs).
+**Get more themes...** opens the [`themes/`](themes/) folder of this project: 30 ready-made themes with previews.
+Download one and use *Import theme*. A check mark shows the one in use. The level
 meters' green-to-red colours, the Mute red and the Limiter teal are the same in every theme so they always mean the same thing.
 
 **Import theme** reads a JSON file that only contains colours, and **Export current theme** writes one to start from:
@@ -301,7 +305,8 @@ Imported themes live in `~/.config/sluice/themes/` (*Open theme folder*); *Remov
 A dropout (an "xrun") means the audio was late once. Any program can cause one, not only Sluice. After three or more,
 the status bar says whether Sluice's own processing was close to the time it has ("mostly Sluice") or not ("mostly
 elsewhere"). To see who is responsible, run `pw-top` in a terminal while it happens, or raise *Settings > Audio buffer*
-to Large (1024 frames). *Save bug report* includes the PipeWire buffer settings and a `pw-top` snapshot.
+to Large (1024 frames). *Save bug report* includes the PipeWire buffer settings and a `pw-top` snapshot that lists the
+programs with dropouts first, plus the CPU and USB details that often explain a USB audio interface that drops out.
 
 ## OBS levels
 
@@ -348,13 +353,15 @@ you will still hear it. To silence an app in the mix instead, keep it on its cha
 | File | Contents |
 |---|---|
 | `~/.local/state/sluice/sluice.log` | startup, devices found, connections made, apps moved, warnings and errors. Rotates at 512 KB and keeps 3 old copies. |
-| `~/.local/state/sluice/crash.log` | a Python traceback if Sluice itself crashes natively, for example inside a VST3 plugin |
+| `~/.local/state/sluice/crash.log` | a Python traceback if Sluice itself crashes natively, for example inside a VST3 plugin. Each run adds a dated line, so a trace belongs to the session above it. |
+| `~/.local/state/sluice/running` | exists while Sluice runs; if it is still there at the next start, the last run did not end normally and Sluice logs a warning |
 
 Normal runs log the important events. `sluice --debug` also logs every connection and command, and prints them in
 the terminal: use it when something does not connect. Nothing is ever logged from the audio thread.
 
 **To report a bug:** use **Help > Save bug report...** in the window, or run `sluice --report`. The file has the
-self-check results, versions, Sluice's devices and connections, your settings and the last 300 log lines. It
+self-check results, versions, Sluice's devices and connections, your settings, CPU and USB details, and this
+session's log (with the end of the one before it). It
 contains device names, app names and plugin paths, so look it over before sharing. Please also say what you did,
 what you expected, and what happened (silence, crackling, the wrong output...). If a plugin crashed it, send
 `crash.log` too. **Help > Open log folder** opens the folder.
@@ -621,7 +628,7 @@ integration, a release workflow and issue templates.
 
 ```bash
 pip install -e ".[dev]"
-pytest                                                    # more than 570 tests, no audio server needed
+pytest                                                    # more than 600 tests, no audio server needed
 QT_QPA_PLATFORM=offscreen sluice --demo --screenshot out.png
 ```
 

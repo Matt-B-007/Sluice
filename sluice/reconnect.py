@@ -37,13 +37,25 @@ def server_is_back() -> bool:
     return True
 
 
-def restart_command() -> list:
-    """The command line that started this process (python, then the script or ``-m sluice`` and its arguments)."""
+def restart_command(show_window: bool = False) -> list:
+    """The command line that started this process (python, then the script or ``-m sluice`` and its arguments).
+
+    ``show_window`` leaves out ``--minimized``: someone who just pressed a button is looking at the screen and expects
+    the window back, even when Sluice was first started minimized at login."""
     argv = list(getattr(sys, "orig_argv", [])) or [sys.executable] + sys.argv
-    return [sys.executable] + argv[1:]
+    command = [sys.executable] + argv[1:]
+    if show_window:
+        command = [part for part in command if part != "--minimized"]
+    return command
 
 
-def restart_self() -> None:  # pragma: no cover - replaces the process
-    command = restart_command()
+def restart_self(show_window: bool = False) -> None:  # pragma: no cover - replaces the process
+    command = restart_command(show_window)
     log.info("restarting: %s", command)
+    try:
+        from . import logs
+
+        logs.mark_clean_exit()  # the process id stays the same, so the next start must not mistake this for a crash
+    except Exception:
+        pass
     os.execv(command[0], command)

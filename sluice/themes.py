@@ -88,6 +88,45 @@ PURPLE = {
     "limiter": "#2ee6d6", "linked": "#a58fd0", "on_color": "#0a0518",
 }
 
+MIDNIGHT = {
+    "bg": "#0b1220", "panel": "#121c31", "mix": "#0e1728", "border": "#2a3c60", "border_soft": "#1f2e4b",
+    "text": "#d6e0f2", "text_dim": "#8ea0bf", "text_faint": "#8ea0bf", "text_off": "#505e78", "title": "#eff3fa",
+    "strong": "#e6ecf7", "input": "#070c15", "well": "#05080e", "chip": "#222c40", "button": "#263044",
+    "button_text": "#bdcae0", "button_border": "#495a7a", "hover": "#4aa3ff", "line": "#2a3c60", "accent": "#4aa3ff",
+    "select": "#1f4a85", "select_soft": "#17345d", "select_text": "#ffffff", "popup": "#0d1626", "dialog": "#0f182a",
+    "fill": "#2c6a8f", "handle": "#eaf0f8", "handle_edge": "#8ea0bf", "handle_hover": "#ffffff", "applied": "#1f4a85",
+    "scroll_track": "#0f182a", "scroll_hover": "#515b6f", "scroll_press": "#747e92", "row_hover": "#1c263b",
+    "list_text": "#d6e0f2", "check_text": "#c8d3e8", "link": "#6fb3ff", "code": "#e6c07b", "ok": "#8fd19e",
+    "alarm": "#b3262c", "warn": "#e0a030", "error": "#ef5258", "muted": "#6f7887", "mute": "#ef5258",
+    "limiter": "#35d0c0", "linked": "#8ea0bf", "on_color": "#0e1014",
+}
+
+AMBER = {
+    "bg": "#14100b", "panel": "#1f1912", "mix": "#1a140e", "border": "#4a3a24", "border_soft": "#372b1c",
+    "text": "#f0dcb4", "text_dim": "#b39a6e", "text_faint": "#b39a6e", "text_off": "#695a40", "title": "#f9f1e1",
+    "strong": "#f6ead2", "input": "#0d0a07", "well": "#090705", "chip": "#30291f", "button": "#342c22",
+    "button_text": "#dbc59c", "button_border": "#68573e", "hover": "#ffb000", "line": "#4a3a24", "accent": "#ffb000",
+    "select": "#6a4a10", "select_soft": "#48330e", "select_text": "#fff3d6", "popup": "#18130d", "dialog": "#1b150f",
+    "fill": "#2f6b4f", "handle": "#ffe9bd", "handle_edge": "#b39a6e", "handle_hover": "#ffffff", "applied": "#6a4a10",
+    "scroll_track": "#1b150f", "scroll_hover": "#625746", "scroll_press": "#887a63", "row_hover": "#29231a",
+    "list_text": "#f0dcb4", "check_text": "#e4cfa6", "link": "#ffc94d", "code": "#ffd980", "ok": "#8fd19e",
+    "alarm": "#b3262c", "warn": "#e0a030", "error": "#ef5258", "muted": "#6f7887", "mute": "#ef5258",
+    "limiter": "#35d0c0", "linked": "#b39a6e", "on_color": "#0e1014",
+}
+
+PAPER = {
+    "bg": "#f1ece2", "panel": "#fbf8f2", "mix": "#f6f2ea", "border": "#cfc6b4", "border_soft": "#e3dcd0",
+    "text": "#2b2620", "text_dim": "#665e50", "text_faint": "#665e50", "text_off": "#b0aba1", "title": "#110f0d",
+    "strong": "#1a1713", "input": "#fdfcf9", "well": "#d4d0c7", "chip": "#eae7e1", "button": "#e6e3dd",
+    "button_text": "#403a31", "button_border": "#b1a999", "hover": "#857b68", "line": "#cfc6b4", "accent": "#b4532a",
+    "select": "#f0d3c2", "select_soft": "#f0ddcf", "select_text": "#101418", "popup": "#fbf8f2", "dialog": "#f7f3ec",
+    "fill": "#46a97b", "handle": "#ffffff", "handle_edge": "#665e50", "handle_hover": "#f0f4fa", "applied": "#f0d3c2",
+    "scroll_track": "#f7f3ec", "scroll_hover": "#b8b5af", "scroll_press": "#938f89", "row_hover": "#f1eee8",
+    "list_text": "#2b2620", "check_text": "#37312a", "link": "#9a3f1a", "code": "#8a5a00", "ok": "#237a43",
+    "alarm": "#c62828", "warn": "#8a5a00", "error": "#c62828", "muted": "#7a8493", "mute": "#e0414a",
+    "limiter": "#1fb3a3", "linked": "#9a917c", "on_color": "#0e1014",
+}
+
 
 @dataclass(frozen=True)
 class Theme:
@@ -102,6 +141,9 @@ BUILT_IN: dict = {
     "light": Theme("light", "Light", "light", LIGHT),
     "contrast": Theme("contrast", "High contrast", "dark", CONTRAST),
     "purple": Theme("purple", "Retro Purple", "dark", PURPLE),
+    "midnight": Theme("midnight", "Midnight Blue", "dark", MIDNIGHT),
+    "amber": Theme("amber", "Amber Console", "dark", AMBER),
+    "paper": Theme("paper", "Paper", "light", PAPER),
 }
 DEFAULT = "dark"
 SYSTEM_LABEL = "Match my system"
@@ -347,8 +389,16 @@ def themes_dir(config_file) -> Optional[Path]:
     return None if config_file is None else Path(config_file).parent / "themes"
 
 
-def custom_themes(folder: Optional[Path]) -> list:
-    """The imported themes in the folder, by name. A file that cannot be used is skipped."""
+def _is_built_in_copy(theme: Theme) -> bool:
+    """A file with a built-in theme's name and exactly its colours (a theme renamed or changed by the person is their own)."""
+    return any(theme.name == built.name and theme.colors == built.colors for built in BUILT_IN.values())
+
+
+def custom_themes(folder: Optional[Path], hide_duplicates: bool = True) -> list:
+    """The imported themes in the folder, by name. A file that cannot be used is skipped.
+
+    A file that is an exact copy of a built-in theme (for example Midnight Blue from the first theme pack, which is
+    built in now) is left out of the menu so the theme is not listed twice; ``resolve`` and ``canonical_id`` still know it."""
     if folder is None or not Path(folder).is_dir():
         return []
     found = []
@@ -360,6 +410,8 @@ def custom_themes(folder: Optional[Path]) -> list:
         try:
             theme, _notes = load_file(path)
         except ThemeError:
+            continue
+        if hide_duplicates and _is_built_in_copy(theme):
             continue
         found.append(Theme(CUSTOM_PREFIX + path.stem, theme.name, theme.base, theme.colors))
     return sorted(found, key=lambda t: t.name.lower())
@@ -391,6 +443,17 @@ def export_dict(theme: Theme) -> dict:
     return {"name": theme.name, "base": theme.base, "colors": {k: theme.colors[k] for k in TOKEN_NAMES}}
 
 
+def canonical_id(theme_id: str, folder: Optional[Path] = None) -> str:
+    """The id to show as chosen: an imported file with a built-in theme's exact colours counts as that built-in theme."""
+    if isinstance(theme_id, str) and theme_id.startswith(CUSTOM_PREFIX):
+        for theme in custom_themes(folder, hide_duplicates=False):
+            if theme.id == theme_id:
+                for built in BUILT_IN.values():
+                    if built.name == theme.name and built.colors == theme.colors:
+                        return built.id
+    return theme_id
+
+
 def resolve(theme_id: str, system_dark: bool = True, folder: Optional[Path] = None) -> Theme:
     """The theme to show for a saved choice. Anything unknown or damaged is the default dark theme."""
     if theme_id == SYSTEM:
@@ -398,7 +461,7 @@ def resolve(theme_id: str, system_dark: bool = True, folder: Optional[Path] = No
     if theme_id in BUILT_IN:
         return BUILT_IN[theme_id]
     if isinstance(theme_id, str) and theme_id.startswith(CUSTOM_PREFIX):
-        for theme in custom_themes(folder):
+        for theme in custom_themes(folder, hide_duplicates=False):
             if theme.id == theme_id:
                 return theme
     return BUILT_IN[DEFAULT]

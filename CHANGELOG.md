@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.9.3
+A clearer bug report, a way to tell when a session ended badly, and more themes.
+- **Update and restart buttons bring the window back.** After *Update now*, *Go back to the previous version*, or a
+  setting that needs a restart, Sluice reopens with its window showing, even if it was first started minimized at login.
+  (When PipeWire itself restarts, Sluice still comes back the way it started.)
+- **Sluice notices when the last session did not end normally** (a crash, being stopped, or a power cut) and logs a
+  warning with the time it was last seen running. It keeps a small `running` file in `~/.local/state/sluice/` for this,
+  touched every few seconds and removed on a normal exit. Commands such as `sluice --report` or `--diagnose` never touch
+  it, and they no longer start a new part of the log or the crash file.
+- **Bug report improvements.** The log section now starts at the current session and ends with the last lines of the
+  session before it (a crash happens at the end of a session), with long runs of near-identical lines collapsed to the
+  first, a count, and the last (slow blocks are kept). The crash log says when it was last written and which session
+  each trace belongs to. New sections list the CPU, its frequency setting, USB power saving and the USB device tree
+  (no device names), and the `pw-top` section starts with the programs that show dropouts, most first.
+- **Three more built-in themes:** Midnight Blue, Amber Console and Paper. **Settings > Theme > Get more themes...** opens
+  a collection of 30 theme files on the project page (`themes/`), each with a preview. Importing a file that is an
+  exact copy of a built-in theme just shows the built-in one.
+- **No personal details in the About window or the bug report.** Your home folder is shown as `~`, and the saved bug
+  report replaces your user name, computer name, user id, USB serial numbers and Bluetooth addresses with placeholders
+  (device names, app names and plugin paths stay, since they help find bugs). Messages that name a saved file do the same.
+
 ## 0.9.2
 Themes, a tidier menu bar, and clearer answers about dropouts and voice level.
 - **Themes.** *Settings > Theme*: Dark (the default, same look as before), Light, High contrast, Retro Purple, and

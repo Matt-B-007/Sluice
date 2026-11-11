@@ -187,7 +187,7 @@ def test_report_contains_every_section_and_survives_missing_tools(state):
     logging.getLogger("sluice.test").info("marker line for the report")
     Mixer.demo().save()
     text = report.build_report()
-    for heading in ("sluice", "Self-check", "PipeWire", "pactl info", "sluice ports and links", "Settings", "Log, last", "Native crash log"):
+    for heading in ("sluice", "Self-check", "PipeWire", "pactl info", "sluice ports and links", "Settings", "Computer (CPU and USB", "Log: this session", "Native crash log"):
         assert f"===== {heading}" in text, heading
     assert "marker line for the report" in text  # the log tail
     assert '"channels"' in text  # the saved settings

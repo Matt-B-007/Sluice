@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sluice"
-version = "0.9.2"
+version = "0.9.3"
 description = "An open-source virtual audio mixer for PipeWire on Linux: channels, per-output mixes and VST3 effects"
 readme = "README.md"
 requires-python = ">=3.10"

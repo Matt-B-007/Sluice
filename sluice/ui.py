@@ -59,6 +59,7 @@ MIX_NAMES = {MONITOR: "Listen: what you hear", STREAM: "Broadcast: what your aud
 DISCORD_URL = "https://discord.gg/awDvJ5Vj2S"
 PROJECT_URL = "https://github.com/Matt-B-007/Sluice"
 ISSUES_URL = PROJECT_URL + "/issues"
+THEMES_URL = PROJECT_URL + "/tree/main/themes"
 
 
 def channel_width(mix_count: int) -> int:
@@ -1150,7 +1151,7 @@ class MainWindow(QMainWindow):
         menu = self.theme_menu
         menu.clear()
         group = QActionGroup(menu)
-        chosen = self.engine.mixer.theme
+        chosen = themes.canonical_id(self.engine.mixer.theme, self._themes_folder())
 
         def add(theme_id: str, text: str, tip: str = "") -> None:
             action = menu.addAction(text)
@@ -1169,7 +1170,7 @@ class MainWindow(QMainWindow):
             menu.addSeparator()
             for theme in custom:
                 add(theme.id, theme.name)
-        if chosen.startswith(themes.CUSTOM_PREFIX) and not any(t.id == chosen for t in custom):
+        if chosen.startswith(themes.CUSTOM_PREFIX) and not any(t.id == chosen for t in custom):  # not in the folder any more
             menu.addSeparator()
             missing = menu.addAction("An imported theme that is no longer in the themes folder (showing Dark)")
             missing.setCheckable(True)
@@ -1183,6 +1184,9 @@ class MainWindow(QMainWindow):
             for theme in custom:
                 remove.addAction(theme.name, partial(self.remove_theme, theme.id))
         menu.addAction("Open theme &folder", self.open_theme_folder)
+        menu.addSeparator()
+        more = menu.addAction("&Get more themes\u2026", partial(self.open_link, THEMES_URL))
+        more.setToolTip("Opens the theme collection on the project page in your browser: download a file, then Import theme")
         menu.setToolTipsVisible(True)
 
     def choose_theme(self, theme_id: str) -> None:
@@ -1225,7 +1229,7 @@ class MainWindow(QMainWindow):
         name = theme.name if theme.id.startswith(themes.CUSTOM_PREFIX) else f"{theme.name} copy"
         data = themes.export_dict(themes.Theme(theme.id, name, theme.base, theme.colors))
         Path(path).write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-        self.say(f"Theme saved to {path}. Edit the colours, then use Settings > Theme > Import theme.")
+        self.say(f"Theme saved to {logs.short_path(path)}. Edit the colours, then use Settings > Theme > Import theme.")
 
     def export_theme(self) -> None:
         path, _ = QFileDialog.getSaveFileName(self, "Export current theme", str(Path.home() / "sluice-theme.json"),
@@ -1271,7 +1275,7 @@ class MainWindow(QMainWindow):
         from . import reconnect
 
         self.shutdown()  # saves the settings
-        reconnect.restart_self()
+        reconnect.restart_self(show_window=True)
 
     def toggle_mic_mute(self) -> None:
         self.engine.set_mic_muted(not self.engine.mic_muted)  # from the real state, like the other toggles
@@ -1368,7 +1372,7 @@ class MainWindow(QMainWindow):
 
     def export_settings_to(self, path) -> None:
         self.engine.save_config(Path(path))
-        self.say(f"Settings exported to {path}.")
+        self.say(f"Settings exported to {logs.short_path(path)}.")
 
     def export_settings(self) -> None:
         path, _ = QFileDialog.getSaveFileName(self, "Export settings", str(Path.home() / "sluice-settings.json"),
@@ -1680,6 +1684,7 @@ class MainWindow(QMainWindow):
     def _tick_engine(self) -> None:
         if self.engine.server_lost and not self._reconnecting and not self._closed:
             self._begin_reconnect()
+        logs.heartbeat()
         changed = self.engine.tick()
         if "devices" in changed:
             self.repopulate_devices()
@@ -1708,7 +1713,7 @@ class MainWindow(QMainWindow):
             self, "About Sluice",
             f"<b>Sluice {__version__}</b><br>An open-source virtual audio mixer for PipeWire.<br><br>"
             f"License: GPL-3.0-or-later<br>Python {platform.python_version()}, PySide6 {pyside_version}<br>"
-            f"Log: {logs.log_path()}<br><br>"
+            f"Log: {logs.short_path(logs.log_path())}<br><br>"
             f'<a href="{PROJECT_URL}">Project page</a> &nbsp;·&nbsp; <a href="{DISCORD_URL}">Join the Discord</a> '
             f'&nbsp;·&nbsp; <a href="{ISSUES_URL}">Report a problem</a>',
         )
@@ -1788,7 +1793,7 @@ class MainWindow(QMainWindow):
 
         self.shutdown()  # saves the settings, stops the audio
         selfupdate.apply_staged_quietly()
-        reconnect.restart_self()
+        reconnect.restart_self(show_window=True)
 
     def _refresh_update_menu(self) -> None:
         previous = selfupdate.previous_version(selfupdate.install_root())
@@ -1872,7 +1877,7 @@ class MainWindow(QMainWindow):
             log.warning("rollback failed: %s", exc)
         from . import reconnect
 
-        reconnect.restart_self()
+        reconnect.restart_self(show_window=True)
 
     # -------------------------------------------------------------- what's new
     def show_notes(self, title: str, heading: str, markdown: str, main_label: str = "", main_url: str = "",
@@ -1926,7 +1931,7 @@ class MainWindow(QMainWindow):
 
     def save_report_to(self, path) -> None:
         written = report.write_report(Path(path))
-        self.status_label.setText(f"Bug report saved to {written}. Look it over before sharing it.")
+        self.status_label.setText(f"Bug report saved to {logs.short_path(written)}. Your user name and computer name are replaced; look it over before sharing it.")
 
     def save_report(self) -> None:
         path, _ = QFileDialog.getSaveFileName(

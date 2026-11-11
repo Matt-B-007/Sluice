@@ -143,7 +143,7 @@ def test_restarting_into_an_update_saves_installs_and_restarts_in_that_order(mak
     monkeypatch.setattr(selfupdate, "apply_staged_quietly", lambda: order.append("install"))
     from sluice import reconnect
 
-    monkeypatch.setattr(reconnect, "restart_self", lambda: order.append("restart"))
+    monkeypatch.setattr(reconnect, "restart_self", lambda show_window=False: order.append("restart"))
     win.restart_into_update()
     assert order == ["shutdown", "install", "restart"]
 
@@ -225,7 +225,7 @@ def test_going_back_asks_then_restores_and_restarts(make, monkeypatch, tmp_path)
     monkeypatch.setattr(win, "shutdown", lambda: order.append("shutdown"))
     from sluice import reconnect
 
-    monkeypatch.setattr(reconnect, "restart_self", lambda: order.append("restart"))
+    monkeypatch.setattr(reconnect, "restart_self", lambda show_window=False: order.append("restart"))
     clicked = {"which": "cancel"}
 
     def fake_exec(self):
