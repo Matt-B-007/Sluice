@@ -202,105 +202,134 @@ def open_effects(win, engine, channel="mic"):
     return EffectsDialog(engine, engine.mixer.channel(channel), win)
 
 
-def preset_action(dialog, name):
-    menu = dialog.presets_button.menu()
-    menu.aboutToShow.emit()
-    return next(a for a in menu.actions() if a.text() == name)
+def choice(dialog, axis, name):
+    return dialog._choice_buttons[(axis, name)]
 
 
-def test_the_presets_button_names_the_preset_in_use(two):
+def ticked(dialog, axis):
+    return [n for (a, n), b in dialog._choice_buttons.items() if a == axis and b.isChecked()]
+
+
+def test_a_new_install_shows_room_normal_and_voice_natural_ticked(two):
     win, engine, _ = two
     dialog = open_effects(win, engine)
-    assert dialog.presets_button.text() == "Presets: Noisy, echoing room ▾"
-    assert "In use: Noisy, echoing room (the default)" in dialog.presets_button.toolTip()
-    checked = [a.text() for a in dialog.presets_button.menu().actions() if a.isCheckable() and a.isChecked()]
-    dialog.presets_button.menu().aboutToShow.emit()
-    checked = [a.text() for a in dialog.presets_button.menu().actions() if a.isCheckable() and a.isChecked()]
-    assert checked == ["Noisy, echoing room (the default)"]
+    assert ticked(dialog, "room") == ["Normal"] and ticked(dialog, "style") == ["Natural"]
+    assert choice(dialog, "room", "Normal").text() == "\u2713 Normal"
+    assert choice(dialog, "style", "Natural").text() == "\u2713 Natural"
+    assert not dialog._axis_reset["room"].isVisibleTo(dialog)
 
 
-def test_picking_a_preset_changes_the_button_shows_what_was_set_and_jumps_to_the_reducer(two):
+def test_picking_a_room_changes_it_says_what_was_set_and_jumps_to_the_reducer(two):
     win, engine, _ = two
     dialog = open_effects(win, engine)
-    dialog.list.setCurrentRow(0)  # somewhere else: the High-pass page
-    preset_action(dialog, "Light touch").trigger()
-    assert dialog.presets_button.text() == "Presets: Light touch ▾"
+    dialog.list.setCurrentRow(0)
+    choice(dialog, "room", "Noisy").click()
+    assert ticked(dialog, "room") == ["Noisy"] and ticked(dialog, "style") == ["Natural"]
     assert dialog.preset_feedback.isVisibleTo(dialog)
-    assert "Applied “Light touch”: Echo Reducer 5 dB, 0.4 s; Noise Reducer 6 dB." == dialog.preset_feedback.text()
+    assert dialog.preset_feedback.text() == "Room: Noisy. Echo Reducer 12 dB, 0.8 s; Noise Reducer 18 dB."
     assert dialog.preset_feedback.text() in win.status_label.text()
-    assert dialog.title.text() == "Echo Reducer"  # it jumped to the page where the change can be seen
-    assert dialog._rows["reduction_db"].value == 5 and dialog._rows["reverb_time"].value == pytest.approx(0.4)
-    mic = engine.mixer.channel("mic")
-    assert next(e for e in mic.effects if e.type == "noise_reducer").params["reduction_db"] == 6
+    assert dialog.title.text() == "Echo Reducer"
+    assert dialog._rows["reduction_db"].value == 12 and dialog._rows["reverb_time"].value == pytest.approx(0.8)
 
 
-def test_moving_a_slider_afterwards_makes_it_custom(two):
+def test_a_tiny_nudge_shows_changed_and_reset_puts_it_back(two):
     win, engine, _ = two
     dialog = open_effects(win, engine)
-    preset_action(dialog, "Light touch").trigger()
-    dialog._rows["reduction_db"].set_value(7.0)
-    assert dialog.presets_button.text() == "Presets: Custom ▾"
-    assert "match none" in dialog.presets_button.toolTip()
-    preset_action(dialog, "Light touch").trigger()
-    assert dialog.presets_button.text() == "Presets: Light touch ▾"
+    choice(dialog, "room", "Noisy").click()
+    dialog._rows["reduction_db"].set_value(12.01)
+    assert dialog._axis_status["room"].text() == "Noisy (changed)"
+    assert dialog._axis_reset["room"].isVisibleTo(dialog)
+    assert choice(dialog, "room", "Noisy").text() == "Noisy"  # no check mark any more
+    dialog._axis_reset["room"].click()
+    assert dialog._axis_status["room"].text() == "" and choice(dialog, "room", "Noisy").text() == "\u2713 Noisy"
 
 
-def test_bypassing_a_reducer_updates_the_button_too(two):
+def test_bypassing_a_reducer_updates_the_choices_too(two):
     win, engine, _ = two
     dialog = open_effects(win, engine)
     names = [e.type for e in engine.mixer.channel("mic").effects]
-    item = dialog.list.item(names.index("echo_reducer"))
     from PySide6.QtCore import Qt
 
-    item.setCheckState(Qt.CheckState.Unchecked)
-    assert dialog.presets_button.text() == "Presets: Custom ▾"
+    dialog.list.item(names.index("echo_reducer")).setCheckState(Qt.CheckState.Unchecked)
+    assert dialog._axis_status["room"].text().endswith("(changed)")
 
 
-def test_a_preset_on_a_channel_without_the_effects_says_so_instead_of_silently_doing_nothing(two):
+def test_a_choice_on_a_channel_without_the_effects_adds_them(two):
     win, engine, _ = two
     dialog = open_effects(win, engine, "music")  # no effects at all
-    assert dialog.presets_button.text() == "Presets: none yet ▾"
-    preset_action(dialog, "Light touch").trigger()
-    text = dialog.preset_feedback.text()
-    assert "changed nothing" in text and "Echo Reducer 5 dB" in text and "Add" in text
-    assert text in win.status_label.text()
-    assert dialog.presets_button.text() == "Presets: none yet ▾"
+    assert dialog._axis_status["room"].text() == "not on this channel yet"
+    choice(dialog, "style", "Broadcast").click()
+    assert [e.type for e in engine.mixer.channel("music").effects] == ["highpass", "eq", "compressor", "limiter"]
+    assert ticked(dialog, "style") == ["Broadcast"]
 
 
-def test_a_long_preset_name_is_shortened_on_the_button_and_given_in_full_on_hover(two):
-    win, engine, _ = two
-    dialog = open_effects(win, engine)
-    long_name = "My very long preset name for the room next door"
-    presets.save_user(dialog._presets_file(), {long_name: presets.snapshot(engine.mixer.channel("mic").effects)})
-    dialog._user_presets(reload=True)
-    dialog._update_presets_button()
-    text = dialog.presets_button.text()
-    assert text.startswith("Presets: My very long") and "…" in text and text.endswith("▾")
-    assert long_name in dialog.presets_button.toolTip()
-    assert dialog.presets_button.fontMetrics().horizontalAdvance(text) < 230
-
-
-def test_your_own_preset_is_the_one_named_when_it_matches(two):
+def test_your_own_preset_is_ticked_when_it_matches_and_keeps_the_gate_threshold(two):
     win, engine, _ = two
     dialog = open_effects(win, engine)
     presets.save_user(dialog._presets_file(), {"Mine": presets.snapshot(engine.mixer.channel("mic").effects)})
+    dialog._update_presets_button()
     dialog._user_presets(reload=True)
     dialog._update_presets_button()
-    assert dialog.presets_button.text() == "Presets: Mine ▾"
+    assert dialog.mine_button.text().startswith("\u2713 Mine")
 
 
-def test_saving_and_deleting_a_preset_keeps_the_button_right(two, monkeypatch):
+def test_saving_is_always_possible_even_after_a_tiny_change_and_deleting_works(two, monkeypatch):
     from PySide6.QtWidgets import QInputDialog
 
     win, engine, _ = two
     dialog = open_effects(win, engine)
-    preset_action(dialog, "Very noisy or echoing room").trigger()
+    dialog._rows or dialog.list.setCurrentRow(0)
+    effect = next(e for e in engine.mixer.channel("mic").effects if e.type == "compressor")
+    engine.set_effect_param(effect.id, "ratio", 2.51)
+    dialog._update_presets_button()
+    menu = dialog.mine_button.menu()
+    menu.aboutToShow.emit()
+    save = next(a for a in menu.actions() if a.text().startswith("Save as my preset"))
+    assert save.isEnabled()
     monkeypatch.setattr(QInputDialog, "getText", staticmethod(lambda *a, **k: ("Mine", True)))
     dialog._save_preset()
-    assert dialog.presets_button.text() == "Presets: Mine ▾"  # saved on purpose, so it is the one named
+    assert dialog.mine_button.text().startswith("\u2713 Mine")
+    stored = presets.load_user(dialog._presets_file())["Mine"]
+    assert next(e for e in stored if e["type"] == "compressor")["params"]["ratio"] == 2.51
     dialog._delete_preset("Mine")
     assert "Mine" not in presets.load_user(dialog._presets_file())
-    assert dialog.presets_button.text().startswith("Presets: Very noisy")  # the built-in one with the same values again
+    assert dialog.mine_button.text() == "My presets \u25be"
+
+
+def test_hear_my_original_microphone_switches_the_chain_off_and_closing_restores_it(two):
+    win, engine, _ = two
+    dialog = open_effects(win, engine)
+    dialog.compare_button.click()
+    assert engine.chain_compare("mic") and dialog.compare_button.text() == "Back to my effects"
+    dialog.done(0)
+    assert not engine.chain_compare("mic")
+
+
+def test_the_quiet_microphone_prompt_appears_only_after_watching_for_a_while(two, monkeypatch):
+    win, engine, io = two
+    dialog = open_effects(win, engine)
+    monkeypatch.setattr(engine, "channel_input_peak_db", lambda cid: -32.0)
+    dialog._check_level()
+    assert not dialog.level_prompt.isVisibleTo(dialog)
+    dialog._speech_started -= 10.0
+    dialog._check_level()
+    assert dialog.level_prompt.isVisibleTo(dialog) and dialog.level_button.isVisibleTo(dialog)
+    loud = open_effects(win, engine)
+    monkeypatch.setattr(engine, "channel_input_peak_db", lambda cid: -17.0)
+    loud._check_level()
+    loud._speech_started -= 10.0
+    loud._check_level()
+    assert not loud.level_prompt.isVisibleTo(loud)
+
+
+def test_the_measure_my_room_tip_is_shown_once_and_measuring_picks_the_room(two):
+    win, engine, _ = two
+    first = open_effects(win, engine)
+    assert first.room_hint.isVisibleTo(first) and "measure_room" in engine.mixer.hints_seen
+    second = open_effects(win, engine)
+    assert not second.room_hint.isVisibleTo(second)
+    second._room_measured(room.RoomResult("ok", -40.0, -42.0, ""))
+    assert ticked(second, "room") == ["Noisy"]
 
 
 # ------------------------------------------------------------------- the Compressor hint
@@ -322,7 +351,7 @@ def compressor_page(win, engine):
 def test_the_compressor_says_when_it_has_nothing_to_do(two):
     win, engine, io = two
     dialog = compressor_page(win, engine)
-    feed(io, engine, 0.05)  # a quiet voice: about -26 dB, above the gate but far below the compressor
+    feed(io, engine, 0.03)  # a quiet voice: about -30 dB, above the gate but below the Compressor (starts near -25 dB)
     dialog._update_activity()
     assert "Not doing anything" in dialog.activity_label.text() and "Threshold" in dialog.activity_label.text()
 
@@ -349,11 +378,11 @@ def test_the_compressor_hint_waits_for_sound_and_stops_when_the_page_changes(two
 def test_the_hint_follows_the_threshold_slider(two):
     win, engine, io = two
     dialog = compressor_page(win, engine)
-    feed(io, engine, 0.05)  # about -26 dB
+    feed(io, engine, 0.03)  # about -30 dB
     dialog._update_activity()
     assert "Not doing anything" in dialog.activity_label.text()
-    dialog._rows["threshold_db"].set_value(-40.0)
-    feed(io, engine, 0.05, blocks=5)
+    dialog._rows["threshold_db"].set_value(-45.0)
+    feed(io, engine, 0.03, blocks=5)
     dialog._update_activity()
     assert dialog.activity_label.text().startswith("Working")
 
@@ -579,6 +608,8 @@ def test_the_discord_link_is_the_same_everywhere():
 def test_the_dropout_label_reads_well_and_explains_itself(two):
     win, engine, io = two
     engine._quiet_until = 0.0
+    from sluice import events
+    events.clear()    # starting the engine just now changed links: that is not what this test is about
     io.xruns, io.xruns_ours = 1, 0
     win._tick_engine()
     assert win.perf_label.text().endswith("1 dropout")
@@ -594,3 +625,20 @@ def test_the_dropout_label_keeps_its_tooltip_while_the_number_does_not_change(tw
     tip = win.perf_label.toolTip()
     win._tick_engine()
     assert win.perf_label.toolTip() == tip and "dropout" in tip
+
+
+# ------------------------------------------------------------------- the larger buffer offer
+def test_a_larger_buffer_is_offered_after_three_dropouts_and_taken_with_one_click(two):
+    win, engine, io = two
+    assert engine.larger_buffer_offer() is None
+    win._update_buffer_offer()
+    assert not win.buffer_offer.isVisibleTo(win)
+    engine._xrun_base = engine.io.xruns - 3
+    engine.mixer.buffer_frames = engine.io.blocksize
+    bigger = engine.larger_buffer_offer()
+    assert bigger is not None and bigger > engine.io.blocksize
+    win._update_buffer_offer()
+    assert win.buffer_offer.text() == f"Try a larger buffer ({bigger})"
+    win.buffer_offer.click()
+    assert engine.mixer.buffer_frames == bigger
+    assert not win.buffer_offer.isVisibleTo(win)  # the choice waits for the next start: no second offer

@@ -295,7 +295,8 @@ def test_help_menu_saves_a_bug_report(ui, tmp_path, monkeypatch):
 
     assert [a.text().replace("&", "") for a in help_menu.actions() if a.text()] == [
         "Keyboard shortcuts", "What's new in this version\u2026", "Check for updates\u2026",
-        "Go back to the previous version\u2026", "Save bug report\u2026", "Open log folder", "Report a problem\u2026",
+        "Go back to the previous version\u2026", "Save bug report\u2026", "I heard a glitch (mark this moment)",
+        "Open folder", "Report a problem\u2026",
         "Join the Discord\u2026", "Project page on GitHub\u2026", f"About Sluice {__version__}"]
     target = tmp_path / "report.txt"
     win.save_report_to(target)
@@ -521,7 +522,7 @@ def test_menu_bar_has_the_usual_menus_in_the_usual_order(ui):
     names = [a.text().replace("&", "") for a in win.menuBar().actions()]
     assert names == ["File", "Mixer", "Settings", "View", "Help"]
     assert _texts(_menu(win, "File")) == ["Save settings", "Export settings…", "Import settings…",
-                                          "Restore earlier settings", "Open settings folder", "Quit"]
+                                          "Restore earlier settings", "Quit"]
     assert _texts(_menu(win, "Mixer"))[:4] == ["Add channel…", "Refresh devices and apps", "Recording devices for OBS…",
                                                "Third mix: Recording…"]
     assert "Hear Broadcast" in _texts(_menu(win, "Mixer")) and "Mute my microphone" in _texts(_menu(win, "Mixer"))
@@ -947,7 +948,7 @@ def test_effects_window_explains_the_reducers_and_can_compare_them(ui):
     assert "16 ms" in labels and "Room echo time" in labels
     buttons = {b.text(): b for b in dialog.params_area.widget().findChildren(QPushButton)}
     assert "Measure my room's echo…" in buttons
-    assert not dialog.new_hint.isVisibleTo(dialog)  # this channel already has them
+    assert dialog._axis_status["room"].text() == ""  # this channel already has them
     buttons["Compare: switch both reducers off / on"].click()
     assert all(e.bypass for e in mic.effects if e.type in ("echo_reducer", "noise_reducer"))
     dialog.list.setCurrentRow(names.index("echo_reducer"))
@@ -980,7 +981,7 @@ def test_an_older_voice_chain_is_told_about_the_new_effects(ui):
     for effect in [e for e in mic.effects if e.type in ("echo_reducer", "noise_reducer")]:
         engine.remove_effect("mic", effect.id)
     dialog = EffectsDialog(engine, mic, win)
-    assert dialog.new_hint.isVisibleTo(dialog)
+    assert dialog._axis_status["room"].text() == "not on this channel yet"
     dialog.close()
 
 
@@ -993,16 +994,13 @@ def test_presets_apply_from_the_effects_window_and_can_be_saved(ui, monkeypatch,
     win, _, engine = ui
     mic = engine.mixer.channel("mic")
     dialog = EffectsDialog(engine, mic, win)
-    dialog._build_presets_menu()
-    menu = dialog.presets_button.menu()
-    assert "Light touch" in [a.text() for a in menu.actions()]
-    next(a for a in menu.actions() if a.text() == "Light touch").trigger()
-    assert next(e for e in mic.effects if e.type == "noise_reducer").params["reduction_db"] == 6
+    dialog._choice_buttons[("room", "Noisy")].click()
+    assert next(e for e in mic.effects if e.type == "noise_reducer").params["reduction_db"] == 18
     monkeypatch.setattr(QInputDialog, "getText", staticmethod(lambda *a, **k: ("My room", True)))
     dialog._save_preset()
     assert "My room" in presets.load_user(tmp_path / "presets.json")
-    dialog._build_presets_menu()
-    assert "My room" in [a.text() for a in dialog.presets_button.menu().actions()]
+    dialog._build_mine_menu()
+    assert "My room" in [a.text() for a in dialog.mine_button.menu().actions()]
     dialog._delete_preset("My room")
     assert presets.load_user(tmp_path / "presets.json") == {}
     dialog.close()

@@ -978,6 +978,12 @@ class MainWindow(QMainWindow):
         self.perf_label.setObjectName("status")
         self.perf_label.setToolTip(self.engine.dropout_tooltip())
         self.statusBar().addPermanentWidget(self.perf_label)
+        self.buffer_offer = QPushButton("")
+        self.buffer_offer.setFlat(True)
+        self.buffer_offer.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.buffer_offer.clicked.connect(self.accept_buffer_offer)
+        self.buffer_offer.hide()
+        self.statusBar().addPermanentWidget(self.buffer_offer)
         version = QLabel(f"v{__version__}")
         version.setObjectName("status")
         version.setToolTip("The Sluice version you are running. Please include it in bug reports.")
@@ -1023,7 +1029,6 @@ class MainWindow(QMainWindow):
         self._action(file_menu, "&Import settings\u2026", self.import_settings)
         self.restore_menu = file_menu.addMenu("&Restore earlier settings")
         self.restore_menu.aboutToShow.connect(self._fill_restore_menu)
-        self._action(file_menu, "Open settings &folder", self.open_settings_folder)
         file_menu.addSeparator()
         self._action(file_menu, "&Quit", self.quit_app, QKeySequence.StandardKey.Quit)
 
@@ -1095,7 +1100,11 @@ class MainWindow(QMainWindow):
         self.help_menu.aboutToShow.connect(self._refresh_update_menu)
         self.help_menu.addSeparator()
         self.help_menu.addAction("Save bug report\u2026", self.save_report)
-        self.help_menu.addAction("Open log folder", self.open_log_folder)
+        self._action(self.help_menu, "I heard a &glitch (mark this moment)", self.mark_glitch, "Ctrl+Shift+G")
+        folders = self.help_menu.addMenu("Open &folder")
+        folders.addAction("&Settings", self.open_settings_folder)
+        folders.addAction("&Logs", self.open_log_folder)
+        folders.addAction("&Themes", self.open_theme_folder)
         self.help_menu.addAction("Report a problem\u2026", partial(self.open_link, ISSUES_URL))
         self.help_menu.addSeparator()
         self.help_menu.addAction("Join the Discord\u2026", partial(self.open_link, DISCORD_URL))
@@ -1183,7 +1192,6 @@ class MainWindow(QMainWindow):
             remove = menu.addMenu("&Remove an imported theme")
             for theme in custom:
                 remove.addAction(theme.name, partial(self.remove_theme, theme.id))
-        menu.addAction("Open theme &folder", self.open_theme_folder)
         menu.addSeparator()
         more = menu.addAction("&Get more themes\u2026", partial(self.open_link, THEMES_URL))
         more.setToolTip("Opens the theme collection on the project page in your browser: download a file, then Import theme")
@@ -1334,6 +1342,7 @@ class MainWindow(QMainWindow):
     def show_shortcuts(self) -> None:
         rows = [("Ctrl+S", "Save settings"), ("Ctrl+N", "Add a channel"), ("Ctrl+B", "Hear Broadcast on or off"),
                 ("Ctrl+Shift+L", "Mute or unmute Listen"), ("Ctrl+Shift+B", "Mute or unmute Broadcast"),
+                ("Ctrl+Shift+G", "Mark a glitch you just heard"),
                 ("F5", "Refresh devices and apps"), ("F11", "Full screen"), ("F1", "This list"), ("Ctrl+Q", "Quit")]
         table = "".join(f"<tr><td><b>{key}</b>&nbsp;&nbsp;&nbsp;</td><td>{what}</td></tr>" for key, what in rows)
         QMessageBox.information(self, "Keyboard shortcuts", f"<table>{table}</table><br>"
@@ -1699,6 +1708,23 @@ class MainWindow(QMainWindow):
         if text != self.perf_label.text():  # the tooltip explains the number, so it only changes when the number does
             self.perf_label.setText(text)
             self.perf_label.setToolTip(self.engine.dropout_tooltip())
+        self._update_buffer_offer()
+
+    def _update_buffer_offer(self) -> None:
+        bigger = self.engine.larger_buffer_offer()
+        self.buffer_offer.setVisible(bigger is not None)
+        if bigger is not None:
+            self.buffer_offer.setText(f"Try a larger buffer ({bigger})")
+            self.buffer_offer.setToolTip(f"Dropouts keep coming. This saves {bigger} frames as the audio buffer (now "
+                                         f"{self.engine.io.blocksize}); it is used the next time Sluice starts. "
+                                         "More room for slow moments, a little more delay.")
+
+    def accept_buffer_offer(self) -> None:
+        bigger = self.engine.larger_buffer_offer()
+        if bigger is not None:
+            self.set_buffer(bigger)
+            self._refresh_buffer_menu()
+        self._update_buffer_offer()
 
     # ------------------------------------------------------------------- help
     def say(self, text: str) -> None:
@@ -1942,6 +1968,9 @@ class MainWindow(QMainWindow):
                 self.save_report_to(path)
             except OSError as exc:
                 QMessageBox.warning(self, "Could not save the report", str(exc))
+
+    def mark_glitch(self) -> None:
+        self.say(self.engine.mark_glitch())
 
     def open_log_folder(self) -> None:
         folder = logs.state_dir()

@@ -305,7 +305,29 @@ class PulseSystem(AudioSystem):
         return removed
 
     # ----------------------------------------------------------------- streams
+    def _reconnect(self) -> None:
+        """Open a fresh connection to the audio server (the old one is dropped without waiting for it)."""
+        import pulsectl
+
+        old, self._pulse = self._pulse, pulsectl.Pulse("sluice")
+        self.__dict__.pop("_sink_names", None)
+        try:
+            old.close()
+        except Exception:
+            pass
+        log.warning("reconnected to the PulseAudio protocol after the connection to the audio server broke")
+
     def list_streams(self) -> list:
+        """Apps playing sound. A broken connection (the audio server restarted, a call failed half way) is replaced by a new
+        one and the question asked once more, instead of failing every half second until Sluice is restarted."""
+        try:
+            return self._list_streams_once()
+        except Exception as first:
+            log.warning("listing the playing apps failed (%s: %s); reconnecting", type(first).__name__, first)
+            self._reconnect()  # if the server really is gone this raises, and the caller's usual handling takes over
+            return self._list_streams_once()
+
+    def _list_streams_once(self) -> list:
         items = self._pulse.sink_input_list()
         # Sink names only change when devices come and go, so the list is reused; it is asked for again
         # only when a stream sits on a sink this program has not seen yet (one query instead of two, twice a second).

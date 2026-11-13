@@ -7,6 +7,8 @@ import time
 import numpy as np
 import pytest
 
+import json
+
 from sluice import presets, report, room
 from sluice.audio_io import SLOW_BLOCK, AudioIO, JackIO, NullIO
 from sluice.backend import MockSystem
@@ -281,59 +283,87 @@ def chain(*specs):
     return [Effect(new_effect_id(), "builtin", t, type=t, bypass=b, params=dict(p)) for t, b, p in specs]
 
 
-def test_the_default_voice_chain_is_the_default_preset():
-    mixer = Mixer.default()
-    assert presets.active_name(mixer.channel("mic").effects) == "Noisy, echoing room (the default)"
+def test_a_fresh_install_starts_on_room_normal_and_voice_natural():
+    effects = Mixer.default().channel("mic").effects
+    assert presets.axis_state(effects, "room") == ("Normal", False)
+    assert presets.axis_state(effects, "style") == ("Natural", False)
+    assert presets.matches(effects, presets.ROOMS["Normal"][1] + presets.STYLES["Natural"][1])
 
 
-def test_every_built_in_preset_is_recognised_after_it_is_applied(rig):
+def test_every_choice_is_recognised_after_it_is_applied(rig):
     _, engine = rig
-    for name, (_description, entries) in presets.BUILT_IN.items():
-        presets.apply(engine, "mic", entries)
-        assert presets.active_name(engine.mixer.channel("mic").effects) == name
+    for axis, table in presets.AXES.items():
+        for name, (_description, entries) in table.items():
+            presets.apply(engine, "mic", entries)
+            assert presets.axis_state(engine.mixer.channel("mic").effects, axis) == (name, False)
 
 
-def test_changing_one_value_means_no_preset_matches_any_more(rig):
+def test_a_nudge_of_one_hundredth_shows_as_changed_and_reset_undoes_it(rig):
     _, engine = rig
-    presets.apply(engine, "mic", presets.BUILT_IN["Light touch"][1])
+    presets.apply(engine, "mic", presets.ROOMS["Noisy"][1])
     echo = next(e for e in engine.mixer.channel("mic").effects if e.type == "echo_reducer")
-    engine.set_effect_param(echo.id, "reduction_db", 7.0)
-    assert presets.active_name(engine.mixer.channel("mic").effects) is None
+    engine.set_effect_param(echo.id, "reverb_time", 0.81)
+    assert presets.axis_state(engine.mixer.channel("mic").effects, "room") == ("Noisy", True)
+    presets.reset_axis(engine, "mic", "room")
+    assert presets.axis_state(engine.mixer.channel("mic").effects, "room") == ("Noisy", False)
+
+
+def test_the_two_choices_never_touch_each_others_effects(rig):
+    _, engine = rig
+    types = lambda entries: {e["type"] for e in entries}
+    assert not types(sum((v[1] for v in presets.ROOMS.values()), [])) & types(sum((v[1] for v in presets.STYLES.values()), []))
+    comp = next(e for e in engine.mixer.channel("mic").effects if e.type == "compressor")
+    before = dict(comp.params)
+    presets.apply(engine, "mic", presets.ROOMS["Very noisy"][1])
+    assert comp.params == before
 
 
 def test_your_own_presets_are_recognised_too():
     effects = chain(("echo_reducer", False, {"reverb_time": 0.5, "reduction_db": 8}),
                     ("noise_reducer", False, {"reduction_db": 10}))
     mine = {"My room": presets.snapshot(effects)}
-    assert presets.active_name(effects, mine) == "My room"
-    assert presets.active_name(effects, {}) is None
+    assert presets.user_name(effects, mine) == "My room"
+    assert presets.user_name(effects, {}) is None
 
 
-def test_a_missing_effect_counts_as_off_but_only_for_presets_that_turn_it_off():
+def test_a_missing_effect_counts_as_off_but_only_for_choices_that_turn_it_off():
     only_eq = chain(("eq", False, {"mid_db": -2}))
-    assert presets.active_name(only_eq) == "Quiet room"  # the reducers are off in that preset: nothing to turn off
-    nothing = chain(("gain", False, {}))
-    assert presets.active_name(nothing) is None  # no effect of that preset is on the channel at all
-    assert presets.active_name([]) is None
+    assert presets.axis_state(only_eq, "room") == (None, False)  # the channel has no reducer at all
+    assert presets.axis_state([], "style") == (None, False)
+    assert presets.distance(chain(("noise_reducer", True, {})), presets.ROOMS["Quiet"][1]) == 0.0
 
 
 def test_values_never_changed_are_compared_by_their_defaults():
     echo = chain(("echo_reducer", False, {}))[0]  # no saved values: the defaults are 0.6 s and 9 dB
     assert presets.current_value(echo, "reverb_time") == 0.6
-    assert presets.matches([echo, *chain(("noise_reducer", False, {}))], presets.BUILT_IN["Noisy, echoing room (the default)"][1])
+    assert presets.matches([echo, *chain(("noise_reducer", False, {}))], presets.ROOMS["Normal"][1])
     assert presets.current_value(echo, "no_such_key") is None
 
 
-def test_the_noise_gate_threshold_never_decides_which_preset_is_in_use():
+def test_the_noise_gate_threshold_is_ignored_by_the_ready_made_choices_but_kept_by_your_own():
     entries = [{"type": "noise_gate", "bypass": False, "params": {"threshold_db": -30.0, "ratio": 4.0}}]
     gate = chain(("noise_gate", False, {"threshold_db": -55.0, "ratio": 4.0}))
     assert presets.matches(gate, entries)
+    assert not presets.matches(gate, entries, personal=True)
 
 
 def test_the_message_after_applying_names_what_was_set():
-    assert presets.summary(presets.BUILT_IN["Light touch"][1]) == "Echo Reducer 5 dB, 0.4 s; Noise Reducer 6 dB"
-    assert presets.summary(presets.BUILT_IN["Quiet room"][1]) == "Echo Reducer off; Noise Reducer off; EQ"
-    assert presets.short_name("Noisy, echoing room (the default)") == "Noisy, echoing room"
+    assert presets.summary(presets.ROOMS["Normal"][1]) == "Echo Reducer 9 dB, 0.6 s; Noise Reducer 12 dB"
+    assert presets.summary(presets.ROOMS["Quiet"][1]) == "Echo Reducer off; Noise Reducer off"
+
+
+def test_measure_my_room_picks_the_matching_room():
+    assert [presets.room_for_noise(db) for db in (-70, -55, -45, -30)] == ["Quiet", "Normal", "Noisy", "Very noisy"]
+
+
+def test_before_after_bypasses_the_whole_chain_without_saving_it(rig):
+    _, engine = rig
+    engine.set_chain_compare("mic", True)
+    assert engine.chain_compare("mic")
+    assert not any(e.bypass for e in engine.mixer.channel("mic").effects if e.type == "compressor")
+    assert "chain_compare" not in json.dumps(engine.mixer.to_dict())
+    engine.set_chain_compare("mic", False)
+    assert not engine.chain_compare("mic")
 
 
 # ------------------------------------------------------------------- the bug report

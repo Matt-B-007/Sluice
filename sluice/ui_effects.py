@@ -2,16 +2,18 @@
 """Effects dialog: a channel's effect chain, built-in effects and VST3 plugins."""
 from __future__ import annotations
 
+import time
 from functools import partial
 from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import QTimer, Qt
-from PySide6.QtGui import QColor, QFontMetrics
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
     QFileDialog,
+    QGridLayout,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -27,7 +29,7 @@ from PySide6.QtWidgets import (
 
 from .effects import BUILTINS, ParamInfo, builtin_names, scan_vst3, vst3_plugin_names, vst3_search_paths
 from . import logs, presets, themes
-from .model import MIN_DB, VOICE_CHAIN, Effect, new_effect_id
+from .model import MIN_DB, Effect, new_effect_id
 from .ui_room import MeasureEchoDialog, MeasureRoomDialog, MeasureVoiceDialog
 from .ui_widgets import ReadoutEdit, ResetSlider
 
@@ -110,15 +112,21 @@ class ParamRow(QWidget):
         self._on_change(info.key, value)
 
 
+LEVEL_WATCH_SECONDS = 6.0  # how long the microphone is watched before it is called quiet
+LOW_PEAK_DB = -26.0  # speech whose loudest moments stay below this is quiet (a normal voice peaks near -17 dB)
+
+
 class EffectsDialog(QDialog):
     def __init__(self, engine, channel, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.engine, self.channel = engine, channel
         self._compressor: Optional[Effect] = None  # set while the Compressor's page is shown (it gets a live hint)
-        self._user_cache: Optional[dict] = None  # the saved presets, read once (the button is refreshed on every slider move)
+        self._user_cache: Optional[dict] = None  # the saved presets, read once (the choices are refreshed on every slider move)
+        self._speech_peak = None  # the loudest microphone peak seen while this window is open
+        self._speech_started = None
         self._rows: dict = {}  # parameter key -> its ParamRow, for the effect being shown
         self.setWindowTitle(f"Effects — {channel.label}")
-        self.resize(720, 460)
+        self.resize(760, 720)
 
         outer = QHBoxLayout(self)
 
@@ -129,6 +137,7 @@ class EffectsDialog(QDialog):
         left.addWidget(hint)
         self.list = QListWidget()
         self.list.setMinimumWidth(220)
+        self.list.setMinimumHeight(170)
         left.addWidget(self.list, 1)
         buttons = QHBoxLayout()
         self.add_button = QPushButton("Add ▾")
@@ -144,23 +153,72 @@ class EffectsDialog(QDialog):
             buttons.addWidget(button)
         left.addLayout(buttons)
         self.up, self.down = up, down
-        preset = QPushButton("Use the recommended voice chain")
-        preset.setToolTip("High-pass, noise gate, EQ, compressor and limiter, in that order, with starting values that suit a speaking voice.")
-        preset.clicked.connect(self._apply_voice_chain)
-        left.addWidget(preset)
-        self.presets_button = QPushButton("Presets ▾")
-        self.presets_button.setMenu(QMenu(self.presets_button))
-        self.presets_button.menu().aboutToShow.connect(self._build_presets_menu)
-        left.addWidget(self.presets_button)
+        self.sound_box = QWidget()
+        sound = QVBoxLayout(self.sound_box)
+        sound.setContentsMargins(0, 4, 0, 0)
+        self._choice_buttons: dict = {}  # (axis, name) -> its button
+        self._axis_status: dict = {}
+        self._axis_reset: dict = {}
+        for axis, title in (("room", "Room"), ("style", "Voice style")):
+            head = QHBoxLayout()
+            heading = QLabel(title)
+            heading.setObjectName("title")
+            head.addWidget(heading)
+            status = QLabel("")
+            status.setObjectName("hint")
+            head.addWidget(status, 1)
+            reset = QPushButton("Reset")
+            reset.setFlat(True)
+            reset.setToolTip("Put every setting of this choice back to exactly what the name says.")
+            reset.clicked.connect(partial(self._reset_axis, axis))
+            reset.hide()
+            head.addWidget(reset)
+            sound.addLayout(head)
+            grid = QGridLayout()
+            grid.setSpacing(4)
+            for i, (name, (description, _entries)) in enumerate(presets.AXES[axis].items()):
+                button = QPushButton(name)
+                button.setCheckable(True)
+                button.setStyleSheet(f"QPushButton:checked {{ border: 2px solid {themes.color('accent')}; font-weight: bold; color: {themes.color('text')}; }}")
+                button.setToolTip(description)
+                button.clicked.connect(partial(self._choose, axis, name))
+                grid.addWidget(button, i // 2, i % 2)
+                self._choice_buttons[(axis, name)] = button
+            sound.addLayout(grid)
+            self._axis_status[axis], self._axis_reset[axis] = status, reset
+        self.mine_button = QPushButton("My presets ▾")
+        self.mine_button.setMenu(QMenu(self.mine_button))
+        self.mine_button.menu().aboutToShow.connect(self._build_mine_menu)
+        self.mine_button.setToolTip("Your own saved settings (they also keep the gate threshold and gain). "
+                                    "Save as my preset works from any state, even after a tiny change.")
+        sound.addWidget(self.mine_button)
+        self.compare_button = QPushButton("Hear my original microphone")
+        self.compare_button.setCheckable(True)
+        self.compare_button.setToolTip("Switches the whole effect chain off so you can compare with and without. "
+                                       "Not saved: it ends when you untick it or close Sluice.")
+        self.compare_button.toggled.connect(self._compare_chain)
+        sound.addWidget(self.compare_button)
         self.preset_feedback = QLabel("")
         self.preset_feedback.setObjectName("feedback")
         self.preset_feedback.setWordWrap(True)
         self.preset_feedback.hide()
-        left.addWidget(self.preset_feedback)
-        self.new_hint = QLabel("New: Echo Reducer and Noise Reducer. Use Add, or the button above, to put them on this channel.")
-        self.new_hint.setWordWrap(True)
-        self.new_hint.setObjectName("hint")
-        left.addWidget(self.new_hint)
+        sound.addWidget(self.preset_feedback)
+        self.level_prompt = QLabel("Your microphone sounds quiet. Quiet speech gives the Compressor nothing to do.")
+        self.level_prompt.setWordWrap(True)
+        self.level_prompt.setStyleSheet(f"color: {themes.color('warn')};")
+        self.level_button = QPushButton("Check my voice level…")
+        self.level_button.clicked.connect(self._measure_voice)
+        self.level_prompt.hide()
+        self.level_button.hide()
+        sound.addWidget(self.level_prompt)
+        sound.addWidget(self.level_button, 0, Qt.AlignmentFlag.AlignLeft)
+        self.room_hint = QLabel("Tip: open the Noise Gate and press Measure my room. Sluice listens and picks the Room "
+                                "choice that fits.")
+        self.room_hint.setWordWrap(True)
+        self.room_hint.setObjectName("hint")
+        self.room_hint.hide()
+        sound.addWidget(self.room_hint)
+        left.addWidget(self.sound_box)
         outer.addLayout(left)
 
         right = QVBoxLayout()
@@ -192,6 +250,12 @@ class EffectsDialog(QDialog):
         self.list.currentRowChanged.connect(self._show_params)
         self.list.itemChanged.connect(self._on_item_changed)
         self._reload(select=0)
+        self._level_timer = QTimer(self)
+        self._level_timer.setInterval(500)
+        self._level_timer.timeout.connect(self._check_level)
+        self._level_timer.start()
+        self.finished.connect(self._level_timer.stop)
+        self._show_room_hint()
         for button in self.findChildren(QPushButton):  # Enter must only finish a typed value, never press a button
             button.setAutoDefault(False)
             button.setDefault(False)
@@ -219,8 +283,6 @@ class EffectsDialog(QDialog):
                 item.setForeground(QColor(themes.color("muted")))
             self.list.addItem(item)
         self.list.blockSignals(False)
-        types = {e.type for e in self.channel.effects if e.kind == "builtin"}
-        self.new_hint.setVisible(bool(types & {"highpass", "noise_gate"}) and not types & {"echo_reducer", "noise_reducer"})
         if self.channel.effects:
             row = 0 if select is None else max(0, min(select, len(self.channel.effects) - 1))
             self.list.setCurrentRow(row)
@@ -240,64 +302,83 @@ class EffectsDialog(QDialog):
         self._update_presets_button()  # a moved slider may mean the settings no longer match the preset
 
     def _update_presets_button(self) -> None:
-        """The button names the preset in use ("Presets: Light touch"), or says "Custom" once something differs."""
-        builtin = [e for e in self.channel.effects if e.kind == "builtin"]
-        name = presets.active_name(self.channel.effects, self._user_presets()) if builtin else None
-        shown = presets.short_name(name) if name else ("Custom" if builtin else "none yet")
-        text = QFontMetrics(self.presets_button.font()).elidedText(f"Presets: {shown}", Qt.TextElideMode.ElideRight, 196)
-        self.presets_button.setText(text + " ▾")
-        self.presets_button.setToolTip(
-            (f"In use: {name}.\n" if name else "The settings match none of the presets.\n" if builtin else "")
-            + "Ready-made settings for different rooms, and your own. They never change the gate threshold.")
+        """Tick the Room and Voice style choices that match, and say "(changed)" with a Reset once a value was nudged."""
+        effects = self.channel.effects
+        user_match = presets.user_name(effects, self._user_presets())
+        for axis in presets.AXES:
+            name, changed = presets.axis_state(effects, axis)
+            for (a, n), button in self._choice_buttons.items():
+                if a != axis:
+                    continue
+                on = n == name
+                button.setChecked(on)
+                button.setText(("\u2713 " if on and not changed else "") + n)
+            status = self._axis_status[axis]
+            if name is None:
+                status.setText("not on this channel yet")
+            elif changed:
+                status.setText(f"{name} (changed)")
+            else:
+                status.setText("")
+            self._axis_reset[axis].setVisible(name is not None and changed)
+        self.mine_button.setText(f"\u2713 {user_match} \u25be" if user_match else "My presets \u25be")
+        self.compare_button.setChecked(self.engine.chain_compare(self.channel.id))
 
-    def _build_presets_menu(self) -> None:
-        menu = self.presets_button.menu()
-        menu.clear()
-        user = self._user_presets(reload=True)
-        current = presets.active_name(self.channel.effects, user)
-        for name, (description, entries) in presets.BUILT_IN.items():
-            action = menu.addAction(name, partial(self._apply_preset, entries, name))
-            action.setToolTip(description)
-            action.setCheckable(True)
-            action.setChecked(name == current)
-        if user:
-            menu.addSeparator()
-            for name, entries in user.items():
-                action = menu.addAction(name, partial(self._apply_preset, entries, name))
-                action.setCheckable(True)
-                action.setChecked(name == current)
-        menu.addSeparator()
-        save = menu.addAction("Save these settings as a preset…", self._save_preset)
-        save.setEnabled(self._presets_file() is not None)
-        if user:
-            remove = menu.addMenu("Delete a preset of mine")
-            for name in user:
-                remove.addAction(name, partial(self._delete_preset, name))
-        menu.setToolTipsVisible(True)
+    def _choose(self, axis: str, name: str) -> None:
+        entries = presets.AXES[axis][name][1]
+        presets.apply(self.engine, self.channel.id, entries)
+        target = next((i for i, e in enumerate(self.channel.effects) if e.kind == "builtin"
+                       and any(x["type"] == e.type for x in entries)), None)
+        self._reload(select=target if target is not None else max(0, self.list.currentRow()))
+        self._tell(f"{'Room' if axis == 'room' else 'Voice style'}: {name}. {presets.summary(entries)}.")
 
-    def _apply_preset(self, entries: list, name: str = "") -> None:
-        changed = presets.apply(self.engine, self.channel.id, entries)
-        if changed:
-            # Show the result: jump to a reducer page (that is where most presets change something you can see)
-            target = next((i for i, e in enumerate(self.channel.effects)
-                           if e.kind == "builtin" and e.type in ("echo_reducer", "noise_reducer")
-                           and any(x["type"] == e.type for x in entries)), None)
-            self._reload(select=target if target is not None else max(0, self.list.currentRow()))
-            message = f"Applied \u201c{presets.short_name(name)}\u201d: {presets.summary(entries)}." if name else \
-                f"Preset applied: {presets.summary(entries)}."
-        else:
-            self._reload(select=max(0, self.list.currentRow()))
-            message = (f"\u201c{presets.short_name(name)}\u201d changed nothing: this channel has none of the effects it sets "
-                       f"({presets.summary(entries)}). Use Add to put them on the channel, or the recommended voice chain, "
-                       "then pick the preset again.")
+    def _reset_axis(self, axis: str) -> None:
+        presets.reset_axis(self.engine, self.channel.id, axis)
+        self._reload(select=max(0, self.list.currentRow()))
+        name, _changed = presets.axis_state(self.channel.effects, axis)
+        self._tell(f"{name} is back to its own settings.")
+
+    def _tell(self, message: str) -> None:
         self.preset_feedback.setText(message)
         self.preset_feedback.show()
         say = getattr(self.parent(), "say", None)
         if say is not None:
             say(message)
 
+    def _compare_chain(self, original: bool) -> None:
+        self.engine.set_chain_compare(self.channel.id, original)
+        self.compare_button.setText("Back to my effects" if original else "Hear my original microphone")
+
+    def done(self, result) -> None:  # the before/after switch never outlives the window
+        if self.engine.chain_compare(self.channel.id):
+            self.engine.set_chain_compare(self.channel.id, False)
+        super().done(result)
+
+    def _build_mine_menu(self) -> None:
+        menu = self.mine_button.menu()
+        menu.clear()
+        user = self._user_presets(reload=True)
+        current = presets.user_name(self.channel.effects, user)
+        for name, entries in user.items():
+            action = menu.addAction(name, partial(self._apply_mine, entries, name))
+            action.setCheckable(True)
+            action.setChecked(name == current)
+        if user:
+            menu.addSeparator()
+        save = menu.addAction("Save as my preset\u2026", self._save_preset)
+        save.setEnabled(self._presets_file() is not None)
+        if user:
+            remove = menu.addMenu("Delete a preset of mine")
+            for name in user:
+                remove.addAction(name, partial(self._delete_preset, name))
+
+    def _apply_mine(self, entries: list, name: str) -> None:
+        presets.apply(self.engine, self.channel.id, entries, personal=True)
+        self._reload(select=max(0, self.list.currentRow()))
+        self._tell(f"Applied your preset \u201c{name}\u201d.")
+
     def _save_preset(self) -> None:
-        name, ok = QInputDialog.getText(self, "Save preset", "Name for this preset:")
+        name, ok = QInputDialog.getText(self, "Save as my preset", "Name for this preset:")
         name = name.strip()
         if not ok or not name:
             return
@@ -308,6 +389,7 @@ class EffectsDialog(QDialog):
             QMessageBox.warning(self, "Save preset", "The preset could not be saved (is the settings folder writable?).")
         self._user_presets(reload=True)
         self._update_presets_button()
+        self._tell(f"Saved \u201c{name}\u201d, with the gate threshold and gain too.")
 
     def _delete_preset(self, name: str) -> None:
         path = self._presets_file()
@@ -317,15 +399,30 @@ class EffectsDialog(QDialog):
         self._user_presets(reload=True)
         self._update_presets_button()
 
-    def _apply_voice_chain(self) -> None:
-        if any(e.kind == "builtin" and e.type in VOICE_CHAIN for e in self.channel.effects):
-            ask = QMessageBox.question(self, "Recommended voice chain",
-                                       "This replaces the built-in effects on this channel (not VST3 plugins) with the "
-                                       "recommended chain at its default values. Continue?")
-            if ask != QMessageBox.StandardButton.Yes:
-                return
-        self.engine.apply_voice_chain(self.channel.id)
-        self._reload(select=0)
+    # ---------------------------------------------------------- level and one-time tips
+    def _check_level(self) -> None:
+        """Offer the voice level check when the microphone itself is quiet (judged from what it sent while this window was open)."""
+        if not self.channel.devices:
+            return
+        peak = self.engine.channel_input_peak_db(self.channel.id)
+        if peak is None or peak <= -50.0:
+            return
+        now = time.monotonic()
+        if self._speech_started is None:
+            self._speech_started = now
+        self._speech_peak = peak if self._speech_peak is None else max(self._speech_peak, peak)
+        if now - self._speech_started >= LEVEL_WATCH_SECONDS:
+            low = self._speech_peak < LOW_PEAK_DB
+            self.level_prompt.setVisible(low)
+            self.level_button.setVisible(low)
+
+    def _show_room_hint(self) -> None:
+        mixer = self.engine.mixer
+        if "measure_room" in mixer.hints_seen or not self.channel.devices:
+            return
+        if any(e.type == "noise_gate" for e in self.channel.effects):
+            self.room_hint.show()
+            mixer.hints_seen.append("measure_room")  # shown once
 
     def _current_effect(self) -> Optional[Effect]:
         row = self.list.currentRow()
@@ -517,7 +614,18 @@ class EffectsDialog(QDialog):
         if row is None:
             return
         dialog = MeasureRoomDialog(self.engine, self.channel, effect.id, row.value, row.set_value, self)
+        dialog.on_applied = self._room_measured
         dialog.exec()
+
+    def _room_measured(self, result) -> None:
+        """After Measure my room: pick the Room choice that matches how loud the room turned out to be."""
+        if "measure_room" not in self.engine.mixer.hints_seen:
+            self.engine.mixer.hints_seen.append("measure_room")
+        self.room_hint.hide()
+        name = presets.room_for_noise(result.noise_db)
+        presets.apply(self.engine, self.channel.id, presets.ROOMS[name][1])
+        self._reload(select=max(0, self.list.currentRow()))
+        self._tell(f"Room: {name}, chosen to match what Sluice heard (about {result.noise_db:.0f} dB of background noise).")
 
     def _open_editor(self) -> None:
         effect = self._current_effect()

@@ -116,8 +116,8 @@ def test_top_errors_names_the_programs_with_dropouts_most_first():
 
 
 def test_top_errors_says_so_when_nothing_has_dropouts():
-    assert report.top_errors(PW_TOP.replace("31", "0").replace("27", "0")) == "No program shows dropouts in this snapshot."
-    assert "No program" in report.top_errors("")
+    assert report.top_errors(PW_TOP.replace("31", "0").replace("27", "0")) == "No audio program or device shows dropouts in this snapshot."
+    assert "No audio program" in report.top_errors("")
 
 
 def test_the_hardware_summary_never_fails_and_has_the_headings():

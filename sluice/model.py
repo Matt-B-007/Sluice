@@ -221,6 +221,7 @@ class Mixer:
         self.channels = channels
         self.mixes = mixes
         self.vst3_folders: list = []  # extra places to look for VST3 plugins, added by the user
+        self.hints_seen: list = []  # one-time tips already shown (they are only ever shown once)
         self.buffer_frames = DEFAULT_BUFFER  # used the next time Sluice starts
         self.auto_update = False  # download new releases in the background and install them when Sluice closes (off by default)
         self.theme = "dark"  # a theme id: dark, light, contrast, purple, system, or custom:<name> (an imported file)
@@ -262,7 +263,9 @@ class Mixer:
         chat.mutes[STREAM] = True  # voice chat is not sent to the audience, and cannot hear itself back
         mixer.add_channel("Music")
         mixer.add_channel("System")  # notification and other desktop sounds
-        mic.effects = voice_chain_effects(stable_ids=True)  # the recommended voice chain; every effect can be bypassed or removed
+        from .presets import factory_effects
+
+        mic.effects = factory_effects(stable_ids=True)  # Room Normal + Voice Natural; every effect can be bypassed or removed
         return mixer
 
     @classmethod
@@ -270,7 +273,9 @@ class Mixer:
         """A filled-in example layout for --demo and screenshots."""
         mixer = cls.default()
         mic = mixer.channel("mic")
-        mic.effects = voice_chain_effects()
+        from .presets import factory_effects
+
+        mic.effects = factory_effects()
         mixer.channel("game").effects = [Effect(new_effect_id(), "builtin", "Compressor", type="compressor")]
         mixer.assign_app("gamelauncher", "game")
         mixer.assign_app("spotify", "music")
@@ -370,6 +375,7 @@ class Mixer:
         return {
             "version": CONFIG_VERSION,
             "vst3_folders": list(self.vst3_folders),
+            "hints_seen": list(self.hints_seen),
             "buffer_frames": self.buffer_frames,
             "close_action": self.close_action,
             "auto_update": self.auto_update,
@@ -424,6 +430,9 @@ class Mixer:
         theme = data.get("theme")
         if isinstance(theme, str) and 0 < len(theme) <= 80:
             mixer.theme = theme  # an id that no longer exists simply shows the default theme
+        seen_hints = data.get("hints_seen")
+        if isinstance(seen_hints, list):
+            mixer.hints_seen = [h for h in seen_hints if isinstance(h, str)][:50]
         folders = data.get("vst3_folders")
         if isinstance(folders, list):
             mixer.vst3_folders = [f for f in folders if isinstance(f, str) and f][:50]

@@ -295,3 +295,34 @@ def test_the_sink_list_is_not_asked_for_again_on_every_look(system):
     system._pulse.inputs = [sink_input(12, 9, binary="firefox")]  # a stream on a sink not seen before: look again
     assert system.list_streams()[0].sink == "alsa_output.new"
     assert len(calls) == 2
+
+
+def test_a_broken_connection_is_replaced_and_listing_the_apps_works_again(monkeypatch):
+    monkeypatch.setattr(pulsectl, "Pulse", FakePulse)
+    system = PulseSystem(purge=False)
+    first = system._pulse
+    first.sink_inputs = [sink_input(5, 1, binary="firefox")]
+
+    def broken():
+        raise pulsectl.PulseError("connection terminated")
+
+    first.sink_input_list = broken
+    original = FakePulse.sink_input_list
+    monkeypatch.setattr(FakePulse, "sink_input_list", lambda self: [sink_input(5, 1, binary="firefox")])
+    streams = system.list_streams()
+    assert [s.key for s in streams] == ["firefox"]
+    assert system._pulse is not first and first.closed
+    monkeypatch.setattr(FakePulse, "sink_input_list", original)
+
+
+def test_if_the_server_is_really_gone_the_error_still_reaches_the_caller(monkeypatch):
+    monkeypatch.setattr(pulsectl, "Pulse", FakePulse)
+    system = PulseSystem(purge=False)
+
+    def broken():
+        raise pulsectl.PulseError("connection terminated")
+
+    system._pulse.sink_input_list = broken
+    monkeypatch.setattr(pulsectl, "Pulse", lambda name: (_ for _ in ()).throw(pulsectl.PulseError("no server")))
+    with pytest.raises(pulsectl.PulseError):
+        system.list_streams()

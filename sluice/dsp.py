@@ -102,6 +102,7 @@ class ChannelDsp:
         self.solo_applied = 0.0
         self.peak = 0.0
         self.recent = 0.0  # the peak after the effects, falling slowly (about 2 dB a second): "is anything loud enough?"
+        self.input_recent = 0.0  # the peak before the effects, falling slowly: how loud the microphone itself is
         self.asleep = False  # the chain was skipped for silence; it is woken when sound returns
         self.quiet_frames = 0  # how long the input has been digital silence (an idle app sends exact zeros)
         self.capture: Optional[Capture] = None  # set while "Measure my room" is listening
@@ -296,6 +297,8 @@ class Graph:
                 continue
             if audio is None:
                 audio = np.zeros((2, frames), dtype=np.float32)
+            if frames:
+                channel.input_recent = max(float(np.max(np.abs(audio))), channel.input_recent * RECENT_DECAY)
             if channel.board is not None:
                 if channel.asleep:
                     channel.asleep = False

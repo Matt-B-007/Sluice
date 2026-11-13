@@ -25,6 +25,7 @@ class MeasureRoomDialog(QDialog):
         self.engine, self.channel, self.gate_effect_id = engine, channel, gate_effect_id
         self.old_threshold, self._on_use = old_threshold, on_use
         self.result: Optional[room.RoomResult] = None
+        self.on_applied: Optional[Callable] = None  # called with the result after it was used (Measure my room picks a Room choice)
         self.listening = False
         self._started = 0.0
         self.setWindowTitle(self.TITLE.format(channel=channel.label))
@@ -129,6 +130,8 @@ class MeasureRoomDialog(QDialog):
         self._on_use(result.threshold_db)
         if getattr(result, "profile", None) is not None:
             self.engine.apply_noise_profile(self.channel.id, result.profile)
+        if self.on_applied is not None:
+            self.on_applied(result)
 
     def _fit(self) -> None:
         """The text changes length from step to step: make the window as tall as the words need."""

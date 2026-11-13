@@ -15,27 +15,25 @@ An open-source virtual audio mixer for Linux (PipeWire). Put your mic, games, mu
 > and use the Sluice support forum. Please do not post the `sluice --report` file there: it contains device and app
 > names, so offer it in a private ticket instead.
 
-## What's new in 0.9.3
+## What's new in 0.9.4
 
-A clearer bug report, a way to tell when a session ended badly, and more themes. (The full list for every version is in
-[CHANGELOG.md](CHANGELOG.md); Sluice also shows it once after an update, and under *Help > What's new in this version*.)
+Presets that make an audible difference, and a bug report that says what happened just before each dropout. (The full
+list for every version is in [CHANGELOG.md](CHANGELOG.md); Sluice also shows it once after an update, and under
+*Help > What's new in this version*.)
 
-- **After an update, the window comes back.** *Update now* and the other restarts you ask for reopen Sluice with its
-  window showing, even if it was started minimized at login.
-- **Sluice notices a session that did not end normally** and logs when it was last seen running.
-- **A better bug report**: this session's log first, the crash log dated and matched to its session, CPU and USB
-  details, and the programs with dropouts named at the top of the `pw-top` section.
-- **Private by default**: the About window shows `~` for your home folder, and the bug report replaces your user name,
-  computer name, serial numbers and Bluetooth addresses.
-- **More themes**: Midnight Blue, Amber Console and Paper are built in, and *Settings > Theme > Get more themes...*
-  opens a collection of 30 you can import.
-- Self-update (0.9.1) and everything from 0.9.2 (themes, the reorganised menus, dropout attribution, *Check my voice
-  level*) are unchanged.
-- Everything from before is still here: the **Echo Reducer** and **Noise Reducer** effects (with *Compare*, a live
-  readout and a clap-based *Measure my room's echo*), presets for the voice chain, the **system tray** icon,
-  **Mute my microphone** (status bar, Ctrl+M, `sluice ctl mic-mute`), a third **Recording** mix, games from Lutris,
-  Heroic/Epic and Bottles, and reconnecting by itself after PipeWire restarts. Press *Use the recommended voice chain*
-  on an existing Mic channel to add the two reducers. See *Effects*.
+- **Room and Voice style.** Two small choices replace the old preset list: *Room* (Quiet, Normal, Noisy, Very noisy)
+  and *Voice style* (Natural, Broadcast, Game chat, Recording). The matching one has a check mark, "(changed)" appears
+  when you nudge a value, and **Save as my preset** keeps your own. New installs start on Normal + Natural.
+- **Hear my original microphone** for a before/after listen; a prompt when the microphone is quiet; **Measure my room**
+  picks the matching Room choice.
+- **A bug report that explains dropouts**: what changed just before each one (a device plugged in, a call started, a USB
+  event), the computer's load, screen-capture streams and Sluice's own devices listed separately, and a *Help > I heard
+  a glitch* marker (Ctrl+Shift+G).
+- **Recovery and housekeeping**: a broken audio-server connection is replaced instead of failing until restart, a
+  one-click **Try a larger buffer** after repeated dropouts, a grouped *Help > Open folder* menu, Python 3.14 in the
+  tests, `SECURITY.md`, and signed build attestations for releases.
+- Everything from 0.9.3 and earlier is unchanged: self-update, themes, the Echo Reducer and Noise Reducer, the system
+  tray icon, **Mute my microphone**, the third **Recording** mix and reconnecting after PipeWire restarts.
 
 ## What it does
 
@@ -72,7 +70,7 @@ A clearer bug report, a way to tell when a session ended badly, and more themes.
 
 ## Status: please read
 
-Version 0.9.3, a beta. The mixing engine, effects, routing, PulseAudio control and UI are covered by more than 600 automated
+Version 0.9.4, a beta. The mixing engine, effects, routing, PulseAudio control and UI are covered by more than 600 automated
 tests, and the interface has been run and screenshotted. On CachyOS (PipeWire, Elgato Wave XLR Pro) these have been
 confirmed by hand: the microphone, **Sluice (Mic)** and **Sluice (Broadcast)** in OBS, Hear Broadcast, the faders,
 Steam game detection and routing (Counter-Strike 2 through Proton), starting from the applications menu, installing from
@@ -91,7 +89,7 @@ and other musl-based systems (the Python audio packages have no wheels for them)
 Open the [latest release](https://github.com/Matt-B-007/Sluice/releases) and download the zip named **`sluice-vX.Y.Z.zip`** from the *Assets* list (not the green *Code* button, and not the *Source code* links, which unpack into a differently named folder). Or `git clone` the repository. Then:
 
 ```bash
-unzip sluice-v0.9.3.zip && cd sluice
+unzip sluice-v0.9.4.zip && cd sluice
 ./install.sh              # shows the package command for your distribution and asks before running it
 ./install.sh --dry-run    # only shows what it would do
 ```
@@ -452,22 +450,28 @@ gate comes before or after the compressor), Sluice gates first so the compressor
 the gate sees it. In the simulated rooms a gentler compressor (2:1, no makeup) left the voice about 2 dB closer to the
 noise and a harder one (4:1) made no difference, so the compressor stays as it was; the EQ was set by ear for how a
 voice sounds in an echoing room, not measured. Every value can be changed, and every effect can be bypassed or removed.
-A new install puts this chain on the Mic channel. On any channel, *Effects > Use the recommended voice chain* puts it
-back at these values (it replaces the built-in effects there and keeps VST3 plugins). **Settings you already have are
-kept when you update**, so an existing install keeps its old values until you press that button. VST3 plugins can be
-moved up and down with the arrows and are never reordered.
+A new install puts this chain on the Mic channel, set to *Room: Normal* and *Voice style: Natural* (below). Settings
+you already have are kept when you update. VST3 plugins can be moved up and down with the arrows and are never reordered.
 
-**Presets, Compare and the readout.** *Presets* (in the Effects window) applies ready-made settings to the effects on
-the channel: *Noisy, echoing room* (the default), *Very noisy or echoing room* (more reduction and a longer echo time;
-in the simulated rooms it scored only about 0.1 to 0.2 dB better than the default, so try it by ear), *Light touch* and
-*Quiet room* (both reducers off). *Save these settings as a preset* keeps your own in `presets.json` beside your
-settings. Presets never change the gate threshold. On the reducers' pages, *Compare* switches both off and on again so
-you can hear what they do while you talk, and a line shows how much each is turning your voice's frequencies down right now.
-The two reducers are processed together in one pass when they are next to each other (they are), which is cheaper
-than two and gives the 16 ms of delay; in the test the combined pass scored about 0.2 dB lower than running them one after
-the other, which seemed a fair price.
+**Room and Voice style.** The left side of the Effects window has two rows of choices. *Room* is about the space around
+you and only sets the two reducers: **Quiet** (both off, no extra delay), **Normal** (the values above), **Noisy** (echo
+time 0.8 s, 12 dB and 18 dB) and **Very noisy** (1.0 s, 15 dB and 22 dB, with some risk of a thin voice). *Voice style*
+is about how you want to sound and only sets the High-pass, EQ, Compressor and Limiter: **Natural** (the starting
+choice: sounds like you, only tidier), **Broadcast** (warm, full and even), **Game chat** (clear and punchy, so
+teammates hear every word over the game) and **Recording** (close to the raw microphone, with room left to edit later).
+Each effect belongs to one row, so the two never fight, and neither sets the gate threshold or the Gain, because those
+depend on your microphone. The choice that matches has a check mark; if you move any value, even by 0.01, it says
+"(changed)" and shows **Reset**. Picking a choice adds any of its effects the channel does not have yet, in the usual
+order. The voice styles were tuned by ear and by listening tests on real speech, not measured, so judge them by ear.
 
-**Measure my room.** (When you accept the result, the Noise Reducer on the same channel also starts from the noise it heard.) Select *Noise Gate* in the Effects window and press **Measure my room...**. Leave your usual
+**My presets** keeps your own settings in `presets.json` beside your settings file. *Save as my preset* is always
+available, and a personal preset also keeps the gate threshold and Gain. **Hear my original microphone** turns the whole
+chain off so you can compare with and without; it is not saved. On the reducers' pages, *Compare* switches both reducers
+off and on, and a line shows how much each is turning your voice's frequencies down right now. The two reducers are
+processed together in one pass when they are next to each other (they are), which gives the 16 ms of delay.
+If the microphone itself stays quiet while the window is open, Sluice offers *Check my voice level*.
+
+**Measure my room.** (When you accept the result, the Noise Reducer on the same channel also starts from the noise it heard, and the matching *Room* choice is selected.) Select *Noise Gate* in the Effects window and press **Measure my room...**. Leave your usual
 background noise on (the fan, the air conditioner, the TV), stay quiet for 5 seconds, and Sluice listens to the
 microphone, looks at how loud the room's noise gets, and offers a threshold just above it (4 dB over the loud end of the
 noise). In the six simulated rooms (`python tools/tune_room.py` repeats it) the threshold it set cut steady noise by

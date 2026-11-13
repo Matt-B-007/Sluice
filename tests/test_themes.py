@@ -258,7 +258,7 @@ def test_the_theme_menu_lists_the_themes_and_ticks_the_one_in_use(win):
     assert items == [("Dark", True), ("Light", False), ("High contrast", False), ("Retro Purple", False),
                      ("Midnight Blue", False), ("Amber Console", False), ("Paper", False), ("Match my system", False)]
     tail = [a.text().replace("&", "") for a in menu.actions() if a.text() and not a.isCheckable()]
-    assert tail == ["Import theme…", "Export current theme…", "Open theme folder", "Get more themes…"]
+    assert tail == ["Import theme…", "Export current theme…", "Get more themes…"]
 
 
 def test_choosing_a_theme_changes_the_window_the_setting_and_the_tick(win):

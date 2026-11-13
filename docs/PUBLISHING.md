@@ -37,7 +37,7 @@ GitHub's "latest release" address skips pre-releases and every 0.x version is pu
 git init -b main
 git add .
 git status                                # read the list: no .venv, no zip, no report
-git commit -m "Sluice 0.9.3 (beta)"
+git commit -m "Sluice 0.9.4 (beta)"
 git remote add origin https://github.com/Matt-B-007/Sluice.git
 git push -u origin main
 ```
@@ -45,19 +45,26 @@ git push -u origin main
 GitHub does not accept your password for `git push`. Either install the GitHub CLI and sign in once
 (`sudo pacman -S github-cli`, then `gh auth login`), or use an SSH key and the address `git@github.com:Matt-B-007/Sluice.git`.
 
-Open the repository's **Actions** tab: the *CI* workflow runs the tests on Python 3.10 to 3.13. Wait for a green tick before
-the next step. If it is red, open it and send me the log.
+Open the repository's **Actions** tab: the *CI* workflow runs the tests on Python 3.10 to 3.14. Wait for a green tick before
+the next step. If it is red, open it and send me the log (`gh run view <run id> --log-failed | tail -60`, using the run id
+from `gh run list --limit 3`).
+
+If the failing step is **System libraries for Qt**, with messages such as `Temporary failure resolving 'archive.ubuntu.com'`,
+GitHub's machines could not reach Ubuntu's package servers. That is not a problem with the code: the step already retries,
+falls back to another mirror and never fails the run on its own. Re-run the failed jobs later with
+`gh run rerun <run id> --failed`. Do not tag until every test job is green.
 
 ## 5. Publish the beta release
 
 ```bash
-git tag v0.9.3
-git push origin v0.9.3
+git tag v0.9.4
+git push origin v0.9.4
 ```
 
 The *Release* workflow checks that the tag matches the version in the code, builds the package, writes the release notes
-from `CHANGELOG.md`, and attaches the files, including the checksum that the in-app updater needs, to a new release titled **Sluice 0.9.3 (beta)** and marked **Pre-release**. It stops with a message if `CHANGELOG.md` has no `## 0.9.3` section. Find it under **Releases** on the
-repository page. People install from the zip attached to it (`sluice-v0.9.3.zip`, with `sluice-v0.9.3.zip.sha256` beside it), then run `./install.sh`.
+from `CHANGELOG.md`, and attaches the files, including the checksum that the in-app updater needs, to a new release titled **Sluice 0.9.4 (beta)** and marked **Pre-release**. It stops with a message if `CHANGELOG.md` has no `## 0.9.4` section. It also records a build attestation (a signed statement from GitHub of which commit and workflow built each file), which
+anyone can check with `gh attestation verify sluice-v0.9.4.zip --repo Matt-B-007/Sluice`. Find the release under **Releases** on the
+repository page. People install from the zip attached to it (`sluice-v0.9.4.zip`, with `sluice-v0.9.4.zip.sha256` beside it), then run `./install.sh`.
 
 Edit the release on the website if you like, for example to add a line such as: *Beta: it works on one CachyOS system with an
 Elgato Wave XLR; please report anything else with `sluice --report`.*
@@ -73,15 +80,15 @@ Elgato Wave XLR; please report anything else with `sluice --report`.*
 ## 7. Releasing the next version
 
 1. Change `version` in `pyproject.toml` and `__version__` in `sluice/__init__.py` (they must match).
-2. Add a section at the top of `CHANGELOG.md` headed exactly `## 0.9.3` (use the new version). It becomes the GitHub release
+2. Add a section at the top of `CHANGELOG.md` headed exactly `## 0.9.4` (use the new version). It becomes the GitHub release
    notes, the window people see after updating, and what *Check for updates* shows, so write it for users: what they
    can do now and what changed for them. Then copy it into the package: `cp CHANGELOG.md sluice/data/CHANGELOG.md`.
 3. Update the "What's new in ..." section at the top of `README.md` to the new version.
 4. Run `pytest`: it fails if the changelog copy differs, if the newest changelog section is not this version, or if the
    README's "What's new" heading is for another version.
-5. `git commit -am "Sluice 0.9.3 (beta)"`, `git push`, wait for the green tick, then `git tag v0.9.3 && git push origin v0.9.3`.
+5. `git commit -am "Sluice 0.9.4 (beta)"`, `git push`, wait for the green tick, then `git tag v0.9.4 && git push origin v0.9.4`.
 
-The release is then titled "Sluice 0.9.3 (beta)" (tag `v0.9.3`) with its `.sha256` file; people who turned on *Update automatically*
+The release is then titled "Sluice 0.9.4 (beta)" (tag `v0.9.4`) with its `.sha256` file; people who turned on *Update automatically*
 or press *Update now* get it from there. The updater only works for copies installed from the release zip, not for a git checkout.
 
 While the version starts with `0.`, every release is marked as a pre-release. When you decide it is ready, release `1.0.0`

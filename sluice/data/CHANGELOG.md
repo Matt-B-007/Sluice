@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.9.4
+Presets that make an audible difference, a bug report that says what happened just before each dropout, and tidier project housekeeping.
+- **New presets: Room and Voice style.** The Effects window has two rows of choices instead of the old preset list.
+  *Room* (Quiet, Normal, Noisy, Very noisy) sets the Echo Reducer and Noise Reducer. *Voice style* (Natural, Broadcast,
+  Game chat, Recording) sets the High-pass, EQ, Compressor and Limiter. Each effect belongs to one row, so they never fight.
+  The choice that matches has a check mark; nudge any value, even by 0.01, and it says "(changed)" with a **Reset** button.
+  Picking a choice adds any effect the channel is missing, in the usual order, so it replaces the *Use the recommended
+  voice chain* button. The ready-made choices never set the gate threshold or Gain (those depend on your microphone).
+- **My presets.** *Save as my preset* works from any state and also keeps the gate threshold and Gain.
+- **New installs start on Room Normal + Voice Natural.** Existing settings are not changed.
+- **Hear my original microphone** switches the whole chain off for a before/after listen. It is not saved.
+- **Quiet microphone prompt.** If the microphone itself stays quiet while the Effects window is open, Sluice offers
+  *Check my voice level*. **Measure my room** now also picks the matching Room choice, and a one-time tip points to it.
+- **Bug report: what changed just before each dropout.** A merged timeline lists devices that appeared or went away, apps
+  that started playing, recent kernel USB events and the computer's load, and says whether dropouts are still happening.
+  Video streams (screen capture) and Sluice's own virtual devices are listed separately, not in the headline count. The
+  `Cookie:` line is masked. New: **Help > I heard a glitch (mark this moment)** (Ctrl+Shift+G), and a clearer dropout tooltip.
+- **A broken connection to the audio server is replaced** while listing the playing apps, instead of failing every half
+  second until Sluice is restarted. The status bar offers **Try a larger buffer** after three dropouts.
+- **Help > Open folder** groups the folder shortcuts.
+- **Project housekeeping.** Python 3.14 is tested, `SECURITY.md` was added, release files carry a GitHub build
+  attestation (`gh attestation verify`), and the GitHub Actions were updated.
+
 ## 0.9.3
 A clearer bug report, a way to tell when a session ended badly, and more themes.
 - **Update and restart buttons bring the window back.** After *Update now*, *Go back to the previous version*, or a

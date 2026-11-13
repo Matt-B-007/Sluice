@@ -4,12 +4,14 @@ on:
     tags: ["v*"]
 permissions:
   contents: write
+  id-token: write       # for the build attestation below
+  attestations: write
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Check the tag matches the version
@@ -24,6 +26,13 @@ jobs:
           git archive --prefix=sluice/ -o "out/sluice-${GITHUB_REF_NAME}.zip" HEAD
           # The in-app updater downloads this file next to the zip and refuses a zip that does not match it.
           (cd out && sha256sum "sluice-${GITHUB_REF_NAME}.zip" > "sluice-${GITHUB_REF_NAME}.zip.sha256")
+      - name: Attest where the files came from (GitHub build provenance; a failure here never stops the release)
+        continue-on-error: true
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: |
+            out/*.zip
+            dist/*
       - name: Release notes from the changelog
         run: |
           v="${GITHUB_REF_NAME#v}"

@@ -168,22 +168,121 @@ def crash_summary(text: str, modified: Optional[float] = None) -> str:
 _PW_TOP_COLUMNS = 9   # S ID QUANT RATE WAIT BUSY W/Q B/Q ERR
 
 
+_VIDEO_FORMAT = re.compile(r"^(?:BGR|RGB|ARGB|ABGR|xRGB|xBGR|NV\d|I4\d\d|YUY|UYVY|YV12|MJPG|JPEG|GRAY|P0\d\d|YUV|H264|VP\d)", re.IGNORECASE)
+_SIZE = re.compile(r"^\d+x\d+$")
+
+
+def _kind_of(parts: list) -> str:
+    """'audio', 'video' (a screen or camera feed: its ERR counts skipped frames, not audio glitches) or 'virtual'
+    (one of Sluice's own virtual devices, which report large counts that match nothing you can hear)."""
+    if parts[-1].startswith(("sluice_", "input.sluice_", "output.sluice_")):
+        return "virtual"
+    fmt = parts[_PW_TOP_COLUMNS] if len(parts) > _PW_TOP_COLUMNS else ""
+    size = parts[_PW_TOP_COLUMNS + 1] if len(parts) > _PW_TOP_COLUMNS + 1 else ""
+    return "video" if _VIDEO_FORMAT.match(fmt) or _SIZE.match(size) else "audio"
+
+
 def top_errors(text: str, limit: int = 6) -> str:
-    """From the ``pw-top`` table: the programs with a dropout count above zero, most first."""
-    found = []
+    """From the ``pw-top`` table: the audio programs and devices with a dropout count above zero, most first. Video feeds
+    (screen capture) and Sluice's own virtual devices are named on a separate line, because their counts are not audio
+    dropouts."""
+    found: dict = {"audio": [], "video": [], "virtual": []}
     for line in text.splitlines():
         parts = line.split()
         if len(parts) <= _PW_TOP_COLUMNS or parts[0] not in "RIS" or not parts[1].isdigit() or not parts[_PW_TOP_COLUMNS - 1].isdigit():
             continue
         errors = int(parts[_PW_TOP_COLUMNS - 1])
         if errors > 0:
-            found.append((errors, parts[-1]))
+            found[_kind_of(parts)].append((errors, parts[-1]))
+    lines = []
+    if found["audio"]:
+        found["audio"].sort(reverse=True)
+        listed = ", ".join(f"{name} ({count})" for count, name in found["audio"][:limit])
+        lines.append("Dropouts counted per audio program or device, most first: " + listed + ". The device that drives the audio "
+                     "is usually the one to look at; programs behind it show errors when it is late.")
+    else:
+        lines.append("No audio program or device shows dropouts in this snapshot.")
+    if found["video"]:
+        listed = ", ".join(f"{name} ({count})" for count, name in sorted(found["video"], reverse=True)[:limit])
+        lines.append("Video feeds with errors (screen or camera capture: skipped frames, not audio): " + listed + ".")
+    if found["virtual"]:
+        total = sum(count for count, _ in found["virtual"])
+        lines.append(f"Sluice's own virtual devices ({len(found['virtual'])}) show {total} errors in total. These counters do not "
+                     "match what you hear; the line \"audio dropouts\" in the log below is what Sluice itself counts.")
+    return "\n".join(lines)
+
+
+_LOG_STAMP = re.compile(r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)")
+DROPOUT_MARKERS = ("audio dropouts:", "what changed just before", "nothing changed in the audio system", "MARKED BY YOU",
+                   "a dropout right after")
+
+
+def _stamp(line: str) -> Optional[float]:
+    found = _LOG_STAMP.match(line)
     if not found:
-        return "No program shows dropouts in this snapshot."
-    found.sort(reverse=True)
-    listed = ", ".join(f"{name} ({count})" for count, name in found[:limit])
-    return ("Dropouts counted per program, most first: " + listed + ". The device that drives the audio is usually the one "
-            "to look at; programs behind it show errors when it is late.")
+        return None
+    try:
+        return time.mktime(time.strptime(found.group(1), "%Y-%m-%d %H:%M:%S"))
+    except (ValueError, OverflowError):
+        return None
+
+
+def dropout_timeline(lines: list, now: Optional[float] = None, limit: int = 40) -> str:
+    """The dropouts of one session with what changed just before each, and whether they are still happening."""
+    picked = [line for line in lines if any(marker in line for marker in DROPOUT_MARKERS)]
+    if not picked:
+        return "No dropouts were logged in this session."
+    now = time.time() if now is None else now
+    times = [t for line, t in ((l, _stamp(l)) for l in picked if "audio dropouts:" in l or "MARKED BY YOU" in l) if t is not None]
+    head = []
+    if times:
+        ago = max(0.0, now - max(times))
+        when = f"{ago / 60:.0f} min" if ago >= 90 else f"{ago:.0f} s"
+        state = "still happening (the last one was moments ago)" if ago <= 120 else "not happening now"
+        gaps = [b - a for a, b in zip(sorted(times), sorted(times)[1:])]
+        spread = f"; the gaps between them are {min(gaps) / 60:.0f} to {max(gaps) / 60:.0f} min" if gaps else ""
+        head.append(f"{len(times)} dropout event(s) or marked glitch(es) in this session; the last was {when} before this report: "
+                    f"{state}{spread}.")
+    shown = picked[-limit:]
+    if len(picked) > len(shown):
+        head.append(f"(first {len(picked) - len(shown)} lines not shown)")
+    return "\n".join(head + shown)
+
+
+USB_LINE = re.compile(r"usb \d+-[\d.]+: (?:new .*USB device number|USB disconnect|reset .*USB device|Product:|Manufacturer:|"
+                      r"over-current|cannot enumerate|unable to enumerate|disabled by hub|device not accepting address|"
+                      r"device descriptor read|cannot submit urb)", re.IGNORECASE)
+
+
+def usb_events(limit: int = 30) -> str:
+    """The last hours of USB connect, disconnect and reset lines from the kernel log. Serial numbers are not included."""
+    text = _run(["journalctl", "-k", "--no-pager", "-o", "short-iso", "--since", "-4 hours"], timeout=8.0)
+    if text.startswith("(") or "No entries" in text:
+        text = _run(["dmesg", "--time-format", "iso"], timeout=8.0)
+    if text.startswith("("):
+        return (f"{text}\nReading the kernel log may need permission: on many systems it works for members of the "
+                "'systemd-journal' group.")
+    found = [line for line in text.splitlines() if USB_LINE.search(line)]
+    if not found:
+        return "No USB connect, disconnect or reset lines in the kernel log of the last hours."
+    shown = found[-limit:]
+    note = [f"({len(found) - len(shown)} older lines not shown)"] if len(found) > len(shown) else []
+    return "\n".join(note + shown)
+
+
+def busy_programs(limit: int = 6) -> str:
+    """How busy the computer is right now: the load average and the programs using the most CPU."""
+    lines = []
+    load = __import__("sluice.events", fromlist=["load_average"]).load_average()
+    if load:
+        lines.append(load[0].upper() + load[1:])
+    table = _run(["ps", "-eo", "pcpu,comm", "--sort=-pcpu"], timeout=4.0)
+    if table.startswith("("):
+        lines.append(table)
+    else:
+        lines.append("Programs using the most CPU at this moment (percent of one thread):")
+        lines.extend("  " + row.strip() for row in table.splitlines()[1:limit + 1])
+    return "\n".join(lines)
 
 
 def hardware_summary() -> str:
@@ -230,6 +329,8 @@ def anonymize(text: str) -> str:
     # 'User Name: x' / 'Host Name: y' lines from pactl info, then every other mention of the same words
     text = re.sub(r"(?m)^(\s*User Name:\s*).+$", r"\1<user>", text)
     text = re.sub(r"(?m)^(\s*Host Name:\s*).+$", r"\1<host>", text)
+    text = re.sub(r"(?m)^(\s*Cookie:\s*).+$", r"\1<cookie>", text)
+    text = re.sub(r"(SerialNumber:\s*)\S+", r"\1<serial>", text)
     for word, placeholder in ((user, "<user>"), (host, "<host>"), (host.split(".")[0] if host else "", "<host>")):
         if word and len(word) >= 3 and word.lower() not in ("root", "localhost", "user", "host"):
             text = re.sub(rf"(?<![A-Za-z0-9]){re.escape(word)}(?![A-Za-z0-9])", placeholder, text, flags=re.IGNORECASE)
@@ -284,10 +385,15 @@ def build_report(log_lines: int = LOG_LINES) -> str:
         config = "(no saved settings yet)"
     parts.append(_section(f"Settings ({config_path()})", config))
     parts.append(_section("Computer (CPU and USB, which matter for dropouts)", hardware_summary()))
+    parts.append(_section("How busy the computer is right now", busy_programs()))
+    parts.append(_section("USB connects, disconnects and resets in the kernel log (last hours)", usb_events()))
     try:
         log_text = logs.log_path().read_text(encoding="utf-8", errors="replace")
     except OSError:
         log_text = ""
+    sessions = split_sessions(log_text.splitlines()) if log_text else []
+    parts.append(_section("Dropouts in this session and what changed just before each",
+                          dropout_timeline(sessions[-1]) if sessions else "(no log yet)"))
     parts.append(_section(f"Log: this session, then the end of the one before ({logs.log_path()})",
                           session_log(log_text, log_lines) if log_text else "(file not found)"))
     try:

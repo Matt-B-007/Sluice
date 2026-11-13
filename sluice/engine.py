@@ -29,9 +29,8 @@ from .backend import AudioSystem, Stream
 from .dsp import Graph
 from .effects import EffectInstance, runner_for
 from .linker import Linker
-from . import reconnect, room
-from .model import (MONITOR, PREFIX, STREAM, VOICE_CHAIN, Channel, Effect, Mix, Mixer, canonical_order, linear_to_db,
-                    voice_chain_effects)
+from . import events, reconnect, room
+from .model import (BUFFER_CHOICES, MONITOR, PREFIX, STREAM, VOICE_CHAIN, Channel, Effect, Mix, Mixer, canonical_order, linear_to_db)
 
 log = logging.getLogger("sluice.engine")
 
@@ -101,6 +100,12 @@ class Engine:
         self._pending_since = 0.0
         self._last_xrun_log = float("-inf")
         self._xrun_hint_given = False
+        self._chain_compare: set = set()  # channels whose whole effect chain is bypassed for a before/after listen
+        self._hints_given: set = set()   # which kind of dropout advice was already written to the log
+        self._last_dropout_note = ""      # what the latest dropout came right after, for the tooltip
+        self._prev_devices: Optional[dict] = None
+        self._prev_default_source: Optional[str] = None
+        self._prev_streams: Optional[dict] = None
         self._load = (0.0, 0.0)           # (average, worst) share of a block that Sluice's own work uses, recently
         self._known_inputs: Optional[set] = None
         self._notices: list = []
@@ -211,6 +216,16 @@ class Engine:
         total = max(0, self.io.xruns - self._xrun_base)
         return total, min(total, max(0, self.io.xruns_ours - self._ours_base))
 
+    def larger_buffer_offer(self) -> Optional[int]:
+        """The next larger audio buffer worth offering, or None: offered once three or more dropouts have been counted and the
+        running size is still the saved one (after choosing one it waits for the next start, so it is not offered again)."""
+        total, _ours = self.dropout_counts()
+        running = self.io.blocksize
+        if total < 3 or self.mixer.buffer_frames != running:
+            return None
+        bigger = [f for f in BUFFER_CHOICES if f > running]
+        return bigger[0] if bigger else None
+
     def status_text(self) -> str:
         io = self.io
         total, ours = self.dropout_counts()
@@ -222,6 +237,18 @@ class Engine:
                 text += " · mostly elsewhere"
         return text
 
+    def mark_glitch(self) -> str:
+        """The person heard something that was not counted as a dropout: write down the moment and what was going on."""
+        now = time.monotonic()
+        found = events.before(now)
+        load = events.load_average()
+        total, ours = self.dropout_counts()
+        log.warning("MARKED BY YOU: a glitch was heard now (%d dropouts counted since Sluice started, %d of them Sluice's). "
+                    "What changed in the last 10 s: %s%s",
+                    total, ours, events.describe(found) if found else "nothing", f" ({load})" if load else "")
+        events.record("you marked a glitch here")
+        return "Marked. The bug report will show this moment and what happened around it."
+
     def dropout_tooltip(self) -> str:
         total, ours = self.dropout_counts()
         text = ("A dropout is a moment the audio could not keep up: you may hear a click or a gap. It can come from Sluice or "
@@ -230,14 +257,39 @@ class Engine:
         average, worst = self._load
         if average > 0:
             text += f"\n\nSluice's own audio work is using about {average * 100:.0f}% of each block (worst recently: {worst * 100:.0f}%)."
+        if total and self._last_dropout_note:
+            text += f"\n\n{self._last_dropout_note} Plugging in a device or starting a call or game briefly rearranges the audio system, which is normal."
         if total:
             text += (f"\n\nOf the {total}, {ours} came while Sluice was running late and {total - ours} while it was keeping up, "
                      "which points at something else: another program, a busy USB device, or the system itself.")
-            text += ("\n\nTo find the cause, run  pw-top  in a terminal and watch the ERR column. To give everything more room, "
-                     "choose a larger size in Settings > Audio buffer, or remove heavy effects.")
+            if not self._last_dropout_note:
+                text += ("\n\nTo find the cause, run  pw-top  in a terminal and watch the ERR column. To give everything more room, "
+                         "choose a larger size in Settings > Audio buffer, or remove heavy effects.")
         return text
 
+    def _note(self, text: str, level: int = logging.INFO) -> None:
+        """Log a change in the audio system and remember it, so a dropout just after it can say so."""
+        log.log(level, "%s", text)
+        events.record(text)
+
     # ----------------------------------------------------------------- devices
+    def _describe_device_changes(self) -> None:
+        """Say which device appeared or went away (a count alone does not tell you what changed)."""
+        now_devices = {("input", d.name): d.description for d in self.sources if not d.monitor and not d.name.startswith(PREFIX)}
+        now_devices.update({("output", d.name): d.description for d in self.sinks if not d.name.startswith(PREFIX)})
+        previous = self._prev_devices
+        self._prev_devices = now_devices
+        if previous is not None:
+            for key in sorted(now_devices.keys() - previous.keys()):
+                self._note(f"{key[0]} added: {now_devices[key]}")
+            for key in sorted(previous.keys() - now_devices.keys()):
+                self._note(f"{key[0]} removed: {previous[key]}")
+        if self._prev_default_source is not None and self.default_source != self._prev_default_source:
+            names = {d.name: d.description for d in self.sources}
+            self._note("default input changed from %s to %s" % (names.get(self._prev_default_source, self._prev_default_source),
+                                                                 names.get(self.default_source, self.default_source)))
+        self._prev_default_source = self.default_source
+
     def refresh_devices(self) -> bool:
         """Re-read devices and defaults. Returns True if anything changed."""
         # if the audio server hiccups, keep what we knew instead of treating every device as unplugged
@@ -260,6 +312,10 @@ class Engine:
         )
         changed = signature != self._signature
         self._signature = signature
+        if changed:
+            self._describe_device_changes()
+        elif self._prev_devices is None:
+            self._describe_device_changes()   # the first look: remember what is there, say nothing
         inputs = {d.name: d.description for d in self.sources if not d.monitor}
         if self._known_inputs is not None:  # not the first look: anything new was plugged in (or switched on) just now
             for name in inputs.keys() - self._known_inputs:
@@ -358,7 +414,7 @@ class Engine:
         self._link_retry = missing or bool(failed)
         added, removed = desired - self._last_links, self._last_links - desired
         if added or removed:
-            log.info("links: %d wanted (+%d, -%d)", len(desired), len(added), len(removed))
+            self._note(f"links changed: {len(desired)} wanted (+{len(added)}, -{len(removed)})")
             for out_port, in_port in sorted(added):
                 log.debug("link + %s -> %s", out_port, in_port)
             for out_port, in_port in sorted(removed):
@@ -374,6 +430,19 @@ class Engine:
             log.debug("some ports do not exist yet; will retry")
 
     # ------------------------------------------------------------------- apps
+    def _describe_stream_changes(self, streams: list) -> None:
+        """Apps starting and stopping playback: a call or a game starting rearranges the audio graph for a moment."""
+        current = {s.index: s.name for s in streams if not s.name.lower().startswith("sluice")}
+        previous = self._prev_streams
+        self._prev_streams = current
+        if previous is None:
+            return
+        for index in sorted(current.keys() - previous.keys()):
+            self._note(f"app started playing: {current[index]}")
+        for index in sorted(previous.keys() - current.keys()):
+            events.record(f"app stopped playing: {previous[index]}")
+            log.debug("app stopped playing: %s", previous[index])
+
     def apply_rules(self, now: float) -> bool:
         """Move apps onto their channel's sink. True if the list of playing apps changed."""
         self._last_rules = now
@@ -382,6 +451,7 @@ class Engine:
         changed = signature != self._stream_signature
         self._stream_signature = signature
         self.streams = streams
+        self._describe_stream_changes(streams)
 
         live = {(s.index, s.sink) for s in streams}
         for key in [k for k in self._move_backoff if (k[0], k[2]) not in live and self._move_backoff[k] < now]:
@@ -477,8 +547,23 @@ class Engine:
         log.warning("audio dropouts: %d in the last %.0f s (%d since Sluice started; %d of those while Sluice itself was running "
                     "late). Sluice's own work uses about %.0f%% of a block, worst %.0f%%.",
                     self._pending_xruns, max(1.0, now - self._pending_since), total, ours, average * 100, worst * 100)
-        if not self._xrun_hint_given:
+        found = events.before(self._pending_since)
+        load = events.load_average()
+        cause = events.likely_cause(found)
+        if found:
+            log.warning("what changed just before those dropouts: %s%s", events.describe(found), f" ({load})" if load else "")
+        elif load:
+            log.warning("nothing changed in the audio system just before those dropouts (%s)", load)
+        self._last_dropout_note = f"The latest dropout came right after: {cause}." if cause else ""
+        if cause:
+            if "change" not in self._hints_given:
+                self._hints_given.add("change")
+                self._xrun_hint_given = True
+                log.warning("a dropout right after a device or stream change is normal: PipeWire rearranges itself for a moment, "
+                            "and a larger buffer does not prevent it")
+        elif not self._xrun_hint_given:
             self._xrun_hint_given = True
+            self._hints_given.add("busy")
             log.warning("if dropouts keep coming: run pw-top and look at the ERR column to see which program is behind them, or "
                         "use Settings > Audio buffer > Large")
         self._pending_xruns = 0
@@ -540,7 +625,20 @@ class Engine:
             instance = self._instances.get(effect.id)
             if instance is not None and instance.usable and not effect.bypass:
                 live.append(instance)
+        if channel_id in self._chain_compare:
+            live = []  # before/after: the whole chain is off for the moment (nothing about it is saved)
         self.graph.set_chain(channel_id, live)
+
+    def set_chain_compare(self, channel_id: str, original: bool) -> None:
+        """Hear the microphone without any effect (True) or with them again (False). Not saved: it ends with the app."""
+        if original:
+            self._chain_compare.add(channel_id)
+        else:
+            self._chain_compare.discard(channel_id)
+        self._rebuild_chain(channel_id)
+
+    def chain_compare(self, channel_id: str) -> bool:
+        return channel_id in self._chain_compare
 
     def add_effect(self, channel_id: str, effect: Effect) -> EffectInstance:
         channel = self.mixer.channel(channel_id)
@@ -583,7 +681,9 @@ class Engine:
         for effect in [e for e in channel.effects if e.kind == "builtin" and e.type in VOICE_CHAIN]:
             self._instances.pop(effect.id, None)
             channel.effects.remove(effect)
-        for effect in voice_chain_effects():
+        from .presets import factory_effects
+
+        for effect in factory_effects():
             channel.effects.append(effect)
             self._instances[effect.id] = EffectInstance(effect)
         channel.effects = canonical_order(channel.effects)
@@ -655,6 +755,11 @@ class Engine:
         """The channel's peak after its effects over the last couple of seconds, in dB (None when it is not running)."""
         channel = self.graph.channels.get(channel_id) if self.graph is not None else None
         return None if channel is None else linear_to_db(channel.recent)
+
+    def channel_input_peak_db(self, channel_id: str) -> Optional[float]:
+        """The channel's peak before its effects over the last couple of seconds, in dB (None when it is not running)."""
+        channel = self.graph.channels.get(channel_id) if self.graph is not None else None
+        return None if channel is None else linear_to_db(channel.input_recent)
 
     def apply_noise_profile(self, channel_id: str, profile) -> None:
         """Start this channel's Noise Reducers from the noise spectrum that Measure my room heard."""

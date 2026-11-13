@@ -130,7 +130,7 @@ def test_engine_logs_its_lifecycle_and_app_moves(rig, caplog):
     assert "moved Spotify" in text and "sluice_ch_music" in text
     assert "app 'firefox' assigned to channel 'chat'" in text
     assert "channel 'karaoke' added" in text and "channel 'karaoke' removed" in text
-    assert "links:" in text
+    assert "links changed:" in text
 
 
 def test_engine_logs_effect_problems(rig, caplog):
