@@ -103,6 +103,33 @@ def _vst3() -> tuple:
     return True, f"none found (searched {searched}); you can still browse to a .vst3 folder"
 
 
+def _engine() -> tuple:
+    from . import dsp, room, spectral
+
+    parts = {"reducers": spectral.BACKEND, "mixing": dsp.MIX_BACKEND, "room measuring": room.ROOM_BACKEND}
+    try:
+        from .effects import native_backend
+
+        parts["effects"] = native_backend()
+    except Exception:
+        pass
+    try:
+        import sluice_dsp
+
+        off = os.environ.get("SLUICE_NO_RUST") or os.environ.get("SLUICE_NO_RUST_IO")
+        parts["audio client"] = "rust" if hasattr(sluice_dsp, "JackEngine") and not off else "python"
+    except Exception:
+        parts["audio client"] = "python"
+    text = ", ".join(f"{k}: {v}" for k, v in parts.items())
+    if spectral.RUST_VERSION:
+        text += f" (sluice_dsp {spectral.RUST_VERSION})"
+    elif spectral.RUST_ERROR:
+        text += f" (the Rust build could not be used: {spectral.RUST_ERROR})"
+    elif not os.environ.get("SLUICE_NO_RUST"):
+        text += " (the Rust engine is not installed; Sluice works the same, using more CPU. ./install.sh builds it if Rust is present)"
+    return True, text
+
+
 def _launcher() -> tuple:
     from . import desktop
 
@@ -118,6 +145,7 @@ def run_checks() -> list:
     """[(name, ok, detail)]"""
     checks = [
         ("Python", lambda: (sys.version_info >= (3, 10), sys.version.split()[0])),
+        ("Audio engine", _engine),
         ("pedalboard (effects + VST3)", _pedalboard),
         ("PulseAudio protocol (pipewire-pulse)", _pulse),
         ("JACK client (pipewire-jack)", _jack),

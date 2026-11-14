@@ -4,7 +4,7 @@ import pytest
 
 from sluice.effects import Chain, EffectInstance, Stage, _pedalboard
 from sluice.model import Effect
-from sluice.spectral import EchoReducer, NoiseReducer, StftEffect
+from sluice.spectral import EchoReducer, NoiseReducer, PythonEchoReducer, PythonNoiseReducer, StftEffect
 
 SR = 48000
 
@@ -67,7 +67,7 @@ def test_the_echo_tail_after_a_burst_is_lowered():
 
 
 def test_a_profile_from_the_room_can_be_set():
-    fx = NoiseReducer(SR)
+    fx = PythonNoiseReducer(SR)
     fx.set_profile(np.ones(fx.K))
     assert np.allclose(fx._noise, 1.0)
     fx.set_profile(None)
@@ -130,8 +130,8 @@ def test_a_separated_reducer_pair_is_not_merged():
 
 
 def test_waking_clears_what_the_echo_reducer_remembers_but_keeps_the_noise_it_learned():
-    echo = EchoReducer(SR, 0.6, 12)
-    noise = NoiseReducer(SR, 12)
+    echo = PythonEchoReducer(SR, 0.6, 12)
+    noise = PythonNoiseReducer(SR, 12)
     x = (np.random.default_rng(6).standard_normal((2, SR)) * 0.2).astype(np.float32)
     run(echo, x)
     run(noise, x)

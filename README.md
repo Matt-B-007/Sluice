@@ -15,25 +15,17 @@ An open-source virtual audio mixer for Linux (PipeWire). Put your mic, games, mu
 > and use the Sluice support forum. Please do not post the `sluice --report` file there: it contains device and app
 > names, so offer it in a private ticket instead.
 
-## What's new in 0.9.4
+## What's new in 0.9.6
 
-Presets that make an audible difference, and a bug report that says what happened just before each dropout. (The full
-list for every version is in [CHANGELOG.md](CHANGELOG.md); Sluice also shows it once after an update, and under
-*Help > What's new in this version*.)
+Clearer *Measure my room* results, safer presets, and a warning about raw microphones. (The full list for every version
+is in [CHANGELOG.md](CHANGELOG.md); Sluice also shows it once after an update, and under *Help > What's new in this version*.)
 
-- **Room and Voice style.** Two small choices replace the old preset list: *Room* (Quiet, Normal, Noisy, Very noisy)
-  and *Voice style* (Natural, Broadcast, Game chat, Recording). The matching one has a check mark, "(changed)" appears
-  when you nudge a value, and **Save as my preset** keeps your own. New installs start on Normal + Natural.
-- **Hear my original microphone** for a before/after listen; a prompt when the microphone is quiet; **Measure my room**
-  picks the matching Room choice.
-- **A bug report that explains dropouts**: what changed just before each one (a device plugged in, a call started, a USB
-  event), the computer's load, screen-capture streams and Sluice's own devices listed separately, and a *Help > I heard
-  a glitch* marker (Ctrl+Shift+G).
-- **Recovery and housekeeping**: a broken audio-server connection is replaced instead of failing until restart, a
-  one-click **Try a larger buffer** after repeated dropouts, a grouped *Help > Open folder* menu, Python 3.14 in the
-  tests, `SECURITY.md`, and signed build attestations for releases.
-- Everything from 0.9.3 and earlier is unchanged: self-update, themes, the Echo Reducer and Noise Reducer, the system
-  tray icon, **Mute my microphone**, the third **Recording** mix and reconnecting after PipeWire restarts.
+- **Measure my room** explains silence (a very quiet room, or a mic that is not reaching Sluice) and offers the quiet-room setting.
+- **Update your preset** after changing effects: *Update preset* (asks first), *Save as new...* or *Undo*.
+- **Raw microphone warning** when an app records your microphone directly, bypassing your effects.
+- The Rust reducers no longer allocate memory in the audio path.
+
+Earlier: 0.9.5 added the optional Rust engine (see [docs/RUST.md](docs/RUST.md)) and *Help > Uninstall Sluice...*.
 
 ## What it does
 
@@ -279,6 +271,12 @@ To watch what it is doing while you test: `tail -f ~/.local/state/sluice/sluice.
 
 Settings are saved automatically a few seconds after every change and when you quit (see *Saving*). **Import settings** checks the file, keeps your current settings as
 `config.before-import.json`, and takes effect the next time Sluice starts; quitting does not overwrite the imported file.
+
+## Undoing everything
+
+*Help > Uninstall Sluice...* (or `./uninstall.sh`) lists what it will remove and asks first: the launcher and apps-menu
+entry, autostart, Sluice's virtual devices, settings, logs, and the install folder. `./uninstall.sh --keep-settings`
+keeps your settings, `--dry-run` only lists, `--yes` does not ask.
 
 ## Themes
 

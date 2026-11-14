@@ -28,7 +28,7 @@ def _demo_parts():
 
 def _real_parts():
     """Connect to PipeWire. Raises with a readable message if any part is missing."""
-    from .audio_io import JackIO
+    from .audio_io import make_jack_io
     from .backend import PulseSystem
     from .linker import PwLinker
 
@@ -41,10 +41,10 @@ def _real_parts():
     os.environ.setdefault("PIPEWIRE_LATENCY", f"{Mixer.load(config_path()).buffer_frames}/48000")
     system = PulseSystem()
     try:
-        io = JackIO()
+        io = make_jack_io()
     except Exception as exc:
         system.cleanup()
-        if "name_not_unique" in str(exc):
+        if "name_not_unique" in str(exc).lower():
             raise RuntimeError("another program is already connected to PipeWire as \u201csluice\u201d: close any other "
                                "Sluice (pkill -f sluice) and try again; if none is running, restart PipeWire") from exc
         from .jackfix import retry_with_pipewire_jack
@@ -119,6 +119,27 @@ def _rollback() -> int:
     return 0
 
 
+def _uninstall(args) -> int:
+    from . import uninstall
+
+    lock = _acquire_lock()
+    if lock is None:
+        print("sluice is running. Close it first (Help > Uninstall Sluice closes it for you).", file=sys.stderr)
+        return 1
+    return uninstall.run(keep_settings=args.keep_settings, assume_yes=args.yes, dry_run=args.dry_run,
+                         cleanup_devices=_cleanup_devices)
+
+
+def _cleanup_devices() -> int:
+    from .backend import PulseSystem
+
+    system = PulseSystem(purge=False)
+    try:
+        return system.purge_stale(legacy=True)
+    finally:
+        system.cleanup()
+
+
 def _desktop(install: bool) -> int:
     from . import desktop
 
@@ -167,7 +188,9 @@ def _run_gui(args, log_file: Optional[Path]) -> int:
             notice = (f"Could not start audio ({exc}); running in demo mode. Often the PipeWire JACK library is missing: "
                       f"{hint}. Then run sluice --diagnose.")
     system, io, linker = parts
-    is_demo = not hasattr(io, "client")
+    from .audio_io import is_demo as _is_demo
+
+    is_demo = _is_demo(io)
     if not is_demo:
         logs.begin_session()  # only a real window, and only once it holds the lock
     if log_file is not None:
@@ -258,6 +281,10 @@ def main(argv: Optional[list] = None) -> int:
     parser.add_argument("--install-desktop", action="store_true", help="add Sluice to the applications menu (your own folders only)")
     parser.add_argument("--uninstall-desktop", action="store_true", help="remove Sluice from the applications menu")
     parser.epilog = "remote control: sluice ctl --help"
+    parser.add_argument("--uninstall", action="store_true", help="remove Sluice completely (shows what it will remove and asks first)")
+    parser.add_argument("--keep-settings", action="store_true", help="with --uninstall: keep your settings, presets and controller bindings")
+    parser.add_argument("--yes", action="store_true", help="with --uninstall: do not ask")
+    parser.add_argument("--dry-run", action="store_true", help="with --uninstall: show what would be removed and change nothing")
     parser.add_argument("--minimized", action="store_true", help="start with the window minimized to the taskbar")
     parser.add_argument("--startup", action="store_true", help=argparse.SUPPRESS)  # only the launcher script uses this
     parser.add_argument("--autostart", choices=["off", "window", "minimized"], help="start Sluice when you log in: with the window open, minimized, or never")
@@ -265,7 +292,7 @@ def main(argv: Optional[list] = None) -> int:
     args = parser.parse_args(args_list)
 
     is_command = bool(args.diagnose or args.cleanup or args.rollback or args.autostart or args.install_desktop
-                      or args.uninstall_desktop or args.report is not None)
+                      or args.uninstall_desktop or args.uninstall or args.report is not None)
     log_file = logs.setup(debug=args.debug, session=not is_command)
     try:
         if args.diagnose:
@@ -276,6 +303,8 @@ def main(argv: Optional[list] = None) -> int:
             return 0 if ok else 1
         if args.cleanup:
             return _cleanup()
+        if args.uninstall:
+            return _uninstall(args)
         if args.rollback:
             return _rollback()
         if args.autostart:

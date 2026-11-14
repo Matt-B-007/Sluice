@@ -13,7 +13,22 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, Optional
 
+import os
+
 import numpy as np
+
+# The heavy arithmetic runs in Rust when sluice_dsp is installed (same numbers to float rounding);
+# SLUICE_NO_RUST=1 or SLUICE_NO_RUST_ROOM=1 keeps the numpy versions below.
+_rust = None
+if not os.environ.get("SLUICE_NO_RUST") and not os.environ.get("SLUICE_NO_RUST_ROOM"):
+    try:
+        import sluice_dsp as _rust
+
+        if not hasattr(_rust, "echo_energy"):  # an older build
+            _rust = None
+    except Exception:
+        _rust = None
+ROOM_BACKEND = "rust" if _rust is not None else "python"
 
 LISTEN_SECONDS = 5.0       # how long the microphone is listened to
 SKIP_SECONDS = 0.5         # the first moments are thrown away: the click of the button, a breath, settling in
@@ -25,6 +40,17 @@ NOTHING_DB = -80.0         # below this there is no signal at all (muted, wrong 
 SUDDEN_DB = 12.0           # steady noise stays within a few dB of itself; a voice, a door or a cough jumps far above
 
 
+NOTHING_MESSAGE = (
+    "I couldn't pick up any sound at all. Either your room is extremely quiet, or this microphone isn't reaching Sluice "
+    "(check the Mic channel's input and the mute buttons). If the Mic meter moves when you talk, the room is simply quiet, "
+    f"and the quietest gate setting ({FLOOR_DB:.0f} dB) is fine."
+)
+NO_MIC_MESSAGE = (
+    "No microphone is chosen for this channel yet, so there is nothing to listen to. Pick the microphone on the "
+    "channel's input first, then measure again."
+)
+
+
 @dataclass
 class RoomResult:
     status: str            # "ok", "quiet_room", "too_loud", "disturbed" or "silent"
@@ -32,14 +58,23 @@ class RoomResult:
     noise_db: float        # the loud end of the room's noise, in dB below full scale
     message: str           # plain words for the person
     profile: Optional[np.ndarray] = None   # the room's noise spectrum, for the Noise Reducer to start from
+    reason: str = ""       # for "silent": "nothing" (no sound at all) or "short" (too little recorded)
 
     @property
     def usable(self) -> bool:
         return self.status in ("ok", "quiet_room", "too_loud")
 
+    @property
+    def quiet_fallback(self) -> bool:
+        """No sound at all: either the room is extremely quiet or the microphone is not reaching Sluice. Sluice cannot tell
+        which, so the person may choose the quietest setting (the threshold is the floor) or fix the input and try again."""
+        return self.status == "silent" and self.reason == "nothing"
+
 
 def _block_peaks_db(audio: np.ndarray, sample_rate: int) -> np.ndarray:
     size = max(1, int(sample_rate * BLOCK_MS / 1000))
+    if _rust is not None and audio.ndim == 2 and audio.shape[0] == 2:
+        return _rust.block_peaks_db(np.ascontiguousarray(audio, dtype=np.float32), size)
     mono = np.max(np.abs(audio), axis=0) if audio.ndim == 2 else np.abs(audio)
     blocks = len(mono) // size
     if blocks == 0:
@@ -60,16 +95,14 @@ def _analyse(audio: np.ndarray, sample_rate: int, before: Optional[Callable] = N
     audio = np.asarray(audio, dtype=np.float32)
     audio = audio[:, int(SKIP_SECONDS * sample_rate):]
     if audio.shape[1] < sample_rate:
-        return RoomResult("silent", FLOOR_DB, NOTHING_DB, "That was too short to measure. Please try again.")
+        return RoomResult("silent", FLOOR_DB, NOTHING_DB, "That was too short to measure. Please try again.", reason="short")
     if float(np.max(np.abs(audio))) < 10 ** (NOTHING_DB / 20):
-        return RoomResult("silent", FLOOR_DB, NOTHING_DB,
-                          "I heard nothing at all. Is the right microphone selected and not muted? "
-                          "(Check the Mic channel's input and the mute buttons.)")
+        return RoomResult("silent", FLOOR_DB, NOTHING_DB, NOTHING_MESSAGE, reason="nothing")
     if before is not None:
         audio = np.asarray(before(audio), dtype=np.float32)
     peaks = _block_peaks_db(audio, sample_rate)
     if len(peaks) < 50:
-        return RoomResult("silent", FLOOR_DB, NOTHING_DB, "That was too short to measure. Please try again.")
+        return RoomResult("silent", FLOOR_DB, NOTHING_DB, "That was too short to measure. Please try again.", reason="short")
     p50, p95, p99 = (float(np.percentile(peaks, q)) for q in (50, 95, 99))
     if p99 - p50 > SUDDEN_DB:
         return RoomResult(
@@ -98,6 +131,8 @@ def noise_profile(audio: np.ndarray) -> np.ndarray:
     (1024-sample pieces, a square-root Hann window, both channels averaged)."""
     from .spectral import StftEffect
 
+    if _rust is not None:
+        return _rust.noise_profile(np.ascontiguousarray(audio, dtype=np.float32), StftEffect.N, StftEffect.HOP)
     window = np.sqrt(np.hanning(StftEffect.N + 1)[:-1]).astype(np.float32)
     n = audio.shape[1]
     starts = range(0, n - StftEffect.N + 1, StftEffect.HOP)
@@ -135,15 +170,19 @@ def analyse_echo(audio: np.ndarray, sample_rate: int) -> EchoResult:
     audio = np.asarray(audio, dtype=np.float64)
     if audio.shape[1] < sample_rate * 2 or float(np.max(np.abs(audio))) < 10 ** (NOTHING_DB / 20):
         return EchoResult("silent", 0.0, "I heard nothing at all. Is the right microphone selected and not muted?")
-    mono = audio.mean(axis=0)
-    # Rumble would hide the end of the decay: take out everything below 150 Hz (in the frequency domain, so no extra package).
-    spectrum = np.fft.rfft(mono)
-    freqs = np.fft.rfftfreq(len(mono), 1.0 / sample_rate)
-    spectrum *= np.clip((freqs - 100.0) / 100.0, 0.0, 1.0)  # silent below 100 Hz, fully there from 200 Hz
-    mono = np.fft.irfft(spectrum, n=len(mono))
     block = max(1, int(sample_rate * 0.003))
-    blocks = len(mono) // block
-    energy = (mono[: blocks * block].reshape(blocks, block) ** 2).mean(axis=1) + 1e-18
+    if _rust is not None and audio.shape[0] == 2:
+        energy = _rust.echo_energy(np.ascontiguousarray(audio), float(sample_rate), block)
+    else:
+        mono = audio.mean(axis=0)
+        # Rumble would hide the end of the decay: take out everything below 150 Hz (in the frequency domain, so no extra package).
+        spectrum = np.fft.rfft(mono)
+        freqs = np.fft.rfftfreq(len(mono), 1.0 / sample_rate)
+        spectrum *= np.clip((freqs - 100.0) / 100.0, 0.0, 1.0)  # silent below 100 Hz, fully there from 200 Hz
+        mono = np.fft.irfft(spectrum, n=len(mono))
+        blocks = len(mono) // block
+        energy = (mono[: blocks * block].reshape(blocks, block) ** 2).mean(axis=1) + 1e-18
+    blocks = len(energy)
     db = 10 * np.log10(energy)
     peak = int(np.argmax(db))
     noise_power = float(np.median(energy))               # more than half of the recording is the room alone
@@ -213,7 +252,10 @@ def analyse_voice(audio: np.ndarray, sample_rate: int) -> VoiceResult:
     peak_db = float(np.percentile(_block_peaks_db(audio, sample_rate), 99))
     size = max(1, int(sample_rate * VOICE_BLOCK_MS / 1000))
     blocks = audio.shape[1] // size
-    power = np.mean(audio[:, : blocks * size].reshape(2, blocks, size) ** 2, axis=(0, 2))
+    if _rust is not None:
+        power = _rust.block_power(np.ascontiguousarray(audio), size)
+    else:
+        power = np.mean(audio[:, : blocks * size].reshape(2, blocks, size) ** 2, axis=(0, 2))
     block_db = 10.0 * np.log10(np.maximum(power, 1e-12))
     loud_end = float(np.percentile(block_db, 95))
     spoken = block_db[block_db > loud_end - 15.0]  # the pieces where you were really talking, not the pauses

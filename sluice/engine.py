@@ -29,7 +29,7 @@ from .backend import AudioSystem, Stream
 from .dsp import Graph
 from .effects import EffectInstance, runner_for
 from .linker import Linker
-from . import events, reconnect, room
+from . import rawmic, events, reconnect, room
 from .model import (BUFFER_CHOICES, MONITOR, PREFIX, STREAM, VOICE_CHAIN, Channel, Effect, Mix, Mixer, canonical_order, linear_to_db)
 
 log = logging.getLogger("sluice.engine")
@@ -79,6 +79,7 @@ class Engine:
         self._signature: Optional[tuple] = None
         self._stream_signature: Optional[tuple] = None
         self._last_refresh = 0.0
+        self._last_raw_check = 0.0
         self._refreshes_since_link = 0
         self._last_rules = 0.0
         self._link_retry = False
@@ -92,6 +93,9 @@ class Engine:
         self.hear_broadcast = False  # not saved: it always starts off, so nobody is surprised by the wrong mix
         self._started = False
         self._last_links: set = set()
+        self._raw_first_seen: dict = {}   # app -> when it was first seen on the raw microphone
+        self._raw_reported: set = set()   # apps already reported (once each, until they stop listening)
+        self.raw_mic: dict = {}           # app -> the sentence to show, for the ones reported now and not dismissed
         self._last_failed: set = set()
         self._logged_xruns = 0
         self._xrun_base = 0
@@ -201,7 +205,7 @@ class Engine:
             return result
         except Exception as exc:  # an audio-server hiccup must never kill the UI
             self._guard_streak += 1
-            if self._guard_streak >= GUARD_STREAK_LOST and hasattr(self.io, "client"):
+            if self._guard_streak >= GUARD_STREAK_LOST and not getattr(self.io, "demo", False):
                 self.server_lost = True  # the same call failing again and again: the server is gone
             self._error(f"{type(exc).__name__}: {exc}")
             return None
@@ -524,6 +528,8 @@ class Engine:
                 changed.add("streams")
         if relink or self._link_retry:
             self.apply_links()
+        if relink or now - self._last_raw_check >= rawmic.CHECK_SECONDS:
+            self.check_raw_mic(now)
         xruns = self.io.xruns
         average, worst = self.io.take_load()
         if average or worst:
@@ -539,6 +545,38 @@ class Engine:
         if self._pending_xruns and now - self._last_xrun_log >= XRUN_LOG_SECONDS:
             self._log_dropouts(now)
         return changed
+
+    def check_raw_mic(self, now: float) -> None:
+        """Note apps that listen to a microphone straight from the device while a channel has effects on it."""
+        self._last_raw_check = now
+        current_links = getattr(self.linker, "current_links", None)
+        if current_links is None:
+            return
+        links = self._guard(current_links)
+        if links is None:
+            return
+        found = rawmic.find(links, self.mixer.channels, self.resolve_source)
+        for app in [a for a in self._raw_first_seen if a not in found]:  # it stopped: it may be reported again later
+            del self._raw_first_seen[app]
+            self._raw_reported.discard(app)
+            self.raw_mic.pop(app, None)
+        for app, channels in found.items():
+            first = self._raw_first_seen.setdefault(app, now)
+            if app in self._raw_reported or now - first < rawmic.SECONDS:
+                continue
+            self._raw_reported.add(app)
+            if f"rawmic:{app}" in self.mixer.hints_seen:
+                continue  # "don't remind me" was chosen for this app
+            self.raw_mic[app] = rawmic.message(app, channels)
+            self._note(f"{app} is listening to the raw microphone (no Sluice effects)", logging.WARNING)
+
+    def dismiss_raw_mic(self, app: str) -> None:
+        """"Don't remind me about this app": remembered with the settings."""
+        self.raw_mic.pop(app, None)
+        hint = f"rawmic:{app}"
+        if hint not in self.mixer.hints_seen:
+            self.mixer.hints_seen.append(hint)
+            del self.mixer.hints_seen[:-50]  # the list keeps the newest 50
 
     def _log_dropouts(self, now: float) -> None:
         """One line for every stretch of dropouts, not one per half second: a long burst used to fill the whole log."""

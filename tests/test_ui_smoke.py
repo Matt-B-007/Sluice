@@ -297,7 +297,7 @@ def test_help_menu_saves_a_bug_report(ui, tmp_path, monkeypatch):
         "Keyboard shortcuts", "What's new in this version\u2026", "Check for updates\u2026",
         "Go back to the previous version\u2026", "Save bug report\u2026", "I heard a glitch (mark this moment)",
         "Open folder", "Report a problem\u2026",
-        "Join the Discord\u2026", "Project page on GitHub\u2026", f"About Sluice {__version__}"]
+        "Join the Discord\u2026", "Project page on GitHub\u2026", f"About Sluice {__version__}", "Uninstall Sluice\u2026"]
     target = tmp_path / "report.txt"
     win.save_report_to(target)
     assert target.read_text().startswith("sluice bug report")

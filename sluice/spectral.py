@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from typing import Optional
 
+import os
+
 import numpy as np
 
 
@@ -142,6 +144,10 @@ class NoiseReducer(StftEffect):
         if self._profile is not None:
             self._noise = self._profile.copy()
 
+    @property
+    def has_profile(self) -> bool:
+        return self._profile is not None
+
     def set_profile(self, power: Optional[np.ndarray]) -> None:
         """Start from this noise spectrum (the mean power per bin, length K) instead of learning it from scratch."""
         self._profile = None if power is None else np.asarray(power, dtype=np.float64).copy()
@@ -223,3 +229,25 @@ class EchoReducer(StftEffect):
         self._ring[:] = 0.0      # what it remembers is from before the silence: it would be taken for an echo of the new sound
         self._ps = None
         self._prev = np.ones(self.K)
+
+
+# ---------------------------------------------------------------- the Rust versions, when they are installed
+# The classes above are the reference and the fallback. ``sluice_dsp`` (built from rust/sluice_dsp) has the same
+# classes with the same methods and gives the same output to within float rounding, about six times faster.
+# SLUICE_NO_RUST=1 forces the Python ones (to compare them, or to rule the Rust build out when hunting a problem).
+PythonNoiseReducer, PythonEchoReducer, PythonJoint = NoiseReducer, EchoReducer, Joint
+BACKEND = "python"
+RUST_VERSION = ""
+RUST_ERROR = ""
+
+if not os.environ.get("SLUICE_NO_RUST"):
+    try:
+        import sluice_dsp as _rust
+
+        NoiseReducer, EchoReducer, Joint = _rust.NoiseReducer, _rust.EchoReducer, _rust.Joint
+        BACKEND = "rust"
+        RUST_VERSION = _rust.VERSION
+    except ImportError:
+        pass
+    except Exception as _exc:  # a build for another Python or CPU: say why, and use the Python ones
+        RUST_ERROR = f"{type(_exc).__name__}: {_exc}"

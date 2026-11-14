@@ -1,0 +1,26 @@
+[package]
+name = "sluice_dsp"
+version = "0.9.6"
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "Sluice's real-time audio engine pieces in Rust (Sluice falls back to Python without it)"
+publish = false
+
+[lib]
+name = "sluice_dsp"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+pyo3 = { version = "0.30", features = ["extension-module", "abi3-py310"] }
+numpy = "0.30"
+realfft = "3.5"
+rustfft = "6.4"
+jack = "0.14"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+
+[patch.crates-io]
+jack-sys = { path = "vendor/jack-sys" }

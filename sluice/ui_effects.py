@@ -192,6 +192,32 @@ class EffectsDialog(QDialog):
         self.mine_button.setToolTip("Your own saved settings (they also keep the gate threshold and gain). "
                                     "Save as my preset works from any state, even after a tiny change.")
         sound.addWidget(self.mine_button)
+        # After a change to a preset of yours: keep it, save it as a new one, or go back
+        self._active_user: Optional[str] = None
+        self.mine_changed_row = QWidget()
+        changed_layout = QVBoxLayout(self.mine_changed_row)
+        changed_layout.setContentsMargins(0, 0, 0, 0)
+        changed_layout.setSpacing(4)
+        self.mine_changed_label = QLabel("")
+        self.mine_changed_label.setWordWrap(True)
+        self.mine_changed_label.setObjectName("hint")
+        changed_layout.addWidget(self.mine_changed_label)
+        changed_buttons = QHBoxLayout()
+        self.mine_update_button = QPushButton("Update preset…")
+        self.mine_update_button.setToolTip("Replace your saved preset with the settings as they are now (it asks first).")
+        self.mine_update_button.clicked.connect(self._update_my_preset)
+        self.mine_new_button = QPushButton("Save as new…")
+        self.mine_new_button.setToolTip("Keep your preset as it was and save these settings under a new name.")
+        self.mine_new_button.clicked.connect(self._save_preset)
+        self.mine_undo_button = QPushButton("Undo")
+        self.mine_undo_button.setToolTip("Put every setting back to what your preset says.")
+        self.mine_undo_button.clicked.connect(self._undo_to_my_preset)
+        for button in (self.mine_update_button, self.mine_new_button, self.mine_undo_button):
+            changed_buttons.addWidget(button)
+        changed_buttons.addStretch(1)
+        changed_layout.addLayout(changed_buttons)
+        self.mine_changed_row.hide()
+        sound.addWidget(self.mine_changed_row)
         self.compare_button = QPushButton("Hear my original microphone")
         self.compare_button.setCheckable(True)
         self.compare_button.setToolTip("Switches the whole effect chain off so you can compare with and without. "
@@ -304,7 +330,18 @@ class EffectsDialog(QDialog):
     def _update_presets_button(self) -> None:
         """Tick the Room and Voice style choices that match, and say "(changed)" with a Reset once a value was nudged."""
         effects = self.channel.effects
-        user_match = presets.user_name(effects, self._user_presets())
+        user = self._user_presets()
+        user_match = presets.user_name(effects, user)
+        if self._active_user in user and presets.matches(effects, user[self._active_user], personal=True):
+            user_match = self._active_user  # two presets that are identical: keep showing the one being edited
+        if user_match is not None:
+            self._active_user = user_match  # the preset these settings are, so a later change can be kept or undone
+        elif self._active_user not in user:
+            self._active_user = None  # it was deleted
+        edited = self._active_user is not None and user_match != self._active_user
+        self.mine_changed_row.setVisible(edited)
+        if edited:
+            self.mine_changed_label.setText(f"Changed from your preset \u201c{self._active_user}\u201d.")
         for axis in presets.AXES:
             name, changed = presets.axis_state(effects, axis)
             for (a, n), button in self._choice_buttons.items():
@@ -373,6 +410,7 @@ class EffectsDialog(QDialog):
                 remove.addAction(name, partial(self._delete_preset, name))
 
     def _apply_mine(self, entries: list, name: str) -> None:
+        self._active_user = name
         presets.apply(self.engine, self.channel.id, entries, personal=True)
         self._reload(select=max(0, self.list.currentRow()))
         self._tell(f"Applied your preset \u201c{name}\u201d.")
@@ -388,8 +426,40 @@ class EffectsDialog(QDialog):
         if not presets.save_user(path, stored):
             QMessageBox.warning(self, "Save preset", "The preset could not be saved (is the settings folder writable?).")
         self._user_presets(reload=True)
+        self._active_user = name
         self._update_presets_button()
         self._tell(f"Saved \u201c{name}\u201d, with the gate threshold and gain too.")
+
+    def _update_my_preset(self) -> None:
+        """Replace the preset being edited with the settings as they are now, after asking."""
+        name = self._active_user
+        if name is None:
+            return
+        answer = QMessageBox.question(
+            self, "Update preset",
+            f"Replace your preset \u201c{name}\u201d with the settings on this channel as they are now?\n\n"
+            "The old version of the preset will be gone.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        path = self._presets_file()
+        stored = presets.load_user(path)
+        stored[name] = presets.snapshot(self.channel.effects)
+        if not presets.save_user(path, stored):
+            QMessageBox.warning(self, "Update preset", "The preset could not be saved (is the settings folder writable?).")
+            return
+        self._user_presets(reload=True)
+        self._update_presets_button()
+        self._tell(f"Updated your preset \u201c{name}\u201d.")
+
+    def _undo_to_my_preset(self) -> None:
+        name = self._active_user
+        entries = self._user_presets().get(name) if name else None
+        if entries is None:
+            return
+        presets.apply(self.engine, self.channel.id, entries, personal=True)
+        self._reload(select=max(0, self.list.currentRow()))
+        self._tell(f"Back to your preset \u201c{name}\u201d.")
 
     def _delete_preset(self, name: str) -> None:
         path = self._presets_file()
@@ -625,6 +695,10 @@ class EffectsDialog(QDialog):
         name = presets.room_for_noise(result.noise_db)
         presets.apply(self.engine, self.channel.id, presets.ROOMS[name][1])
         self._reload(select=max(0, self.list.currentRow()))
+        if getattr(result, "quiet_fallback", False):
+            self._tell(f"Room: {name}. Sluice heard no sound at all, so it used the quietest setting. If your microphone is "
+                       "working, that just means the room is very quiet.")
+            return
         self._tell(f"Room: {name}, chosen to match what Sluice heard (about {result.noise_db:.0f} dB of background noise).")
 
     def _open_editor(self) -> None:

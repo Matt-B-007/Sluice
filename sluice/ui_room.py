@@ -44,14 +44,18 @@ class MeasureRoomDialog(QDialog):
         buttons = QHBoxLayout()
         buttons.addStretch(1)
         self.primary = QPushButton("")
+        self.retry_button = QPushButton("Try again")  # only next to the quiet-room choice
+        self.retry_button.hide()
         self.close_button = QPushButton("Cancel")
         buttons.addWidget(self.primary)
+        buttons.addWidget(self.retry_button)
         buttons.addWidget(self.close_button)
         layout.addLayout(buttons)
-        for button in (self.primary, self.close_button):
+        for button in (self.primary, self.retry_button, self.close_button):
             button.setAutoDefault(False)
             button.setDefault(False)
         self.primary.clicked.connect(self._primary_clicked)
+        self.retry_button.clicked.connect(self._start)
         self.close_button.clicked.connect(self.reject)
 
         self.timer = QTimer(self)
@@ -64,6 +68,7 @@ class MeasureRoomDialog(QDialog):
         self.listening = False
         self.result = None
         self.timer.stop()
+        self.retry_button.hide()
         self.bar.setValue(0)
         self.bar.hide()
         self.text.setText(self._intro_text())
@@ -79,6 +84,7 @@ class MeasureRoomDialog(QDialog):
             self._show_message(f"I cannot listen right now: {exc}.", retry=False)
             return
         self.listening = True
+        self.retry_button.hide()
         self._started = time.monotonic()
         self.bar.setValue(0)
         self.bar.show()
@@ -147,12 +153,24 @@ class MeasureRoomDialog(QDialog):
             self.primary.setEnabled(True)
             self.close_button.setText("Not now")
             self._fit()
+        elif getattr(result, "quiet_fallback", False):
+            if not getattr(self.channel, "devices", None):
+                self._show_message(room.NO_MIC_MESSAGE, retry=False)  # nothing is assigned: that is the problem, not a quiet room
+                return
+            # no sound at all: a very quiet room or a microphone that is not reaching Sluice; the person decides
+            self.text.setText(result.message)
+            self.primary.setText(f"Use the quiet-room setting ({result.threshold_db:.0f} dB)")
+            self.primary.setEnabled(True)
+            self.retry_button.show()
+            self.close_button.setText("Close")
+            self._fit()
         else:
             self._show_message(result.message, retry=True)
 
     def _show_message(self, message: str, retry: bool) -> None:
         self.timer.stop()
         self.bar.hide()
+        self.retry_button.hide()
         self.text.setText(message)
         self.result = None
         self.primary.setText("Try again")
@@ -162,7 +180,7 @@ class MeasureRoomDialog(QDialog):
 
     # ---------------------------------------------------------------- buttons
     def _primary_clicked(self) -> None:
-        if self.result is not None and self.result.usable:
+        if self.result is not None and (self.result.usable or getattr(self.result, "quiet_fallback", False)):
             self._apply(self.result)
             self.accept()
         else:

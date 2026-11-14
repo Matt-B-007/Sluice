@@ -17,6 +17,7 @@ import numpy as np
 
 from .model import Effect
 from .spectral import EchoReducer, Joint, NoiseReducer
+from . import spectral
 
 
 class EffectError(Exception):
@@ -64,6 +65,48 @@ class BuiltinDef:
     hint: str = ""  # shown under the sliders
 
 
+# Effects the Rust module (sluice_dsp) has: it matches pedalboard's maths (checked in tests/test_rust_effects.py).
+# VST3 plugins always stay on pedalboard (it is the plugin host).
+NATIVE_NAMES = ("Gain", "HighpassFilter", "LowShelfFilter", "PeakFilter", "HighShelfFilter", "Compressor", "NoiseGate", "Limiter")
+
+
+class Toolbox:
+    """What the effect builders make their plugins from: the Rust version of an effect when there is one, else pedalboard's."""
+
+    def __init__(self, pb, native=None) -> None:
+        self._pb = pb
+        self._native = native
+        self.Pedalboard = pb.Pedalboard if pb is not None else None
+
+    def __getattr__(self, name: str):
+        if self._native is not None and name in NATIVE_NAMES:
+            return self._native_factory(name)
+        return getattr(self._pb, name)
+
+    def _native_factory(self, name: str):
+        cls = getattr(self._native, name)
+        if name in ("LowShelfFilter", "HighShelfFilter", "PeakFilter"):
+            def make(cutoff_frequency_hz, gain_db, q=0.7071067690849304):  # pedalboard's default Q
+                return cls(cutoff_frequency_hz, gain_db, q)
+            return make
+
+        return cls  # the Rust classes take the same keyword names as pedalboard's
+
+
+def toolbox(pb):
+    native = None
+    if pb is not None and spectral.BACKEND == "rust" and not os.environ.get("SLUICE_NO_RUST_EFFECTS"):
+        import sluice_dsp
+
+        if hasattr(sluice_dsp, "Run"):
+            native = sluice_dsp
+    return Toolbox(pb, native)
+
+
+def is_native(item) -> bool:
+    return bool(getattr(item, "IS_NATIVE", False))
+
+
 class Stage:
     """A processor that runs next to the Pedalboard plugins in a chain (the spectral noise and echo reducers).
     The processor itself is made on first use, because it needs the sample rate."""
@@ -109,6 +152,22 @@ class Stage:
         return float(getattr(self._processor, "activity_db", 0.0)) if self._processor is not None else 0.0
 
 
+class NativeRun:
+    """Neighbouring Rust effects run in one call."""
+
+    def __init__(self, plugins: list) -> None:
+        import sluice_dsp
+
+        self.plugins = list(plugins)
+        self._run = sluice_dsp.Run(self.plugins)
+
+    def process(self, audio: np.ndarray, sample_rate: int) -> np.ndarray:
+        return self._run.process(np.ascontiguousarray(audio, dtype=np.float32), int(sample_rate))
+
+    def wake(self) -> None:
+        pass
+
+
 class JointStage:
     """Two or more neighbouring spectral Stages run as one pass (see spectral.Joint)."""
 
@@ -133,28 +192,37 @@ class Chain:
 
     def __init__(self, pb, items: list) -> None:
         self._parts: list = []
+        spectral_run: list = []
+        native_run: list = []
         run: list = []
-        spectral: list = []
 
-        def flush_spectral() -> None:
-            if len(spectral) > 1:
-                self._parts.append(JointStage(spectral))
-            elif spectral:
-                self._parts.append(spectral[0])
-            spectral.clear()
+        def flush() -> None:
+            if len(spectral_run) > 1:
+                self._parts.append(JointStage(list(spectral_run)))
+            elif spectral_run:
+                self._parts.append(spectral_run[0])
+            if native_run:
+                self._parts.append(NativeRun(list(native_run)))
+            if run:
+                self._parts.append(pb.Pedalboard(list(run)))
+            spectral_run.clear()
+            native_run.clear()
+            run.clear()
 
         for item in items:
             if isinstance(item, Stage):
-                if run:
-                    self._parts.append(pb.Pedalboard(run))
-                    run = []
-                spectral.append(item)
+                if native_run or run:
+                    flush()
+                spectral_run.append(item)
+            elif is_native(item):
+                if spectral_run or run:
+                    flush()
+                native_run.append(item)
             else:
-                flush_spectral()
+                if spectral_run or native_run:
+                    flush()
                 run.append(item)
-        flush_spectral()
-        if run:
-            self._parts.append(pb.Pedalboard(run))
+        flush()
 
     def wake(self) -> None:
         """Sound is back after a long silence in which the chain was not run."""
@@ -164,7 +232,7 @@ class Chain:
 
     def __call__(self, audio: np.ndarray, sample_rate: int, reset: bool = False) -> np.ndarray:
         for part in self._parts:
-            if isinstance(part, (Stage, JointStage)):
+            if isinstance(part, (Stage, JointStage, NativeRun)):
                 audio = part.process(audio, sample_rate)
             else:
                 audio = np.asarray(part(audio, sample_rate, reset=reset), dtype=np.float32)
@@ -314,7 +382,7 @@ def runner_for(effects: list, sample_rate: int) -> Optional[Callable]:
             items.extend(copy.items)
     if pb is None or not items:
         return None
-    chain = Chain(pb, items)
+    chain = Chain(toolbox(pb), items)
     return lambda audio: chain(np.ascontiguousarray(audio, dtype=np.float32), sample_rate)
 
 
@@ -367,7 +435,7 @@ class EffectInstance:
         if definition.stage is not None:
             self.stage = definition.stage(values)
         else:
-            self.plugins, self._targets = definition.build(_pedalboard(), values)
+            self.plugins, self._targets = definition.build(toolbox(_pedalboard()), values)
         self.effect.params = dict(values)
 
     def _load_vst3(self) -> None:
@@ -512,3 +580,8 @@ def vst3_plugin_names(path: str) -> list:
         return list(_pedalboard().VST3Plugin.get_plugin_names_for_file(path))
     except Exception:
         return []
+
+
+def native_backend() -> str:
+    """"rust" when the built-in effects run in Rust, else "python" (pedalboard's own)."""
+    return "rust" if toolbox(object())._native is not None else "python"

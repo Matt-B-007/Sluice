@@ -372,7 +372,7 @@ def test_a_real_session_is_marked_once_it_runs_and_unmarked_when_it_ends(state, 
     from sluice.linker import NullLinker
 
     class FakeJack(NullIO):
-        client = object()    # what makes Sluice treat the backend as a real audio server
+        demo = False         # what makes Sluice treat the backend as a real audio server
 
     seen = []
     monkeypatch.setattr(entry, "_real_parts", lambda: (MockSystem(), FakeJack(realtime=False), NullLinker()))

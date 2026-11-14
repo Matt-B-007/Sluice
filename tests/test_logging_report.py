@@ -285,7 +285,7 @@ def test_a_name_clash_with_another_sluice_is_explained(monkeypatch):
     from sluice import __main__ as entry
 
     class Boom:
-        def __init__(self):
+        def __init__(self, *args):
             raise RuntimeError('Error initializing "sluice": <jack.Status 0x4: name_not_unique>')
 
     class FakeSystem:

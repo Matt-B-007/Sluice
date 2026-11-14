@@ -36,7 +36,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from . import __version__, logs, report, selfupdate, themes, updates, whatsnew
+from . import rawmic, __version__, logs, report, selfupdate, themes, updates, whatsnew
 from .engine import Engine
 from .model import BUFFER_CHOICES, MAX_DB, MIN_DB, MONITOR, RECORDING, STREAM, Channel, Mix, Mixer, config_path, linear_to_db, list_backups
 from .ui_effects import EffectsDialog
@@ -984,6 +984,13 @@ class MainWindow(QMainWindow):
         self.buffer_offer.clicked.connect(self.accept_buffer_offer)
         self.buffer_offer.hide()
         self.statusBar().addPermanentWidget(self.buffer_offer)
+        self.raw_mic_button = QPushButton("")
+        self.raw_mic_button.setFlat(True)
+        self.raw_mic_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.raw_mic_button.setStyleSheet(f"color: {themes.color('warn')};")
+        self.raw_mic_button.clicked.connect(self.show_raw_mic)
+        self.raw_mic_button.hide()
+        self.statusBar().addPermanentWidget(self.raw_mic_button)
         version = QLabel(f"v{__version__}")
         version.setObjectName("status")
         version.setToolTip("The Sluice version you are running. Please include it in bug reports.")
@@ -1110,6 +1117,40 @@ class MainWindow(QMainWindow):
         self.help_menu.addAction("Join the Discord\u2026", partial(self.open_link, DISCORD_URL))
         self.help_menu.addAction("Project page on GitHub\u2026", partial(self.open_link, PROJECT_URL))
         self.help_menu.addAction(f"About Sluice {__version__}", self.show_about)
+        self.uninstall_action = self.help_menu.addAction("Uninstall Sluice\u2026", self.uninstall_app)
+
+    def uninstall_app(self) -> None:
+        """Show exactly what would be removed, then close Sluice and let a separate process remove it."""
+        import subprocess
+
+        from . import uninstall
+
+        if "Demo" in self.engine.io.label:
+            QMessageBox.information(self, "Uninstall Sluice", "Demo mode changes nothing, so there is nothing to uninstall here.")
+            return
+        box = QMessageBox(self)
+        box.setWindowTitle("Uninstall Sluice")
+        keep = QCheckBox("Keep my settings, presets and controller bindings (in case I install it again)")
+        keep.setChecked(True)
+        box.setCheckBox(keep)
+        box.setText("Remove Sluice from this computer?\n\n" + uninstall.describe(uninstall.plan(keep_settings=True)).replace(
+            "Sluice will remove:", "This will remove:") +
+            "\n\nSluice closes first, then removes these a moment later. Your recordings and other files are never touched. "
+            "System packages such as PipeWire stay.")
+        go = box.addButton("Uninstall", QMessageBox.ButtonRole.DestructiveRole)
+        box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        if box.clickedButton() is not go:
+            return
+        command = uninstall.command_for_gui(keep.isChecked())
+        try:
+            # a few seconds' wait lets this process finish closing (it holds the single-copy lock until then)
+            subprocess.Popen(["sh", "-c", 'sleep 4; exec "$@"', "sluice-uninstall", *command], start_new_session=True,
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except OSError as exc:
+            QMessageBox.warning(self, "Uninstall Sluice", f"Could not start the uninstall: {exc}\nRun this in a terminal instead: sluice --uninstall")
+            return
+        self.quit_app()
 
     def open_link(self, url: str) -> None:
         if not QDesktopServices.openUrl(QUrl(url)):
@@ -1709,6 +1750,35 @@ class MainWindow(QMainWindow):
             self.perf_label.setText(text)
             self.perf_label.setToolTip(self.engine.dropout_tooltip())
         self._update_buffer_offer()
+        self._update_raw_mic()
+
+    def _update_raw_mic(self) -> None:
+        """A warning in the status bar while an app listens to the raw microphone instead of the one with effects."""
+        warnings = self.engine.raw_mic
+        self.raw_mic_button.setVisible(bool(warnings))
+        if warnings:
+            app, text = next(iter(warnings.items()))
+            more = f" (+{len(warnings) - 1} more)" if len(warnings) > 1 else ""
+            self.raw_mic_button.setText(rawmic.short(app) + more)
+            self.raw_mic_button.setToolTip(text + "\nClick for details.")
+
+    def show_raw_mic(self) -> None:
+        warnings = dict(self.engine.raw_mic)
+        if not warnings:
+            return
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle("Raw microphone")
+        box.setText("\n\n".join(warnings.values()))
+        box.setInformativeText("Nothing is wrong with Sluice. If that is what you want, you can stop the reminder.")
+        dismiss = box.addButton("Don't remind me about " + ("these apps" if len(warnings) > 1 else next(iter(warnings))),
+                                QMessageBox.ButtonRole.DestructiveRole)
+        box.addButton("OK", QMessageBox.ButtonRole.AcceptRole)
+        box.exec()
+        if box.clickedButton() is dismiss:
+            for app in warnings:
+                self.engine.dismiss_raw_mic(app)
+            self._update_raw_mic()
 
     def _update_buffer_offer(self) -> None:
         bigger = self.engine.larger_buffer_offer()

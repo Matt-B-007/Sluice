@@ -59,8 +59,16 @@ def test_no_signal_is_reported_as_a_microphone_problem():
     assert "microphone" in result.message.lower()
 
 
+def test_no_signal_says_it_is_either_a_quiet_room_or_a_microphone_problem_and_offers_the_floor():
+    result = room.analyse(np.zeros((2, SR * 5), dtype=np.float32), SR)
+    assert result.reason == "nothing" and result.quiet_fallback and result.threshold_db == room.FLOOR_DB
+    text = result.message.lower()
+    assert "quiet" in text and "microphone" in text and "try again" not in text
+
+
 def test_too_short_a_recording_is_refused():
-    assert room.analyse(noise(-42, seconds=1.0), SR).status == "silent"
+    result = room.analyse(noise(-42, seconds=1.0), SR)
+    assert result.status == "silent" and result.reason == "short" and not result.quiet_fallback
 
 
 def test_a_very_quiet_room_gets_the_floor_threshold():

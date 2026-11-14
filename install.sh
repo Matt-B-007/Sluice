@@ -94,6 +94,23 @@ run "$py" -m venv .venv || { say "Could not create the virtual environment. On D
 run .venv/bin/python -m pip install --upgrade pip >/dev/null
 run .venv/bin/python -m pip install -e . || { say "pip could not install Sluice. Read the error above." >&2; exit 1; }
 
+step "Faster audio engine (optional, needs Rust)"
+if [ "${SLUICE_NO_RUST:-}" = 1 ]; then
+    say "Skipped (SLUICE_NO_RUST=1). Sluice will use its Python engine."
+elif command -v cargo >/dev/null 2>&1 && [ -d rust/sluice_dsp ]; then
+    say "Building the Rust engine (a minute or two the first time)..."
+    if [ "$dry" = 1 ]; then
+        say "   (dry run) pip install maturin; maturin develop --release"
+    elif .venv/bin/python -m pip install maturin >/dev/null && (cd rust/sluice_dsp && VIRTUAL_ENV="$here/.venv" "$here/.venv/bin/maturin" develop --release >/dev/null 2>&1); then
+        say "Rust engine installed."
+    else
+        say "The Rust engine did not build, so Sluice will use its Python engine (same sound, a bit more CPU)."
+    fi
+else
+    say "Rust (cargo) was not found, so Sluice will use its Python engine (same sound, a bit more CPU)."
+    say "For the faster engine install Rust (https://rustup.rs, or your package manager's 'rust') and run ./install.sh again."
+fi
+
 step "Checking"
 if [ "$dry" = 1 ]; then
     say "   (dry run) .venv/bin/sluice --version; .venv/bin/sluice --diagnose"

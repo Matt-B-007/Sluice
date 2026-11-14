@@ -460,8 +460,8 @@ def test_the_voice_button_is_on_the_gate_and_the_compressor_pages_of_a_microphon
 def test_the_menus_hold_the_agreed_items(two):
     win, _, _ = two
     assert [a.text().replace("&", "") for a in win.menuBar().actions()] == ["File", "Mixer", "Settings", "View", "Help"]
-    assert texts(menu_of(win, "Help"))[-4:] == ["Report a problem…", "Join the Discord…", "Project page on GitHub…",
-                                                f"About Sluice {ui_module.__version__}"]
+    assert texts(menu_of(win, "Help"))[-5:] == ["Report a problem…", "Join the Discord…", "Project page on GitHub…",
+                                                f"About Sluice {ui_module.__version__}", "Uninstall Sluice\u2026"]
 
 
 def test_every_shortcut_survived_the_move(two):

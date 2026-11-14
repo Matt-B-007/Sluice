@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.9.6
+Clearer *Measure my room* results, a safer way to keep your presets up to date, and a warning about raw microphones.
+- **Measure my room** no longer just says "try again" when it hears nothing. It says the room is either extremely quiet
+  or the microphone is not reaching Sluice, and offers **Use the quiet-room setting (-60 dB)** next to *Try again*.
+  If no microphone is chosen for the channel it says that instead.
+- **Keeping your own presets current.** After you change an effect on a channel that matches one of *My presets*, a
+  note offers **Update preset** (asks first, default No), **Save as new...** or **Undo**. The built-in Room and Voice
+  style choices are never overwritten.
+- **Raw microphone warning.** If an app (Discord, OBS, a browser...) is recording straight from your microphone instead
+  of the processed *Sluice (Broadcast)* source, a banner says so, since your effects are not being applied for it.
+  Dismiss it per app and it stays away.
+- Rust engine: the noise and echo reducers now allocate nothing while audio is running (all buffers are made once), and
+  the sound is unchanged.
+- README screenshots refreshed.
+
+## 0.9.5
+A faster audio engine written in Rust, and a way to uninstall Sluice.
+- **Rust engine (optional).** The audio work now runs in Rust when it is installed: the Noise and Echo Reducers (about 7
+  times faster), the built-in effects (High-pass, EQ, Compressor, Noise gate, Limiter, Gain), the mixing step (mix
+  levels, peak limiter, meters), the arithmetic of *Measure my room* / echo / voice level, and the connection to
+  PipeWire itself (ports, the block callback, load and dropout counting). The sound is the same to within rounding,
+  checked against the Python and pedalboard versions. Without Rust, Sluice uses the Python versions automatically.
+  `./install.sh` builds it when Rust is found. `SLUICE_NO_RUST=1` forces Python everywhere. VST3 plugins (pedalboard),
+  the interface, settings, presets, updates and logs stay in Python. See `docs/RUST.md`.
+- `sluice --diagnose` and the bug report have an *Audio engine* line that says which parts run in Rust.
+- **Uninstall.** *Help > Uninstall Sluice...* or `./uninstall.sh` removes the launcher, menu entry, autostart, settings,
+  logs and the install folder after showing exactly what it will remove. `--keep-settings` keeps your settings,
+  `--dry-run` only lists, `--yes` skips the question. It refuses to touch your home folder or a git checkout.
+- The 1024-frame buffer is not a default.
+
 ## 0.9.4
 Presets that make an audible difference, a bug report that says what happened just before each dropout, and tidier project housekeeping.
 - **New presets: Room and Voice style.** The Effects window has two rows of choices instead of the old preset list.

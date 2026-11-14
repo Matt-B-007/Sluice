@@ -38,6 +38,7 @@ def _short(name: str) -> str:
 
 class AudioIO(ABC):
     label = "abstract"
+    demo = False  # True only for NullIO: nothing real is touched, settings are not saved
     sample_rate = 48000
     blocksize = 512
     xruns = 0
@@ -65,6 +66,7 @@ class NullIO(AudioIO):
     """Generates test signals and drops the output. ``realtime=False`` lets tests step blocks by hand."""
 
     label = "Demo mode (no audio is touched)"
+    demo = True
 
     def __init__(self, sample_rate: int = 48000, blocksize: int = 512, realtime: bool = True) -> None:
         self.sample_rate = sample_rate
@@ -149,16 +151,99 @@ class NullIO(AudioIO):
 
 
 # ========================================================================== JACK
+def _jack_environment() -> None:
+    # Ask PipeWire not to auto-connect our ports; we manage every link ourselves.
+    os.environ.setdefault("PIPEWIRE_PROPS", "{ node.autoconnect=false }")
+    # Ask for ~10 ms blocks: small enough to feel live, large enough for Python to keep up.
+    os.environ.setdefault("PIPEWIRE_LATENCY", "512/48000")
+
+
+class RustJackIO(AudioIO):
+    """The same as JackIO, with the client, the ports, the block timing and the dropout counting done in Rust
+    (``sluice_dsp.JackEngine``). The mixing graph is still called from Python for each block, because VST3 plugins need it."""
+
+    label = "PipeWire (JACK)"
+    backend = "rust"
+
+    def __init__(self, client_name: str = CLIENT) -> None:
+        _jack_environment()
+        import sluice_dsp
+
+        self._engine = sluice_dsp.JackEngine(client_name)
+        self.sample_rate = int(self._engine.sample_rate)
+        self.blocksize = int(self._engine.blocksize)
+        self._graph = None
+        log.info("JACK client '%s' connected (Rust): %d Hz, %d frames per block", client_name, self.sample_rate, self.blocksize)
+
+    @property
+    def xruns(self) -> int:  # type: ignore[override]
+        return self._engine.xruns
+
+    @property
+    def xruns_ours(self) -> int:  # type: ignore[override]
+        return self._engine.xruns_ours
+
+    @property
+    def error(self) -> str:  # type: ignore[override]
+        return self._engine.error
+
+    @error.setter
+    def error(self, value: str) -> None:
+        self._engine.error = value
+
+    def take_load(self) -> tuple:
+        return self._engine.take_load()
+
+    def sync_ports(self, channel_ids: list, mix_ids: list) -> None:
+        self._engine.sync_ports(list(channel_ids), list(mix_ids))
+
+    def start(self, graph) -> None:
+        self._graph = graph
+        graph.live = True
+        self._engine.start(graph.process)
+
+    def stop(self) -> None:
+        try:
+            self._engine.stop()
+        except Exception as exc:
+            log.warning("JACK stop failed: %s", exc)
+        if self._graph is not None:
+            self._graph.live = False
+
+
+def is_demo(io) -> bool:
+    """Whether this backend only pretends (the demo mode), as opposed to a real audio connection."""
+    return bool(getattr(io, "demo", False))
+
+
+def make_jack_io(client_name: str = CLIENT) -> AudioIO:
+    """The Rust JACK client when sluice_dsp is installed, else (or if it cannot connect for another reason) python-jack.
+    SLUICE_NO_RUST=1 or SLUICE_NO_RUST_IO=1 forces python-jack."""
+    if not os.environ.get("SLUICE_NO_RUST") and not os.environ.get("SLUICE_NO_RUST_IO"):
+        try:
+            import sluice_dsp
+
+            usable = hasattr(sluice_dsp, "JackEngine")
+        except Exception:
+            usable = False
+        if usable:
+            try:
+                return RustJackIO(client_name)
+            except Exception as exc:
+                if "name_not_unique" in str(exc).lower():
+                    raise
+                log.info("the Rust audio client could not connect (%s); trying python-jack", exc)
+    return JackIO(client_name)
+
+
 class JackIO(AudioIO):
     """Real audio through PipeWire's JACK layer. Needs ``pipewire-jack`` and the JACK-Client package."""
 
     label = "PipeWire (JACK)"
+    backend = "python"
 
     def __init__(self, client_name: str = CLIENT) -> None:
-        # Ask PipeWire not to auto-connect our ports; we manage every link ourselves.
-        os.environ.setdefault("PIPEWIRE_PROPS", "{ node.autoconnect=false }")
-        # Ask for ~10 ms blocks: small enough to feel live, large enough for Python to keep up.
-        os.environ.setdefault("PIPEWIRE_LATENCY", "512/48000")
+        _jack_environment()
         import jack  # imported lazily: it needs libjack at import time
 
         self._jack = jack

@@ -112,7 +112,7 @@ def test_a_server_shutdown_message_is_recognised_and_marks_the_engine(rig):
 
 def test_repeated_failures_mean_the_server_is_gone_but_a_success_resets_the_count(rig):
     engine, _ = rig
-    engine.io.client = object()  # only the real (JACK) backend has one
+    engine.io.demo = False  # only the demo backend is marked as one
 
     def fail():
         raise OSError("connection reset")
@@ -160,4 +160,4 @@ def test_a_measured_profile_reaches_the_noise_reducer(rig):
     stage.ensure(48000)
     engine.apply_noise_profile("mic", np.ones(513))
     io.process_once(N)  # queued changes are applied at the start of the next block
-    assert stage.profile is not None and stage._processor._profile is not None
+    assert stage.profile is not None and stage._processor.has_profile

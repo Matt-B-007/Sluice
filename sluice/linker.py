@@ -93,9 +93,13 @@ class NullLinker(Linker):
 
     def __init__(self) -> None:
         self.links: set = set()
+        self.others: set = set()  # tests: links made by other programs
 
     def snapshot(self) -> PortSnapshot:
         return PortSnapshot(fabricate=True)
+
+    def current_links(self) -> set:
+        return self.links | self.others
 
     def sync(self, desired: set) -> set:
         self.links = set(desired)

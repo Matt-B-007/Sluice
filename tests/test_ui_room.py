@@ -11,6 +11,7 @@ pytest.importorskip("pedalboard")
 
 from PySide6.QtWidgets import QPushButton  # noqa: E402
 
+from sluice import room  # noqa: E402
 from sluice.audio_io import NullIO  # noqa: E402
 from sluice.backend import MockSystem  # noqa: E402
 from sluice.engine import Engine  # noqa: E402
@@ -94,14 +95,15 @@ def test_talking_during_the_measurement_offers_another_try_not_a_bad_threshold(r
     assert used == []  # nothing was applied
 
 
-def test_a_muted_or_missing_microphone_is_explained(rig):
+def test_a_muted_or_missing_microphone_is_explained_along_with_the_quiet_room_possibility(rig):
     _, engine, io = rig
     dialog, _ = make_dialog(engine, [])
     io.fixed_inputs = {"mic": np.zeros((2, 1), dtype=np.float32)}
     dialog.primary.click()
     listen(io, 5.5)
     dialog.tick()
-    assert "microphone" in dialog.text.text().lower() and dialog.primary.text() == "Try again"
+    assert "microphone" in dialog.text.text().lower() and "quiet" in dialog.text.text().lower()
+    assert dialog.primary.text().startswith("Use the quiet-room setting") and not dialog.retry_button.isHidden()
 
 
 def test_when_audio_is_not_running_it_says_so_instead_of_waiting_forever(rig):
@@ -190,3 +192,41 @@ def test_using_the_noise_result_also_gives_the_noise_reducer_its_profile(rig):
     io.process_once(512)
     reducer = next(e for e in engine.mixer.channel("mic").effects if e.type == "noise_reducer")
     assert engine.effect_instance(reducer.id).stage.profile is not None
+
+
+def test_hearing_nothing_offers_the_quiet_room_setting_or_trying_again(rig):
+    _, engine, io = rig
+    used, applied = [], []
+    dialog, gate = make_dialog(engine, used)
+    dialog.on_applied = applied.append
+    io.streamed_inputs = {"mic": np.zeros((2, SR * 6), dtype=np.float32)}
+    dialog.primary.click()
+    listen(io, 5.6)
+    dialog.tick()
+    assert dialog.result is not None and dialog.result.quiet_fallback
+    assert "extremely quiet" in dialog.text.text() and "isn't reaching Sluice" in dialog.text.text()
+    assert dialog.primary.isEnabled() and dialog.primary.text() == "Use the quiet-room setting (-60 dB)"
+    assert not dialog.retry_button.isHidden()
+    dialog.primary.click()
+    assert used == [room.FLOOR_DB] and applied and applied[0].quiet_fallback
+
+
+def test_hearing_nothing_can_be_tried_again_and_a_missing_microphone_is_called_out(rig):
+    _, engine, io = rig
+    dialog, gate = make_dialog(engine, [])
+    io.streamed_inputs = {"mic": np.zeros((2, SR * 6), dtype=np.float32)}
+    dialog.primary.click()
+    listen(io, 5.6)
+    dialog.tick()
+    dialog.retry_button.click()
+    assert dialog.listening and dialog.retry_button.isHidden()
+    engine.measure_room_cancel("mic")
+    dialog.listening = False
+    # nothing assigned to the channel: that is the problem, so no "quiet room" offer
+    mic = engine.mixer.channel("mic")
+    mic.devices = []
+    dialog2, _ = make_dialog(engine, [])
+    dialog2.primary.click()
+    listen(io, 5.6)
+    dialog2.tick()
+    assert "No microphone is chosen" in dialog2.text.text() and dialog2.retry_button.isHidden()

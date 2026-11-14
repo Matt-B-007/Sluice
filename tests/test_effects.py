@@ -4,7 +4,7 @@ import base64
 import numpy as np
 import pytest
 
-from sluice.effects import BUILTINS, EffectInstance, builtin_names, scan_vst3, vst3_plugin_names
+from sluice.effects import BUILTINS, Chain, EffectInstance, builtin_names, scan_vst3, toolbox, vst3_plugin_names
 from sluice.model import Effect, Mixer
 
 pedalboard = pytest.importorskip("pedalboard")
@@ -13,7 +13,7 @@ SR = 48000
 
 
 def run(instance: EffectInstance, audio: np.ndarray) -> np.ndarray:
-    board = pedalboard.Pedalboard(instance.plugins)
+    board = Chain(toolbox(pedalboard), instance.items)
     chunks = [board(np.ascontiguousarray(audio[:, i:i + 512]), SR, reset=False) for i in range(0, audio.shape[1], 512)]
     return np.concatenate(chunks, axis=1)
 

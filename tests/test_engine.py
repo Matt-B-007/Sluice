@@ -619,3 +619,20 @@ def test_the_mic_has_its_own_recording_device_with_its_effects_from_the_start():
     assert mixer.channel("mic").solo_description == "Sluice (Mic)"  # what OBS, Discord and games list as a microphone
     assert mixer.channel("mic").description == "Sluice (Mic) output"  # the output apps play into: a different name
     assert mixer.mix(STREAM).source_description == "Sluice (Broadcast)"
+
+
+def test_a_real_audio_backend_is_never_taken_for_demo_mode():
+    """0.9.5 regression: the Rust audio client has no ``client`` attribute, and the app took that to mean demo mode."""
+    from sluice.audio_io import NullIO, is_demo
+
+    class RealWithoutClientAttribute:
+        label = "PipeWire (JACK)"
+
+    assert not is_demo(RealWithoutClientAttribute())
+    assert is_demo(NullIO(realtime=False))
+    try:
+        from sluice.audio_io import RustJackIO
+
+        assert RustJackIO.demo is False and not hasattr(RustJackIO, "client")
+    except ImportError:
+        pass

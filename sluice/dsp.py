@@ -13,12 +13,13 @@ threads at once.
 """
 from __future__ import annotations
 
+import os
 from collections import deque
 from typing import Callable, Iterable, Optional
 
 import numpy as np
 
-from .effects import Chain
+from .effects import Chain, toolbox
 
 LIMITER_CEILING_DB = -1.0
 SILENCE_TAIL_SECONDS = 6.0  # after this long without input, a channel's effect chain is skipped (reverb tails are shorter)
@@ -32,7 +33,7 @@ def _pedalboard():
     return pedalboard
 
 
-class PeakLimiter:
+class PythonPeakLimiter:
     """Brickwall peak limiter: instant attack, exponential release, vectorised with numpy.
 
     The gain is chosen per sample so the output never exceeds ``ceiling_db``; after an
@@ -64,6 +65,23 @@ class PeakLimiter:
             self._reduction = float(reduction[-1])
             out[:, start:start + n] = part / reduction.astype(np.float32)
         return out
+
+
+# The mixing kernels in Rust, when sluice_dsp is installed (same results to float rounding; SLUICE_NO_RUST=1 or
+# SLUICE_NO_RUST_MIX=1 keeps the numpy ones).
+PeakLimiter = PythonPeakLimiter
+_rust = None
+if not os.environ.get("SLUICE_NO_RUST") and not os.environ.get("SLUICE_NO_RUST_MIX"):
+    try:
+        import sluice_dsp as _rust
+
+        if not hasattr(_rust, "finish_mix"):  # an older build
+            _rust = None
+        else:
+            PeakLimiter = _rust.PeakLimiter
+    except Exception:
+        _rust = None
+MIX_BACKEND = "rust" if _rust is not None else "python"
 
 
 def _curve(previous: float, target: float, frames: int):
@@ -202,7 +220,7 @@ class Graph:
             channel = self.channels.get(channel_id)
             if channel is None:
                 return
-            channel.board = Chain(self._pb, items) if (items and self._pb) else None
+            channel.board = Chain(toolbox(self._pb), items) if (items and self._pb) else None
 
         self.submit(apply)
 
@@ -311,10 +329,17 @@ class Graph:
                     channel.board = None
                     self.errors.append(f"Effect chain on '{cid}' failed and was disabled: {exc}")
             if frames:
-                level = float(np.max(np.abs(audio)))
-                if not np.isfinite(level):  # a misbehaving plugin produced NaN or infinity: replace it with silence
-                    audio = np.nan_to_num(audio, nan=0.0, posinf=0.0, neginf=0.0)
+                if _rust is not None:
+                    audio = np.ascontiguousarray(audio, dtype=np.float32)
+                    level, _, finite = _rust.block_stats(audio)
+                    if not finite:  # a misbehaving plugin produced NaN or infinity: replace it with silence
+                        audio = np.nan_to_num(audio, nan=0.0, posinf=0.0, neginf=0.0)
+                        level = float(np.max(np.abs(audio)))
+                else:
                     level = float(np.max(np.abs(audio)))
+                    if not np.isfinite(level):
+                        audio = np.nan_to_num(audio, nan=0.0, posinf=0.0, neginf=0.0)
+                        level = float(np.max(np.abs(audio)))
                 channel.peak = max(channel.peak, level)
                 channel.recent = max(level, channel.recent * RECENT_DECAY)
             for mid, out in outputs.items():
@@ -322,7 +347,10 @@ class Graph:
                 previous = channel.applied.get(mid, target)
                 if target == 0.0 and previous == 0.0:
                     continue
-                out += audio * _curve(previous, target, frames)
+                if _rust is not None and out.shape == audio.shape:
+                    _rust.accumulate(out, np.ascontiguousarray(audio, dtype=np.float32), previous, target)
+                else:
+                    out += audio * _curve(previous, target, frames)
                 channel.applied[mid] = target
             if channel.solo_gain is not None:
                 outputs[f"solo_{cid}"] = (audio * _curve(channel.solo_applied, channel.solo_gain, frames)).astype(np.float32)
@@ -330,6 +358,14 @@ class Graph:
 
         for mid, mix in self.mixes.items():
             out = outputs[mid]
+            if _rust is not None and frames:
+                if mix.limiter and mix.limiter_dsp is None:
+                    mix.limiter_dsp = PeakLimiter(self.sample_rate)
+                peak = _rust.finish_mix(out, mix.applied, mix.gain, mix.limiter_dsp if mix.limiter else None)
+                mix.applied = mix.gain
+                mix.primed = True
+                mix.peak = max(mix.peak, peak)
+                continue
             out *= _curve(mix.applied, mix.gain, frames)
             mix.applied = mix.gain
             mix.primed = True

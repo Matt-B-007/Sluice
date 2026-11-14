@@ -1,0 +1,13 @@
+[build-system]
+requires = ["maturin>=1.5,<2"]
+build-backend = "maturin"
+
+[project]
+name = "sluice-dsp"
+version = "0.9.6"
+requires-python = ">=3.10"
+license = { text = "GPL-3.0-or-later" }
+description = "Rust audio engine pieces for Sluice (optional)"
+
+[tool.maturin]
+module-name = "sluice_dsp"
