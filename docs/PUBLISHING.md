@@ -16,10 +16,10 @@ The commands below are already filled in for the GitHub user **Matt-B-007** and 
 ```bash
 cd ~/sluice
 grep -rIn -i "$USER" --exclude-dir=.venv --exclude-dir=.git . | head     # should print nothing about you
-ls                                                                        # no sluice-report.txt, no *.zip
+ls                                                                        # no sluice-report*.txt, no *.zip
 ```
 
-The `.gitignore` already keeps `.venv`, zip files, caches and `sluice-report.txt` out. A bug report lists your devices and
+The `.gitignore` already keeps `.venv`, zip files, caches and `sluice-report*.txt` out. A bug report lists your devices and
 app names, so never commit one (post it in an issue only after reading it).
 
 ## 3. Put your GitHub name in

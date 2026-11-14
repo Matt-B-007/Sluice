@@ -15,17 +15,18 @@ An open-source virtual audio mixer for Linux (PipeWire). Put your mic, games, mu
 > and use the Sluice support forum. Please do not post the `sluice --report` file there: it contains device and app
 > names, so offer it in a private ticket instead.
 
-## What's new in 0.9.6
+## What's new in 0.9.7
 
-Clearer *Measure my room* results, safer presets, and a warning about raw microphones. (The full list for every version
-is in [CHANGELOG.md](CHANGELOG.md); Sluice also shows it once after an update, and under *Help > What's new in this version*.)
+Bug reports that are easy to tell apart, clearer messages, a guard against a PulseAudio crash, and quieter installs. (The full
+list for every version is in [CHANGELOG.md](CHANGELOG.md); Sluice also shows it once after an update, and under *Help > What's new in this version*.)
 
-- **Measure my room** explains silence (a very quiet room, or a mic that is not reaching Sluice) and offers the quiet-room setting.
-- **Update your preset** after changing effects: *Update preset* (asks first), *Save as new...* or *Undo*.
-- **Raw microphone warning** when an app records your microphone directly, bypassing your effects.
-- The Rust reducers no longer allocate memory in the audio path.
+- **Dated bug reports:** `sluice-report-0.9.7-2026-11-14-1002.txt`, plus `sluice-report-latest.txt`; the newest ten are kept.
+- **Saving a report that fails says why**, and the **"already running"** message names the running version and how to close it.
+- **PulseAudio crash guard:** a dead audio-server connection is no longer called into (it could abort the program).
+- **Quieter `./install.sh`** and no setuptools warnings.
 
-Earlier: 0.9.5 added the optional Rust engine (see [docs/RUST.md](docs/RUST.md)) and *Help > Uninstall Sluice...*.
+Earlier: 0.9.6 made *Measure my room* clearer and added the preset update note and the raw-microphone warning; 0.9.5 added the
+optional Rust engine (see [docs/RUST.md](docs/RUST.md)) and *Help > Uninstall Sluice...*.
 
 ## What it does
 
@@ -361,6 +362,9 @@ session's log (with the end of the one before it). It
 contains device names, app names and plugin paths, so look it over before sharing. Please also say what you did,
 what you expected, and what happened (silence, crackling, the wrong output...). If a plugin crashed it, send
 `crash.log` too. **Help > Open log folder** opens the folder.
+
+Reports are named with the Sluice version, date and time (for example `sluice-report-0.9.7-2026-11-14-1002.txt`), so
+several of them are easy to tell apart; `sluice-report-latest.txt` is the newest, and the newest ten are kept in the folder.
 
 ## Controllers (Stream Deck, MIDI)
 

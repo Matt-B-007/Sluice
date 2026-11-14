@@ -2031,13 +2031,18 @@ class MainWindow(QMainWindow):
 
     def save_report(self) -> None:
         path, _ = QFileDialog.getSaveFileName(
-            self, "Save bug report", str(Path.home() / "sluice-report.txt"), "Text files (*.txt)"
+            self, "Save bug report", str(Path.home() / report.default_name()), "Text files (*.txt)"
         )
         if path:
             try:
                 self.save_report_to(path)
-            except OSError as exc:
-                QMessageBox.warning(self, "Could not save the report", str(exc))
+            except Exception as exc:  # a file problem, or something unexpected while building the report
+                log.warning("could not save the bug report: %s", exc, exc_info=True)
+                QMessageBox.warning(
+                    self, "Could not save the report",
+                    f"The report could not be saved to:\n{path}\n\n{type(exc).__name__}: {exc}\n\n"
+                    "Try another folder, or run  sluice --report  in a terminal. Details are in the log "
+                    "(Help > Open folder).")
 
     def mark_glitch(self) -> None:
         self.say(self.engine.mark_glitch())

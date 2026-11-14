@@ -191,13 +191,53 @@ class MockSystem(AudioSystem):
 
 
 # ========================================================================== pulse
+class _LiveCheck:
+    """Wraps the pulsectl connection so every call first checks the connection is alive.
+
+    When PipeWire restarts, the PulseAudio connection dies. Asking a dead connection for a list can make libpulse
+    abort the whole program (seen in crash.log: ``Fatal Python error: Aborted`` inside the sink-input and source
+    list calls). Checking first turns that into an ordinary error, which the engine already handles by waiting for the
+    server and restarting Sluice (see reconnect.py)."""
+
+    _ALWAYS_OK = ("close", "disconnect", "connected")
+
+    def __init__(self, pulse) -> None:
+        object.__setattr__(self, "_inner", pulse)
+
+    def _alive(self) -> bool:
+        pulse = self._inner
+        if not hasattr(pulse, "_ctx"):  # a test double: nothing to check
+            return True
+        try:
+            from pulsectl import _pulsectl as lib
+
+            return pulse._ctx is not None and lib.pa.context_get_state(pulse._ctx) == lib.PA_CONTEXT_READY
+        except Exception:
+            return False
+
+    def __getattr__(self, name):
+        attr = getattr(self._inner, name)
+        if not callable(attr) or name in self._ALWAYS_OK or name.startswith("_"):
+            return attr
+
+        def checked(*args, **kwargs):
+            if not self._alive():
+                raise ConnectionError("Audio server shut down: the PulseAudio connection is closed")
+            return attr(*args, **kwargs)
+
+        return checked
+
+    def __setattr__(self, name, value) -> None:
+        setattr(self._inner, name, value)
+
+
 class PulseSystem(AudioSystem):
     label = "PipeWire (JACK)"
 
     def __init__(self, purge: bool = True) -> None:
         import pulsectl  # imported lazily so demo mode works without it
 
-        self._pulse = pulsectl.Pulse("sluice")  # raises if the server is unreachable
+        self._pulse = _LiveCheck(pulsectl.Pulse("sluice"))  # raises if the server is unreachable
         self._modules: dict = {}  # virtual device name -> [module indexes]
         log.info("connected to the PulseAudio protocol")
         if purge:

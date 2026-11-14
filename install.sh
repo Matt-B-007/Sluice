@@ -92,7 +92,20 @@ fi
 step "Installing Sluice (virtual environment in $here/.venv)"
 run "$py" -m venv .venv || { say "Could not create the virtual environment. On Debian/Ubuntu install python3-venv." >&2; exit 1; }
 run .venv/bin/python -m pip install --upgrade pip >/dev/null
-run .venv/bin/python -m pip install -e . || { say "pip could not install Sluice. Read the error above." >&2; exit 1; }
+if [ "$dry" = 1 ]; then
+    say "   (dry run) pip install -e ."
+else
+    # the long package download and build chatter is kept in a file and only shown when something fails
+    pip_log="$(mktemp)"
+    if .venv/bin/python -m pip install --quiet --disable-pip-version-check -e . >"$pip_log" 2>&1; then
+        rm -f "$pip_log"
+        say "Sluice and its Python packages are installed."
+    else
+        cat "$pip_log" >&2
+        say "pip could not install Sluice. Read the error above (also saved in $pip_log)." >&2
+        exit 1
+    fi
+fi
 
 step "Faster audio engine (optional, needs Rust)"
 if [ "${SLUICE_NO_RUST:-}" = 1 ]; then

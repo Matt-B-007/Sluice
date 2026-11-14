@@ -353,7 +353,7 @@ def build_report(log_lines: int = LOG_LINES) -> str:
         "sluice bug report\n"
         "Your user name, computer name, home folder, USB serial numbers and Bluetooth addresses are replaced.\n"
         "It still contains device names, app names and plugin file paths. Look it over before sharing it.\n"
-        f"Created: {time.strftime('%Y-%m-%d %H:%M:%S %Z')}"
+        f"Created: {time.strftime('%Y-%m-%d %H:%M:%S %Z')} by Sluice {__version__}"
     ]
     parts.append(_section("sluice", f"version {__version__}\nPython {platform.python_version()}\n{platform.platform()}"))
 
@@ -406,7 +406,44 @@ def build_report(log_lines: int = LOG_LINES) -> str:
     return "\n".join(parts)
 
 
+KEEP_REPORTS = 10
+LATEST_NAME = "sluice-report-latest.txt"
+_DATED = re.compile(r"^sluice-report-\d[\w.\-]*\.txt$")
+
+
+def default_name(now: Optional[float] = None) -> str:
+    """``sluice-report-0.9.7-2026-11-14-1002.txt``: sorts by time and shows the version without opening it."""
+    return f"sluice-report-{__version__}-{time.strftime('%Y-%m-%d-%H%M', time.localtime(now))}.txt"
+
+
+def is_dated_name(name: str) -> bool:
+    return bool(_DATED.match(name)) and name != LATEST_NAME
+
+
+def _tidy(folder: Path, keep: int = KEEP_REPORTS) -> None:
+    """Keep the newest few dated reports. Only files with the dated name are ever touched, never ones you named."""
+    try:
+        old = sorted((p for p in folder.iterdir() if is_dated_name(p.name)), key=lambda p: (p.stat().st_mtime, p.name))
+    except OSError:
+        return
+    for p in old[:-keep] if keep > 0 else old:
+        try:
+            p.unlink()
+        except OSError:
+            pass
+
+
 def write_report(path: Optional[Path] = None) -> Path:
-    path = Path(path) if path else Path.home() / "sluice-report.txt"
-    path.write_text(anonymize(build_report()), encoding="utf-8")
+    """Writes the report. With no path it goes to the home folder under a dated name. A dated name also updates
+    ``sluice-report-latest.txt`` beside it and removes the oldest dated reports beyond ten; any other name is
+    written alone."""
+    path = Path(path) if path else Path.home() / default_name()
+    text = anonymize(build_report())
+    path.write_text(text, encoding="utf-8")
+    if is_dated_name(path.name):
+        try:
+            (path.parent / LATEST_NAME).write_text(text, encoding="utf-8")
+        except OSError:
+            pass
+        _tidy(path.parent)
     return path

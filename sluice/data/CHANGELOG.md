@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.9.7
+Bug reports that are easy to tell apart, clearer messages, a guard against a PulseAudio crash, and quieter installs.
+- **Bug reports have dated names.** *Help > Save bug report* and `sluice --report` now suggest
+  `sluice-report-0.9.7-2026-11-14-1002.txt` (version, date and time), so several reports sort by time and show which
+  Sluice wrote them. The first lines inside say it too. A copy named `sluice-report-latest.txt` is kept beside them, and
+  only the newest ten dated reports are kept. A file you name yourself is written alone and never deleted.
+- **Saving a report that fails now says why** (a message box, and the log) instead of doing nothing. `sluice --report`
+  prints the reason too.
+- **A clearer "already running" message.** When a running Sluice cannot be reached, the message names its version and
+  process number and gives the exact `kill` command to close it.
+- **PulseAudio crash guard.** Twice a native crash (`Fatal Python error: Aborted` inside the sink-input and source list
+  calls of libpulse) was recorded after PipeWire's connection went away. Sluice now checks the connection before each
+  call and treats a dead one as an ordinary error, so it waits for the server and restarts itself instead of aborting.
+  This has not been seen to fix a crash yet: if a crash.log shows it again, please send the report.
+- **Quieter install.** `./install.sh` keeps pip's long output in a file and shows it only if something fails. The
+  setuptools warnings about the license and about `sluice.data` are gone (`pyproject.toml` uses an SPDX license and lists
+  the data packages; building needs setuptools 77 or newer, which pip fetches by itself).
+- The GitHub test workflow builds the Rust engine with `maturin build` and installs the wheel (the old step needed a
+  virtual environment that the runner does not have).
+
 ## 0.9.6
 Clearer *Measure my room* results, a safer way to keep your presets up to date, and a warning about raw microphones.
 - **Measure my room** no longer just says "try again" when it hears nothing. It says the room is either extremely quiet

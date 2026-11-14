@@ -55,19 +55,56 @@ def _real_parts():
     return system, io, linker
 
 
+def _lock_path() -> str:
+    return os.path.join(os.environ.get("XDG_RUNTIME_DIR") or "/tmp", "sluice.lock")
+
+
 def _acquire_lock():
-    """Allow only one sluice at a time: a second one would tear down the first one's devices."""
+    """Allow only one sluice at a time: a second one would tear down the first one's devices.
+    The holder writes its process number and version into the lock file, so a second start can name it."""
     try:
         import fcntl
 
-        base = os.environ.get("XDG_RUNTIME_DIR") or "/tmp"
-        handle = open(os.path.join(base, "sluice.lock"), "w")
-        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        handle = open(_lock_path(), "a+")  # not "w": that would wipe the running copy's note before the lock is tried
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            handle.close()
+            return None
+        try:
+            handle.seek(0)
+            handle.truncate()
+            handle.write(f"{os.getpid()} {__version__}\n")
+            handle.flush()
+        except OSError:
+            pass
         return handle
     except OSError:
         return None
     except ImportError:
         return True
+
+
+def _lock_holder() -> tuple:
+    """(process number, version) of the running Sluice, from the lock file; None for what is not known."""
+    try:
+        with open(_lock_path(), encoding="utf-8") as handle:
+            pid, version = (handle.read().split() + ["", ""])[:2]
+        return (int(pid) if pid.isdigit() else None), (version or None)
+    except OSError:
+        return None, None
+
+
+def _already_running_message() -> str:
+    pid, version = _lock_holder()
+    who = "sluice is already running"
+    if version:
+        who += f" (version {version}{'' if version == __version__ else f'; this is {__version__}'})"
+    who += ", but its window could not be reached."
+    if pid:
+        return (f"{who}\nClose it with:  kill {pid}\n"
+                f"If it is still listed afterwards:  kill -9 {pid}\nThen start Sluice again.")
+    return f"{who}\nFind it with:  pgrep -af sluice   and stop it with kill NUMBER, then start Sluice again."
 
 
 def _cleanup() -> int:
@@ -94,7 +131,11 @@ def _cleanup() -> int:
 def _report(target: str) -> int:
     from .report import write_report
 
-    path = write_report(Path(target).expanduser() if target else None)
+    try:
+        path = write_report(Path(target).expanduser() if target else None)
+    except Exception as exc:
+        print(f"sluice: could not write the report: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 1
     print(f"Saved {logs.short_path(path)}\nYour user name, computer name and serial numbers are replaced. It still has device names, app names and plugin paths: look it over before sharing.")
     return 0
 
@@ -173,7 +214,7 @@ def _run_gui(args, log_file: Optional[Path]) -> int:
                 print("sluice is already running; its window was brought to the front.", file=sys.stderr)
                 return 0
             except Exception:
-                print("sluice is already running (but its window could not be reached).", file=sys.stderr)
+                print(_already_running_message(), file=sys.stderr)
                 return 1
         try:
             parts = _real_parts()
@@ -275,7 +316,7 @@ def main(argv: Optional[list] = None) -> int:
     parser.add_argument("--reset", action="store_true", help="ignore the saved configuration")
     parser.add_argument("--diagnose", action="store_true", help="check that everything sluice needs is installed and running")
     parser.add_argument("--debug", action="store_true", help="log every detail (links, commands) to the log file and the terminal")
-    parser.add_argument("--report", nargs="?", const="", metavar="FILE", help="write a bug report file (default: ~/sluice-report.txt)")
+    parser.add_argument("--report", nargs="?", const="", metavar="FILE", help="write a bug report file (default: ~/sluice-report-VERSION-DATE-TIME.txt, plus sluice-report-latest.txt)")
     parser.add_argument("--rollback", action="store_true", help="go back to the version before the last in-app update")
     parser.add_argument("--cleanup", action="store_true", help="remove virtual devices left behind by a crash")
     parser.add_argument("--install-desktop", action="store_true", help="add Sluice to the applications menu (your own folders only)")
