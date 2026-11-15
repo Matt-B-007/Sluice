@@ -243,6 +243,7 @@ QLabel#version { font-size: 12px; color: $text_dim; }
 QLabel#title { font-size: 20px; font-weight: 700; color: $title; }
 QLabel#name { font-size: 20px; font-weight: 600; color: $title; }
 QLabel#tag { font-size: 12px; font-weight: 600; letter-spacing: 0.5px; color: $text_faint; }
+QLabel#tag[narrow="true"] { font-size: 11px; letter-spacing: 0; }
 QLabel#hint { font-size: 12px; color: $text_dim; }
 QLabel#feedback { font-size: 12px; color: $text_dim; }
 QLabel#chiptext { font-size: 12px; color: $text2; background: transparent; }

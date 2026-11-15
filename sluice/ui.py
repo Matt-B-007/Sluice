@@ -730,6 +730,7 @@ class ChannelStrip(QWidget):
             tag = _label(MIX_TAGS.get(mix.id, mix.label.upper()), "tag")
             tag.setToolTip(MIX_NAMES.get(mix.id, mix.label))
             tag.setFixedWidth(COLUMN_WIDTH)
+            tag.setProperty("narrow", True)  # 11 px, no letter spacing: BROADCAST must fit 80 px even in a wide fallback font
             tag_row.addWidget(tag)
             self.tags.append(tag)
         self.tag_row = QWidget()
