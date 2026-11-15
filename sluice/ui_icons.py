@@ -93,7 +93,6 @@ def _draw(name: str, p: QPainter) -> None:
         raise ValueError(f"no icon called {name}")
 
 
-@lru_cache(maxsize=256)
 def _pixmap(name: str, color: str, size: int, ratio: float) -> QPixmap:
     pixmap = QPixmap(int(size * ratio), int(size * ratio))
     pixmap.setDevicePixelRatio(ratio)
@@ -111,9 +110,14 @@ def _pixmap(name: str, color: str, size: int, ratio: float) -> QPixmap:
     return pixmap
 
 
-def icon(name: str, color: str, size: int = 20) -> QIcon:
-    """A QIcon of the named drawing in ``color`` (a #rrggbb string). Sharp on screens with a scale factor of 1, 1.5 or 2."""
+@lru_cache(maxsize=512)
+def _icon(name: str, color: str, size: int) -> QIcon:
     result = QIcon()
     for ratio in (1.0, 2.0):
         result.addPixmap(_pixmap(name, color, size, ratio))
     return result
+
+
+def icon(name: str, color: str, size: int = 20) -> QIcon:
+    """A QIcon of the named drawing in ``color`` (a #rrggbb string). Sharp on screens with a scale factor of 1, 1.5 or 2."""
+    return _icon(name, color, size)
