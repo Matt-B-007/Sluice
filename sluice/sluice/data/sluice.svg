@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <title>Sluice</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1a212b"/>
+      <stop offset="1" stop-color="#0e1116"/>
+    </linearGradient>
+    <linearGradient id="water" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5ff0d6"/>
+      <stop offset="1" stop-color="#2bb8a0"/>
+    </linearGradient>
+    <clipPath id="tile"><rect width="128" height="128" rx="30"/></clipPath>
+  </defs>
+  <rect width="128" height="128" rx="30" fill="url(#bg)"/>
+  <rect x="1" y="1" width="126" height="126" rx="29" fill="none" stroke="#2a3340" stroke-width="2"/>
+  <g clip-path="url(#tile)">
+    <!-- the two gate posts: slim fader tracks -->
+    <rect x="22" y="22" width="10" height="84" rx="5" fill="#2d3745"/>
+    <rect x="96" y="22" width="10" height="84" rx="5" fill="#2d3745"/>
+    <!-- water rising between them -->
+    <path d="M12 72 Q 28 58 44 72 T 76 72 T 116 72" fill="none" stroke="#3ddbc0" stroke-width="7" stroke-linecap="round"/>
+    <path d="M12 94 Q 28 82 44 94 T 76 94 T 116 94" fill="none" stroke="#3ddbc0" stroke-width="5" stroke-linecap="round" opacity="0.5"/>
+    <!-- the gate: a pill handle like the faders -->
+    <rect x="16" y="26" width="96" height="16" rx="8" fill="#f4f7fb"/>
+    <rect x="16" y="26" width="96" height="16" rx="8" fill="none" stroke="#0e1116" stroke-opacity="0.25" stroke-width="1"/>
+  </g>
+</svg>

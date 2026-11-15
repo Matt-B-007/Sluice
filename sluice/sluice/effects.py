@@ -1,0 +1,662 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Effects: built-in processors and VST3 plugins, hosted with Spotify's ``pedalboard``.
+
+``EffectInstance`` wraps the live plugin objects for one ``model.Effect``. The model
+holds only the saved description; instances are created by the engine.
+"""
+from __future__ import annotations
+
+import base64
+import os
+import threading
+from collections import deque
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Callable, Optional
+
+import numpy as np
+
+from .model import Effect
+from .spectral import EchoReducer, Joint, NoiseReducer
+from . import spectral
+
+
+class EffectError(Exception):
+    """A plugin could not be created or loaded. The message is meant for the user."""
+
+
+def _pedalboard():
+    try:
+        import pedalboard
+    except ImportError as exc:
+        raise EffectError("The 'pedalboard' package is not installed (pip install pedalboard).") from exc
+    return pedalboard
+
+
+@dataclass(frozen=True)
+class ParamSpec:
+    key: str
+    label: str
+    lo: float
+    hi: float
+    default: float
+    unit: str = ""
+
+
+@dataclass
+class ParamInfo:
+    """A parameter as shown in the UI. For VST3 plugins values are normalised 0..1."""
+
+    key: str
+    label: str
+    lo: float
+    hi: float
+    value: float
+    unit: str
+    normalized: bool = False
+    default: Optional[float] = None  # None when the plugin does not say; the slider then cannot be reset
+
+
+@dataclass(frozen=True)
+class BuiltinDef:
+    name: str
+    params: tuple
+    build: Callable  # (pedalboard module, values) -> (plugins list, {param key: (plugin index, attribute)})
+    stage: Optional[Callable] = None  # for effects Pedalboard cannot host: (values) -> a Stage (see below); build is unused
+    hint: str = ""  # shown under the sliders
+
+
+# Effects the Rust module (sluice_dsp) has: it matches pedalboard's maths (checked in tests/test_rust_effects.py).
+# VST3 plugins always stay on pedalboard (it is the plugin host).
+NATIVE_NAMES = ("Gain", "HighpassFilter", "LowShelfFilter", "PeakFilter", "HighShelfFilter", "Compressor", "NoiseGate", "Limiter")
+
+
+class Toolbox:
+    """What the effect builders make their plugins from: the Rust version of an effect when there is one, else pedalboard's."""
+
+    def __init__(self, pb, native=None) -> None:
+        self._pb = pb
+        self._native = native
+        self.Pedalboard = pb.Pedalboard if pb is not None else None
+
+    def __getattr__(self, name: str):
+        if self._native is not None and name in NATIVE_NAMES:
+            return self._native_factory(name)
+        return getattr(self._pb, name)
+
+    def _native_factory(self, name: str):
+        cls = getattr(self._native, name)
+        if name in ("LowShelfFilter", "HighShelfFilter", "PeakFilter"):
+            def make(cutoff_frequency_hz, gain_db, q=0.7071067690849304):  # pedalboard's default Q
+                return cls(cutoff_frequency_hz, gain_db, q)
+            return make
+
+        return cls  # the Rust classes take the same keyword names as pedalboard's
+
+
+def toolbox(pb):
+    native = None
+    if pb is not None and spectral.BACKEND == "rust" and not os.environ.get("SLUICE_NO_RUST_EFFECTS"):
+        import sluice_dsp
+
+        if hasattr(sluice_dsp, "Run"):
+            native = sluice_dsp
+    return Toolbox(pb, native)
+
+
+def is_native(item) -> bool:
+    return bool(getattr(item, "IS_NATIVE", False))
+
+
+class Stage:
+    """A processor that runs next to the Pedalboard plugins in a chain (the spectral noise and echo reducers).
+    The processor itself is made on first use, because it needs the sample rate."""
+
+    def __init__(self, factory: Callable, values: dict) -> None:
+        self._factory = factory
+        self.values = dict(values)
+        self._sample_rate = 0
+        self._processor = None
+        self.profile = None
+
+    def set(self, key: str, value: float) -> None:
+        self.values[key] = float(value)
+        if self._processor is not None:
+            setattr(self._processor, key, float(value))
+
+    def ensure(self, sample_rate: int):
+        if self._processor is None or sample_rate != self._sample_rate:
+            self._processor = self._factory(sample_rate)
+            self._sample_rate = sample_rate
+            for key, value in self.values.items():
+                setattr(self._processor, key, value)
+            if self.profile is not None and hasattr(self._processor, "set_profile"):
+                self._processor.set_profile(self.profile)
+        return self._processor
+
+    def process(self, audio: np.ndarray, sample_rate: int) -> np.ndarray:
+        return self.ensure(sample_rate).process(audio)
+
+    def wake(self) -> None:
+        if self._processor is not None:
+            self._processor.wake()
+
+    def set_profile(self, profile) -> None:
+        """Noise Reducer only: start from this noise spectrum."""
+        self.profile = profile
+        if self._processor is not None and hasattr(self._processor, "set_profile"):
+            self._processor.set_profile(profile)
+
+    @property
+    def activity_db(self) -> float:
+        """How much this effect is turning the voice down right now (0 or negative dB); read from the window."""
+        return float(getattr(self._processor, "activity_db", 0.0)) if self._processor is not None else 0.0
+
+
+class NativeRun:
+    """Neighbouring Rust effects run in one call."""
+
+    def __init__(self, plugins: list) -> None:
+        import sluice_dsp
+
+        self.plugins = list(plugins)
+        self._run = sluice_dsp.Run(self.plugins)
+
+    def process(self, audio: np.ndarray, sample_rate: int) -> np.ndarray:
+        return self._run.process(np.ascontiguousarray(audio, dtype=np.float32), int(sample_rate))
+
+    def wake(self) -> None:
+        pass
+
+
+class JointStage:
+    """Two or more neighbouring spectral Stages run as one pass (see spectral.Joint)."""
+
+    def __init__(self, stages: list) -> None:
+        self.stages = list(stages)
+        self._sample_rate = 0
+        self._joint = None
+
+    def process(self, audio: np.ndarray, sample_rate: int) -> np.ndarray:
+        if self._joint is None or sample_rate != self._sample_rate:
+            self._joint = Joint([stage.ensure(sample_rate) for stage in self.stages])
+            self._sample_rate = sample_rate
+        return self._joint.process(audio)
+
+    def wake(self) -> None:
+        if self._joint is not None:
+            self._joint.wake()
+
+
+class Tap:
+    """A look at the sound going into and coming out of one effect, for the live display in the Effects window.
+
+    It exists only while that window is open on that effect. It keeps the peak of every block (for the waveform) and the last
+    few thousand samples before and after (for the spectrum), as numbers in memory: nothing is recorded, saved or sent anywhere."""
+
+    RING = 4096
+
+    def __init__(self, sample_rate: int) -> None:
+        self.rate = int(sample_rate)
+        self.pre = np.zeros(self.RING, dtype=np.float32)
+        self.post = np.zeros(self.RING, dtype=np.float32)
+        self.pos = 0
+        self.peaks: deque = deque(maxlen=4096)  # (peak going in, peak coming out) for each block, oldest first
+
+    def record(self, before: np.ndarray, after: np.ndarray) -> None:
+        n = min(before.shape[-1], after.shape[-1])
+        if n == 0:
+            return
+        self.peaks.append((float(np.max(np.abs(before[..., :n]))), float(np.max(np.abs(after[..., :n])))))
+        mono_before = before[..., :n].mean(axis=0) if before.ndim == 2 else before[:n]
+        mono_after = after[..., :n].mean(axis=0) if after.ndim == 2 else after[:n]
+        if n >= self.RING:
+            self.pre[:] = mono_before[-self.RING:]
+            self.post[:] = mono_after[-self.RING:]
+            self.pos = 0
+            return
+        end = self.pos + n
+        if end <= self.RING:
+            self.pre[self.pos:end] = mono_before
+            self.post[self.pos:end] = mono_after
+        else:
+            first = self.RING - self.pos
+            self.pre[self.pos:] = mono_before[:first]
+            self.pre[:end - self.RING] = mono_before[first:]
+            self.post[self.pos:] = mono_after[:first]
+            self.post[:end - self.RING] = mono_after[first:]
+        self.pos = end % self.RING
+
+    def drain_peaks(self) -> list:
+        """The block peaks since the last call (oldest first); each is taken out, so nothing is counted twice."""
+        found = []
+        while True:
+            try:
+                found.append(self.peaks.popleft())
+            except IndexError:
+                return found
+
+    def latest(self, count: int = 2048) -> tuple:
+        """The most recent ``count`` samples (before, after), oldest first."""
+        order = (np.arange(self.RING - count, self.RING) + self.pos) % self.RING
+        return self.pre[order].copy(), self.post[order].copy()
+
+
+class Chain:
+    """Runs plugins and Stages in order. Callable like a Pedalboard: ``chain(audio, sample_rate, reset=False)``.
+
+    ``tap`` = (first item, end of items, Tap): the items in that range are kept in parts of their own, and the sound going into
+    and coming out of them is handed to the Tap."""
+
+    def __init__(self, pb, items: list, tap: Optional[tuple] = None) -> None:
+        self._tap = tap[2] if tap else None
+        self._tap_in = self._tap_out = -1
+        self._parts: list = []
+        spectral_run: list = []
+        native_run: list = []
+        run: list = []
+
+        def flush() -> None:
+            if len(spectral_run) > 1:
+                self._parts.append(JointStage(list(spectral_run)))
+            elif spectral_run:
+                self._parts.append(spectral_run[0])
+            if native_run:
+                self._parts.append(NativeRun(list(native_run)))
+            if run:
+                self._parts.append(pb.Pedalboard(list(run)))
+            spectral_run.clear()
+            native_run.clear()
+            run.clear()
+
+        for index, item in enumerate(items):
+            if tap and index == tap[0]:
+                flush()
+                self._tap_in = len(self._parts)
+            if tap and index == tap[1]:
+                flush()
+                self._tap_out = len(self._parts)
+            if isinstance(item, Stage):
+                if native_run or run:
+                    flush()
+                spectral_run.append(item)
+            elif is_native(item):
+                if spectral_run or run:
+                    flush()
+                native_run.append(item)
+            else:
+                if spectral_run or native_run:
+                    flush()
+                run.append(item)
+        flush()
+        if tap and tap[1] >= len(items):
+            self._tap_out = len(self._parts)
+        if self._tap is not None and not (0 <= self._tap_in < self._tap_out):
+            self._tap = None  # the effect has nothing to run: nothing to look at
+
+    def wake(self) -> None:
+        """Sound is back after a long silence in which the chain was not run."""
+        for part in self._parts:
+            if isinstance(part, (Stage, JointStage)):
+                part.wake()
+
+    def __call__(self, audio: np.ndarray, sample_rate: int, reset: bool = False) -> np.ndarray:
+        before = None
+        for index, part in enumerate(self._parts):
+            if self._tap is not None and index == self._tap_in:
+                before = np.array(audio, copy=True)  # a part may work in place
+            if isinstance(part, (Stage, JointStage, NativeRun)):
+                audio = part.process(audio, sample_rate)
+            else:
+                audio = np.asarray(part(audio, sample_rate, reset=reset), dtype=np.float32)
+            if self._tap is not None and index == self._tap_out - 1 and before is not None:
+                self._tap.record(before, audio)
+        return audio
+
+
+def _direct(*plugin_factories):
+    """Builder for effects where each parameter key is an attribute of one plugin."""
+
+    def build(pb, values):
+        plugin = plugin_factories[0](pb, values)
+        return [plugin], {key: (0, key) for key in values}
+
+    return build
+
+
+def _build_compressor(pb, v):
+    comp = pb.Compressor(
+        threshold_db=v["threshold_db"], ratio=v["ratio"], attack_ms=v["attack_ms"], release_ms=v["release_ms"]
+    )
+    makeup = pb.Gain(gain_db=v["makeup_db"])
+    targets = {k: (0, k) for k in ("threshold_db", "ratio", "attack_ms", "release_ms")}
+    targets["makeup_db"] = (1, "gain_db")
+    return [comp, makeup], targets
+
+
+def _build_eq(pb, v):
+    plugins = [
+        pb.LowShelfFilter(cutoff_frequency_hz=v["low_hz"], gain_db=v["low_db"]),
+        pb.PeakFilter(cutoff_frequency_hz=v["mid_hz"], gain_db=v["mid_db"], q=v["mid_q"]),
+        pb.HighShelfFilter(cutoff_frequency_hz=v["high_hz"], gain_db=v["high_db"]),
+    ]
+    targets = {
+        "low_hz": (0, "cutoff_frequency_hz"), "low_db": (0, "gain_db"),
+        "mid_hz": (1, "cutoff_frequency_hz"), "mid_db": (1, "gain_db"), "mid_q": (1, "q"),
+        "high_hz": (2, "cutoff_frequency_hz"), "high_db": (2, "gain_db"),
+    }
+    return plugins, targets
+
+
+def _build_highpass(pb, v):
+    """Two filters in a row. One of pedalboard's high-pass filters only falls 6 dB per octave, which barely touches
+    the 50-100 Hz rumble of an air conditioner, a fan or traffic; two in a row fall 12 dB per octave."""
+    plugins = [pb.HighpassFilter(cutoff_frequency_hz=v["cutoff_frequency_hz"]) for _ in range(2)]
+    return plugins, {"cutoff_frequency_hz": [(0, "cutoff_frequency_hz"), (1, "cutoff_frequency_hz")]}
+
+
+def _build_limiter(pb, v):
+    return [pb.Limiter(threshold_db=v["threshold_db"], release_ms=v["release_ms"])], {
+        "threshold_db": (0, "threshold_db"), "release_ms": (0, "release_ms")}
+
+
+# Listed in the order they run (see model.BUILTIN_ORDER). The defaults are chosen for a speaking voice in an ordinary,
+# imperfect room (an air conditioner or fan, a TV, traffic, some echo), not a studio: a 12 dB/octave high-pass at
+# 100 Hz, a gentle gate (4:1, not a hard one) that closes between words, a small cut of the 200-300 Hz "boom" an
+# echoing room adds, a 3:1 compressor taking a few dB off the peaks, and a limiter a couple of dB below full scale.
+# They were compared on a simulated noisy, echoing room (see tools/tune_room.py); the gate threshold is the one
+# setting that depends on how loud your microphone is, so it is the one to adjust first.
+BUILTINS: dict = {
+    "gain": BuiltinDef(
+        "Gain",
+        (ParamSpec("gain_db", "Gain", -24, 24, 0, "dB"),),
+        _direct(lambda pb, v: pb.Gain(gain_db=v["gain_db"])),
+    ),
+    "highpass": BuiltinDef(
+        "High-pass",
+        (ParamSpec("cutoff_frequency_hz", "Cutoff", 20, 500, 100, "Hz"),),
+        _build_highpass,
+    ),
+    "echo_reducer": BuiltinDef(
+        "Echo Reducer",
+        (
+            ParamSpec("reverb_time", "Room echo time", 0.2, 2.0, 0.6, "s"),
+            ParamSpec("reduction_db", "Reduction", 0, 20, 9, "dB"),
+        ),
+        None,
+        stage=lambda v: Stage(lambda sr: EchoReducer(sr), v),
+        hint="Made for a microphone. Lowers the tail of your room's echo while you talk. Set \u201cRoom echo time\u201d to how "
+             "long your room rings (about 0.3 s with carpet and curtains, 0.6\u20131 s with bare walls). If your voice "
+             "sounds thin or watery, turn Reduction down. Together with the Noise Reducer it adds about 16 ms of delay.",
+    ),
+    "noise_reducer": BuiltinDef(
+        "Noise Reducer",
+        (ParamSpec("reduction_db", "Reduction", 0, 24, 12, "dB"),),
+        None,
+        stage=lambda v: Stage(lambda sr: NoiseReducer(sr), v),
+        hint="Made for a microphone. Lowers steady noise (fan, air conditioner, road hiss) while you talk, and needs a "
+             "second or two to learn it. It cannot tell a TV or other people talking from you. If your voice sounds "
+             "thin or watery, turn Reduction down. Together with the Echo Reducer it adds about 16 ms of delay.",
+    ),
+    "noise_gate": BuiltinDef(
+        "Noise Gate",
+        (
+            ParamSpec("threshold_db", "Threshold", -80, 0, -30, "dB"),
+            ParamSpec("ratio", "Ratio", 1, 20, 4, ":1"),
+            ParamSpec("attack_ms", "Attack", 0.1, 100, 3, "ms"),
+            ParamSpec("release_ms", "Release", 10, 1000, 100, "ms"),
+        ),
+        _direct(lambda pb, v: pb.NoiseGate(
+            threshold_db=v["threshold_db"], ratio=v["ratio"], attack_ms=v["attack_ms"], release_ms=v["release_ms"])),
+    ),
+    "eq": BuiltinDef(
+        "3-Band EQ",
+        (
+            ParamSpec("low_hz", "Low freq", 40, 500, 120, "Hz"),
+            ParamSpec("low_db", "Low gain", -15, 15, -2, "dB"),
+            ParamSpec("mid_hz", "Mid freq", 200, 5000, 250, "Hz"),
+            ParamSpec("mid_db", "Mid gain", -15, 15, -4, "dB"),
+            ParamSpec("mid_q", "Mid Q", 0.3, 5, 1, ""),
+            ParamSpec("high_hz", "High freq", 2000, 12000, 10000, "Hz"),
+            ParamSpec("high_db", "High gain", -15, 15, 1, "dB"),
+        ),
+        _build_eq,
+    ),
+    "compressor": BuiltinDef(
+        "Compressor",
+        (
+            ParamSpec("threshold_db", "Threshold", -60, 0, -18, "dB"),
+            ParamSpec("ratio", "Ratio", 1, 20, 3, ":1"),
+            ParamSpec("attack_ms", "Attack", 0.1, 100, 10, "ms"),
+            ParamSpec("release_ms", "Release", 10, 1000, 100, "ms"),
+            ParamSpec("makeup_db", "Makeup gain", 0, 24, 2, "dB"),
+        ),
+        _build_compressor,
+    ),
+    "limiter": BuiltinDef(
+        "Limiter",
+        (
+            ParamSpec("threshold_db", "Ceiling", -20, 0, -2, "dB"),
+            ParamSpec("release_ms", "Release", 10, 500, 60, "ms"),
+        ),
+        _build_limiter,
+    ),
+}
+
+
+def runner_for(effects: list, sample_rate: int) -> Optional[Callable]:
+    """A function that runs a (2, n) array through fresh copies of the built-in ``effects`` given, in order, without
+    touching the live ones (VST3 plugins and bypassed effects are skipped). None if there is nothing to run."""
+    pb = _pedalboard()
+    items: list = []
+    for effect in effects:
+        if effect.kind != "builtin" or effect.bypass:
+            continue
+        copy = EffectInstance(Effect(effect.id, effect.kind, effect.name, type=effect.type, params=dict(effect.params)))
+        if copy.usable:
+            items.extend(copy.items)
+    if pb is None or not items:
+        return None
+    chain = Chain(toolbox(pb), items)
+    return lambda audio: chain(np.ascontiguousarray(audio, dtype=np.float32), sample_rate)
+
+
+def builtin_names() -> list:
+    """[(type key, display name)] in menu order."""
+    return [(key, d.name) for key, d in BUILTINS.items()]
+
+
+class EffectInstance:
+    """Live plugin objects for one saved ``Effect``. Never raises: failures set ``error``."""
+
+    def __init__(self, effect: Effect) -> None:
+        self.effect = effect
+        self.plugins: list = []
+        self.stage: Optional[Stage] = None
+        self.error = ""
+        self._targets: dict = {}
+        self._vst3 = None
+        self._editor_thread: Optional[threading.Thread] = None
+        try:
+            if effect.kind == "builtin":
+                self._load_builtin()
+            elif effect.kind == "vst3":
+                self._load_vst3()
+            else:
+                raise EffectError(f"Unknown effect kind '{effect.kind}'")
+        except EffectError as exc:
+            self.error = str(exc)
+        except Exception as exc:  # a plugin must never take the app down
+            self.error = f"{type(exc).__name__}: {exc}"
+
+    # ----------------------------------------------------------------- loading
+    @property
+    def usable(self) -> bool:
+        return not self.error and bool(self.plugins or self.stage)
+
+    @property
+    def items(self) -> list:
+        """What the chain runs for this effect: Pedalboard plugins, or one Stage."""
+        return [self.stage] if self.stage is not None else list(self.plugins)
+
+    def _load_builtin(self) -> None:
+        definition = BUILTINS.get(self.effect.type)
+        if definition is None:
+            raise EffectError(f"Unknown built-in effect '{self.effect.type}'")
+        values = {}
+        for spec in definition.params:
+            stored = self.effect.params.get(spec.key, spec.default)
+            values[spec.key] = min(spec.hi, max(spec.lo, float(stored)))
+        if definition.stage is not None:
+            self.stage = definition.stage(values)
+        else:
+            self.plugins, self._targets = definition.build(toolbox(_pedalboard()), values)
+        self.effect.params = dict(values)
+
+    def _load_vst3(self) -> None:
+        pb = _pedalboard()
+        path = self.effect.path
+        if not path or not Path(path).exists():
+            raise EffectError(f"VST3 plugin not found: {path or '(no path)'}")
+        kwargs = {"plugin_name": self.effect.plugin_name} if self.effect.plugin_name else {}
+        try:
+            plugin = pb.load_plugin(path, **kwargs)
+        except Exception as exc:
+            first_line = str(exc).strip().splitlines()[0] if str(exc).strip() else type(exc).__name__
+            raise EffectError(f"Could not load {Path(path).name}: {first_line}") from exc
+        if self.effect.state:
+            try:
+                plugin.raw_state = base64.b64decode(self.effect.state)
+            except Exception:
+                pass  # a stale or incompatible saved state is not fatal
+        self._vst3 = plugin
+        self.plugins = [plugin]
+
+    # -------------------------------------------------------------- parameters
+    def param_infos(self) -> list:
+        if self.effect.kind == "builtin":
+            definition = BUILTINS.get(self.effect.type)
+            if definition is None:
+                return []
+            return [
+                ParamInfo(s.key, s.label, s.lo, s.hi, float(self.effect.params.get(s.key, s.default)), s.unit,
+                          default=float(s.default))
+                for s in definition.params
+            ]
+        if self._vst3 is None:
+            return []
+        infos = []
+        for key, param in self._vst3.parameters.items():
+            try:
+                default = getattr(param, "default_raw_value", None)
+                infos.append(ParamInfo(key, str(getattr(param, "name", key)), 0.0, 1.0, float(param.raw_value), "", True,
+                                       float(default) if isinstance(default, (int, float)) else None))
+            except Exception:
+                continue
+        return infos
+
+    def _spec(self, key: str) -> Optional[ParamSpec]:
+        definition = BUILTINS.get(self.effect.type) if self.effect.kind == "builtin" else None
+        return next((s for s in definition.params if s.key == key), None) if definition else None
+
+    def record_param(self, key: str, value: float) -> None:
+        """Remember a built-in parameter in the saved settings. Safe to call from the UI thread."""
+        spec = self._spec(key)
+        if spec is not None:
+            self.effect.params[key] = min(spec.hi, max(spec.lo, float(value)))
+
+    def apply_param(self, key: str, value: float) -> None:
+        """Change the live plugin. While audio is running this must happen on the audio thread."""
+        if self.effect.kind == "builtin":
+            spec = self._spec(key)
+            if spec is not None and self.stage is not None:
+                self.stage.set(key, min(spec.hi, max(spec.lo, float(value))))
+            elif spec is not None and self.plugins and key in self._targets:
+                target = self._targets[key]
+                for index, attr in (target if isinstance(target, list) else [target]):  # (some controls drive two plugins)
+                    setattr(self.plugins[index], attr, min(spec.hi, max(spec.lo, float(value))))
+        elif self._vst3 is not None and key in self._vst3.parameters:
+            self._vst3.parameters[key].raw_value = min(1.0, max(0.0, float(value)))
+
+    def set_param(self, key: str, value: float) -> None:
+        self.record_param(key, value)
+        self.apply_param(key, value)
+
+    def capture_state(self) -> None:
+        """Copy live state into the saved ``Effect`` (call before saving the config)."""
+        if self._vst3 is not None:
+            try:
+                self.effect.state = base64.b64encode(bytes(self._vst3.raw_state)).decode("ascii")
+            except Exception:
+                pass
+
+    # ------------------------------------------------------------ plugin window
+    @property
+    def has_editor(self) -> bool:
+        return self._vst3 is not None and hasattr(self._vst3, "show_editor")
+
+    def open_editor(self) -> None:
+        """Show the plugin's own window (runs in a background thread; one window at a time)."""
+        if not self.has_editor:
+            return
+        if self._editor_thread is not None and self._editor_thread.is_alive():
+            return
+
+        def run() -> None:
+            try:
+                self._vst3.show_editor()
+            except Exception:
+                pass
+
+        self._editor_thread = threading.Thread(target=run, name="vst3-editor", daemon=True)
+        self._editor_thread.start()
+
+
+# ------------------------------------------------------------------------ VST3
+def vst3_search_paths(extra: Optional[list] = None) -> list:
+    """The usual VST3 folders (the same ones REAPER and other Linux hosts use), the folders in the VST3_PATH
+    environment variable, and any folders the user added (``extra``). Duplicates are dropped."""
+    paths = [Path.home() / ".vst3", Path("/usr/lib/vst3"), Path("/usr/lib64/vst3"), Path("/usr/local/lib/vst3")]
+    paths.extend(Path(p) for p in os.environ.get("VST3_PATH", "").split(os.pathsep) if p)
+    paths.extend(Path(p).expanduser() for p in (extra or []))
+    seen: set = set()
+    unique = []
+    for path in paths:
+        if str(path) not in seen:
+            seen.add(str(path))
+            unique.append(path)
+    return unique
+
+
+def scan_vst3(search_paths: Optional[list] = None, max_depth: int = 2) -> list:
+    """Find installed VST3 plugins. Returns [(display name, path)] sorted by name."""
+    found: dict = {}
+
+    def walk(directory: Path, depth: int) -> None:
+        try:
+            entries = sorted(directory.iterdir())
+        except OSError:
+            return
+        for entry in entries:
+            if entry.suffix.lower() == ".vst3":
+                found.setdefault(str(entry), entry.stem)
+            elif entry.is_dir() and depth < max_depth:
+                walk(entry, depth + 1)
+
+    for root in search_paths if search_paths is not None else vst3_search_paths():
+        if Path(root).is_dir():
+            walk(Path(root), 0)
+    return sorted(((name, path) for path, name in found.items()), key=lambda item: item[0].lower())
+
+
+def vst3_plugin_names(path: str) -> list:
+    """Names of the plugins inside a VST3 file (some bundles hold several)."""
+    try:
+        return list(_pedalboard().VST3Plugin.get_plugin_names_for_file(path))
+    except Exception:
+        return []
+
+
+def native_backend() -> str:
+    """"rust" when the built-in effects run in Rust, else "python" (pedalboard's own)."""
+    return "rust" if toolbox(object())._native is not None else "python"

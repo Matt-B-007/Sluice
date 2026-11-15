@@ -1,0 +1,17 @@
+__pycache__/
+*.egg-info/
+.venv/
+.pytest_cache/
+build/
+dist/
+out/
+notes.md
+*.zip
+*.tmp
+sluice-report.txt
+sluice-report-*.txt
+pwmix-report.txt
+.update/
+.previous/
+rust/sluice_dsp/target/
+*.so

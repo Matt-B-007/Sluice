@@ -1,0 +1,82 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - name: System libraries for Qt (offscreen) and audio
+        timeout-minutes: 8
+        continue-on-error: true
+        run: |
+          # Install only what the runner image lacks. If Ubuntu's own servers are unreachable (this has happened),
+          # switch to a public mirror. A failure here never stops the run: the tests report it if a library is truly missing.
+          missing=""
+          for pkg in libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3 libpulse0 libxcb-cursor0; do
+            dpkg -s "$pkg" >/dev/null 2>&1 || missing="$missing $pkg"
+          done
+          if [ -z "$missing" ]; then
+            echo "All system libraries are already installed."
+            exit 0
+          fi
+          echo "Missing:$missing"
+          apt_opts="-o Acquire::Retries=0 -o Acquire::http::Timeout=8 -o Acquire::https::Timeout=8"
+          try_install() {
+            timeout "$1" sudo apt-get $apt_opts update && timeout "$2" sudo apt-get $apt_opts install -y $missing
+          }
+          if try_install 60 60; then
+            echo "Installed from the default mirror."
+          else
+            echo "Default mirror failed; trying mirrors.edge.kernel.org"
+            sudo sed -i 's#mirror+file:/etc/apt/apt-mirrors.txt#http://mirrors.edge.kernel.org/ubuntu/#g; s#http://azure.archive.ubuntu.com/ubuntu/\?#http://mirrors.edge.kernel.org/ubuntu/#g; s#https\?://\(security\|archive\)\.ubuntu\.com/ubuntu/\?#http://mirrors.edge.kernel.org/ubuntu/#g' /etc/apt/sources.list /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list 2>/dev/null || true
+            try_install 90 120 || echo "Could not install from the fallback mirror either"
+          fi
+          echo "Still missing:"
+          for pkg in $missing; do dpkg -s "$pkg" >/dev/null 2>&1 || echo "  $pkg"; done
+          true
+      - run: pip install -e ".[dev]"
+      - run: QT_QPA_PLATFORM=offscreen pytest -q
+  rust:
+    # The same tests with the Rust engine built, against a dummy JACK server; the job above runs them without Rust.
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.12", "3.14"]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            rust/sluice_dsp/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('rust/sluice_dsp/Cargo.lock') }}
+      - name: Audio tools for the JACK test (a failure here only skips that test)
+        continue-on-error: true
+        timeout-minutes: 6
+        run: sudo apt-get -o Acquire::Retries=0 -o Acquire::http::Timeout=8 install -y jackd2 libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3 libpulse0 libxcb-cursor0
+      - run: pip install -e ".[dev]" maturin
+      - name: Build the Rust engine
+        run: cd rust/sluice_dsp && maturin build --release -o ../../dist && pip install ../../dist/sluice_dsp-*.whl
+      - run: python -c "import sluice_dsp, sluice.spectral as s; assert s.BACKEND == 'rust', s.RUST_ERROR; print(sluice_dsp.VERSION)"
+      - run: QT_QPA_PLATFORM=offscreen pytest -q
+      - name: Python and Rust agree with the Rust engine switched off too
+        run: SLUICE_NO_RUST=1 QT_QPA_PLATFORM=offscreen pytest -q
+  shell:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - run: bash -n install.sh && bash -n tools/set-github-repo.sh && ./install.sh --help
