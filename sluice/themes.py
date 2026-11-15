@@ -34,32 +34,42 @@ TOKEN_NAMES = (
     "select_soft", "select_text", "popup", "dialog", "fill", "handle", "handle_edge", "handle_hover", "applied",
     "scroll_track", "scroll_hover", "scroll_press", "row_hover", "list_text", "check_text", "link", "code", "ok",
     "alarm", "warn", "error", "muted", "mute", "limiter", "linked", "on_color",
+    # added in 0.10.0. A theme file that does not list them gets them worked out from its own colours (see ``complete``).
+    "surface2", "border2", "text2", "track", "meter_bg", "accent_bg", "accent_text", "mute_bg", "mute_fg", "live_bg",
+    "live_fg", "dashed", "focus",
 )
+NEW_TOKENS = TOKEN_NAMES[TOKEN_NAMES.index("surface2"):]
 
 DARK = {
-    "bg": "#181b20", "panel": "#232830", "mix": "#20262e", "border": "#373d47", "border_soft": "#2e343d",
-    "text": "#d7dce2", "text_dim": "#8a93a0", "text_faint": "#8590a0", "text_off": "#5d6672", "title": "#f0f3f6",
-    "strong": "#e8eef5", "input": "#12151a", "well": "#0e1014", "chip": "#2c323c", "button": "#303641",
-    "button_text": "#aab2bd", "button_border": "#454c58", "hover": "#6f7887", "line": "#3d4551", "accent": "#5b8def",
-    "select": "#34507a", "select_soft": "#2d3a52", "select_text": "#ffffff", "popup": "#1b1f26", "dialog": "#1d2127",
-    "fill": "#2c5f48", "handle": "#dfe4ea", "handle_edge": "#8a93a0", "handle_hover": "#ffffff", "applied": "#2f4a6b",
-    "scroll_track": "#1f232a", "scroll_hover": "#56606f", "scroll_press": "#6b7688", "row_hover": "#1d222b",
-    "list_text": "#e6e9ef", "check_text": "#c9ced8", "link": "#6aa9ff", "code": "#e6c07b", "ok": "#8fd19e",
-    "alarm": "#b3262c", "warn": "#e0a030", "error": "#ef5258", "muted": "#6f7887", "mute": "#ef5258",
-    "limiter": "#35d0c0", "linked": "#8aa0b8", "on_color": "#0e1014",
+    "bg": "#0e1116", "panel": "#151a22", "mix": "#18202b", "border": "#232b37", "border_soft": "#232b37",
+    "text": "#e7ecf3", "text_dim": "#8794a7", "text_faint": "#8794a7", "text_off": "#667386", "title": "#f4f7fb",
+    "strong": "#f2f5fa", "input": "#10141b", "well": "#10141b", "chip": "#1b212b", "button": "#1b212b",
+    "button_text": "#e7ecf3", "button_border": "#2a3340", "hover": "#4a5668", "line": "#2f3948", "accent": "#3ddbc0",
+    "select": "#17423d", "select_soft": "#12342e", "select_text": "#ffffff", "popup": "#151a22", "dialog": "#12161d",
+    "fill": "#3ddbc0", "handle": "#f2f5fa", "handle_edge": "#f2f5fa", "handle_hover": "#ffffff", "applied": "#12342e",
+    "scroll_track": "#12161d", "scroll_hover": "#3a4556", "scroll_press": "#4a5668", "row_hover": "#1b212b",
+    "list_text": "#e7ecf3", "check_text": "#b7c1cf", "link": "#6ab0ff", "code": "#e6c07b", "ok": "#5be3b0",
+    "alarm": "#b3262c", "warn": "#f5c542", "error": "#ff7a88", "muted": "#6f7887", "mute": "#ef5258",
+    "limiter": "#35d0c0", "linked": "#3ddbc0", "on_color": "#0e1116",
+    "surface2": "#1b212b", "border2": "#2a3340", "text2": "#b7c1cf", "track": "#222a36", "meter_bg": "#10141b",
+    "accent_bg": "#12342e", "accent_text": "#3ddbc0", "mute_bg": "#3a1b22", "mute_fg": "#ff7a88", "live_bg": "#12261f",
+    "live_fg": "#5be3b0", "dashed": "#2f3948", "focus": "#3b82f6",
 }
 
 LIGHT = {
-    "bg": "#eceff3", "panel": "#ffffff", "mix": "#f5f7fa", "border": "#c8cfd9", "border_soft": "#c8cfd9",
-    "text": "#1f2530", "text_dim": "#566070", "text_faint": "#5f6978", "text_off": "#8a94a2", "title": "#0f141b",
-    "strong": "#111827", "input": "#f3f5f8", "well": "#c9d0da", "chip": "#e5e9ef", "button": "#e8ecf1",
-    "button_text": "#39424f", "button_border": "#b4bcc8", "hover": "#7a8493", "line": "#b7bfca", "accent": "#2f6fe0",
-    "select": "#cfe0fb", "select_soft": "#d3e2fb", "select_text": "#0f141b", "popup": "#ffffff", "dialog": "#f5f7fa",
-    "fill": "#46a97b", "handle": "#ffffff", "handle_edge": "#7a8493", "handle_hover": "#f0f4fa", "applied": "#cfe0fb",
-    "scroll_track": "#e1e6ec", "scroll_hover": "#98a2b0", "scroll_press": "#7f8b9b", "row_hover": "#e9eef4",
-    "list_text": "#1f2530", "check_text": "#2a3340", "link": "#1f5fcc", "code": "#8a5a00", "ok": "#237a43",
-    "alarm": "#c62828", "warn": "#8a5a00", "error": "#c62828", "muted": "#7a8493", "mute": "#e0414a",
-    "limiter": "#1fb3a3", "linked": "#7f93ab", "on_color": "#0e1014",
+    "bg": "#f3f5f9", "panel": "#ffffff", "mix": "#f8fafc", "border": "#dde2eb", "border_soft": "#dde2eb",
+    "text": "#121722", "text_dim": "#5b6678", "text_faint": "#5b6678", "text_off": "#8a94a2", "title": "#0b0f17",
+    "strong": "#111827", "input": "#eef1f6", "well": "#e3e8f0", "chip": "#eef1f6", "button": "#eef1f6",
+    "button_text": "#121722", "button_border": "#d3d9e4", "hover": "#7a8493", "line": "#b9c2d1", "accent": "#0f9d8a",
+    "select": "#c9ece6", "select_soft": "#d6f2ec", "select_text": "#0b0f17", "popup": "#ffffff", "dialog": "#f8fafc",
+    "fill": "#0f9d8a", "handle": "#ffffff", "handle_edge": "#bfc8d6", "handle_hover": "#f0f4fa", "applied": "#d6f2ec",
+    "scroll_track": "#e6eaf2", "scroll_hover": "#98a2b0", "scroll_press": "#7f8b9b", "row_hover": "#eef1f6",
+    "list_text": "#121722", "check_text": "#2e3748", "link": "#1f5fcc", "code": "#8a5a00", "ok": "#0a7a55",
+    "alarm": "#c62828", "warn": "#8a5a00", "error": "#c62e42", "muted": "#7a8493", "mute": "#e0414a",
+    "limiter": "#1fb3a3", "linked": "#0b7f70", "on_color": "#0e1014",
+    "surface2": "#eef1f6", "border2": "#d3d9e4", "text2": "#2e3748", "track": "#e3e8f0", "meter_bg": "#e6eaf2",
+    "accent_bg": "#d6f2ec", "accent_text": "#0b7f70", "mute_bg": "#fde3e6", "mute_fg": "#c62e42", "live_bg": "#ddf5ec",
+    "live_fg": "#0a7a55", "dashed": "#b9c2d1", "focus": "#2563eb",
 }
 
 CONTRAST = {
@@ -128,6 +138,61 @@ PAPER = {
 }
 
 
+# ----------------------------------------------------------------------------- working out the colours a file leaves out
+def _rgb(value: str) -> tuple:
+    return tuple(int(value[i:i + 2], 16) for i in (1, 3, 5))
+
+
+def mix(a: str, b: str, amount: float) -> str:
+    """The colour ``amount`` (0..1) of the way from ``a`` to ``b``."""
+    ra, rb = _rgb(a), _rgb(b)
+    return "#" + "".join(f"{round(x + (y - x) * amount):02x}" for x, y in zip(ra, rb))
+
+
+def readable(fg: str, bg: str, minimum: float = 4.5, toward: Optional[str] = None) -> str:
+    """``fg``, moved toward white or black (whichever is further from ``bg``) just far enough to read on ``bg``."""
+    if contrast_ratio(fg, bg) >= minimum:
+        return fg
+    end = toward or ("#ffffff" if luminance(bg) < 0.4 else "#000000")
+    for step in range(1, 21):
+        candidate = mix(fg, end, step / 20)
+        if contrast_ratio(candidate, bg) >= minimum:
+            return candidate
+    return end
+
+
+def complete(colors: dict, given=()) -> dict:
+    """A full colour set: the colours that are missing (the 0.10.0 ones) are worked out from the ones that are there.
+
+    ``given`` names the colours that must be kept as they are. The rest of ``NEW_TOKENS`` is rebuilt from the theme's own
+    background, card, text and accent, so an older theme file looks right in the new design without being edited."""
+    c = dict(colors)
+    keep = set(given)
+
+    def put(name: str, value: str) -> None:
+        if name not in keep:
+            c[name] = value
+
+    light = luminance(c["bg"]) >= 0.4
+    put("surface2", mix(c["panel"], c["text"], 0.05))
+    put("border2", mix(c["border"], c["text"], 0.1))
+    put("text2", readable(mix(c["text"], c["text_dim"], 0.35), c["panel"]))
+    put("track", mix(c["panel"], c["text"], 0.1))
+    put("meter_bg", mix(c["panel"], c["bg"], 0.6))
+    put("accent_bg", mix(c["panel"], c["accent"], 0.2 if not light else 0.16))
+    put("accent_text", readable(c["accent"], c["accent_bg"]))
+    put("mute_bg", mix(c["panel"], c["mute"], 0.22))
+    put("mute_fg", readable(c["mute"], c["mute_bg"]))
+    put("live_bg", mix(c["bg"], c["ok"], 0.16))
+    put("live_fg", readable(c["ok"], c["live_bg"]))
+    put("dashed", mix(c["bg"], c["text"], 0.16))
+    focus = "#2563eb" if light else "#3b82f6"
+    for surface in (c["bg"], c["panel"]):
+        focus = readable(focus, surface, 3.2)
+    put("focus", focus)
+    return c
+
+
 @dataclass(frozen=True)
 class Theme:
     id: str
@@ -155,86 +220,151 @@ class ThemeError(ValueError):
 
 # ----------------------------------------------------------------------------- style sheet
 STYLE_TEMPLATE = Template("""
-QMainWindow, QWidget#root, QScrollArea, QWidget#channels { background: $bg; }
-QWidget { color: $text; font-size: 12px; }
-QToolTip { background: $popup; color: $text; border: 1px solid $button_border; padding: 4px; }
-QFrame#strip, QFrame#mix, QFrame#apps {
-    background: $panel; border: 1px solid $border; border-radius: 8px;
+/* The look of 0.10.0. Spacing in steps of 8, three text sizes (12 caption, 14 body, 20 title), corners 8 / 12 / 24. */
+QMainWindow, QWidget#root, QScrollArea, QWidget#channels, QWidget#sources { background: $bg; }
+QWidget { color: $text; font-size: 14px; }
+QToolTip { background: $popup; color: $text; border: 1px solid $button_border; padding: 8px; border-radius: 8px; }
+QFrame#strip, QFrame#row {
+    background: $panel; border: 1px solid $border; border-radius: 24px;
 }
-QFrame#mix { background: $mix; }
-QFrame#apps { border-radius: 6px; }
-QFrame#chip { background: $chip; border: 1px solid $line; border-radius: 4px; }
+QFrame#row { border-radius: 20px; }
+QFrame#strip[empty="true"] { background: transparent; border: 2px dashed $dashed; }
+QFrame#mix { background: $mix; border: 1px solid $border2; border-radius: 24px; }
+QFrame#sourcechip { background: $surface2; border: none; border-radius: 8px; }
+QFrame#chip { background: $surface2; border: none; border-radius: 8px; }
+QFrame#statuschip { background: transparent; border: 1px solid $border; border-radius: 12px; }
+QFrame#divider { background: $border2; max-width: 1px; min-width: 1px; }
+QFrame#empty { background: transparent; border: 2px dashed $dashed; border-radius: 24px; }
+QFrame#firstrun { background: $panel; border: 1px solid $border2; border-radius: 24px; }
 QFrame#accent { border: none; border-radius: 2px; }
 QLabel { background: transparent; }
-QLabel#title { font-size: 15px; font-weight: 700; color: $title; }
-QLabel#tag { font-size: 9px; font-weight: 600; letter-spacing: 1px; color: $text_faint; }
-QLabel#hint { font-size: 10px; color: $text_dim; }
-QLabel#feedback { font-size: 11px; color: $text_dim; }
-QLabel#chiptext { font-size: 11px; background: transparent; }
-QLabel#readout { font-family: monospace; font-size: 11px; color: $strong;
-    background: $input; border: 1px solid $border_soft; border-radius: 4px; padding: 2px 0; }
-QLineEdit#readout { font-family: monospace; font-size: 11px; color: $strong; background: $input;
-    border: 1px solid $border_soft; border-radius: 4px; padding: 2px 0; }
-QLineEdit#readout[compact="true"], QLabel#readout[compact="true"] { font-size: 10px; }
-QLineEdit#readout:focus { border-color: $accent; }
-QLabel#status { color: $text_dim; padding: 2px 8px; }
-QLabel#demo { color: #1b1300; background: #f5c542; font-weight: 700; padding: 3px 10px; }
-QFrame#divider { background: $border; max-width: 1px; }
+QLabel#appname { font-size: 20px; font-weight: 700; color: $title; }
+QLabel#version { font-size: 12px; color: $text_dim; }
+QLabel#title { font-size: 20px; font-weight: 700; color: $title; }
+QLabel#name { font-size: 20px; font-weight: 600; color: $title; }
+QLabel#tag { font-size: 12px; font-weight: 600; letter-spacing: 0.5px; color: $text_faint; }
+QLabel#hint { font-size: 12px; color: $text_dim; }
+QLabel#feedback { font-size: 12px; color: $text_dim; }
+QLabel#chiptext { font-size: 12px; color: $text2; background: transparent; }
+QFrame#livepanel { background: $panel; border: 1px solid $border; border-radius: 24px; }
+QFrame#detail { background: $panel; border: 1px solid $border; border-radius: 24px; }
+QLabel#swatch { border-radius: 6px; background: $text_dim; }
+QLabel#swatch[who="out"] { background: $accent; }
+QLabel#bigvalue { font-size: 20px; font-weight: 700; color: $title; background: transparent; }
+QLabel#gatechip { font-size: 12px; font-weight: 600; padding: 4px 16px; border-radius: 12px; background: $surface2; color: $text2; }
+QLabel#gatechip[open="true"] { background: $live_bg; color: $live_fg; }
+QLabel#livechip { font-size: 12px; font-weight: 600; color: $live_fg; background: $live_bg; border-radius: 16px; padding: 7px 16px; }
+QLabel#ratetext { font-size: 12px; color: $text_dim; }
+QLabel#dropouts { font-size: 14px; color: $text2; }
+QLabel#readout { font-size: 14px; font-weight: 600; color: $strong; background: transparent; border: none; }
+QLineEdit#readout { font-size: 14px; font-weight: 600; color: $strong; background: transparent; border: 1px solid transparent;
+    border-radius: 8px; padding: 2px 0; }
+QLineEdit#readout:hover { border-color: $border2; }
+QLineEdit#readout:focus { border: 2px solid $focus; background: $input; }
+QLineEdit#readout[big="true"] { font-size: 20px; font-weight: 700; }
+QLabel#status { color: $text_dim; font-size: 12px; padding: 0 8px; }
+QLabel#demo { color: #1b1300; background: #f5c542; font-weight: 700; font-size: 12px; border-radius: 8px; padding: 4px 12px; }
+QLabel#step { font-size: 14px; font-weight: 700; color: $on_color; background: $accent; border-radius: 16px; }
+QLabel#stepoff { font-size: 14px; font-weight: 700; color: $text2; background: $track; border-radius: 16px; }
+QStatusBar { background: $bg; border: none; }
+QStatusBar::item { border: none; }
 
 QPushButton {
     background: $button; color: $button_text; border: 1px solid $button_border;
-    border-radius: 4px; padding: 4px 8px; font-weight: 600;
+    border-radius: 12px; padding: 0 16px; min-height: 38px; font-size: 14px; font-weight: 600;
 }
 QPushButton:hover { border-color: $hover; }
+QPushButton:pressed { background: $track; }
+QPushButton:focus { border: 2px solid $focus; padding: 0 15px; }
 QPushButton:disabled { color: $text_off; }
-QPushButton:checked { color: $on_color; border-color: transparent; }
+QPushButton:checked { color: $accent_text; background: $accent_bg; border-color: transparent; }
 QPushButton::menu-indicator { image: none; width: 0; }
-QPushButton#mute:checked  { background: $mute; }
-QPushButton#limiter:checked { background: $limiter; }
-QPushButton#link:checked { background: $linked; }
-QPushButton#micmute { background: transparent; color: $ok; border: 1px solid $button_border; padding: 5px 8px; }
-QPushButton#micmute:checked { background: $alarm; color: #ffffff; border-color: transparent; }
-QPushButton#add { border-style: dashed; color: $text_dim; background: transparent; }
-QPushButton#addchannel, QPushButton#addmix { border: 2px dashed $line; color: $text_dim; background: transparent;
-    border-radius: 8px; font-size: 13px; }
-QPushButton#addchannel:hover, QPushButton#addmix:hover { border-color: $hover; color: $text; }
-QPushButton#app { padding: 3px 10px; border-radius: 11px; }
-QPushButton#appassigned { padding: 3px 10px; border-radius: 11px; color: $strong; background: $applied; }
-QToolButton { background: transparent; border: none; color: $text_dim; font-weight: 700; padding: 0 4px; }
-QToolButton:hover { color: $error; }
-QToolButton#menu:hover { color: $strong; }
+QPushButton[compact="true"] { border-radius: 8px; min-height: 30px; padding: 0 8px; font-size: 12px; font-weight: 500; }
+QPushButton[compact="true"]:focus { padding: 0 7px; }
+QPushButton#primary { background: $accent; color: $on_color; border-color: transparent; }
+QPushButton#primary:hover { border-color: $hover; }
+QPushButton#iconbutton { padding: 0; border-radius: 12px; }
+QPushButton#iconbutton[compact="true"] { border-radius: 8px; }
+QPushButton#mute { background: $track; border: none; padding: 0; }
+QPushButton#mute:checked { background: $mute_bg; }
+QPushButton#mute:focus { border: 2px solid $focus; }
+QPushButton#limiter { border: none; font-size: 12px; font-weight: 700; background: $track; color: $text2; }
+QPushButton#limiter:checked { background: $accent_bg; color: $accent_text; }
+QPushButton#limiter:focus { border: 2px solid $focus; }
+QPushButton#link { padding: 0; border-radius: 8px; background: $surface2; border: 1px solid $border2; }
+QPushButton#link:checked { background: $accent_bg; border-color: $accent; }
+QPushButton#micmute { padding: 0; border-radius: 8px; background: transparent; border: none; }
+QPushButton#micmute:checked { background: $mute_bg; }
+QPushButton#addchip { border: 2px dashed $dashed; color: $text_dim; background: transparent; border-radius: 8px;
+    min-height: 28px; font-size: 12px; font-weight: 500; padding: 0 8px; }
+QPushButton#addchip:hover { border-color: $hover; color: $text; }
+QPushButton#addchip:focus { border: 2px solid $focus; padding: 0 8px; }
+QPushButton#addchip[iconly="true"] { border-radius: 8px; padding: 0; border-style: solid; border-width: 1px; border-color: $border2; min-height: 0; }
+QPushButton#plain { background: transparent; border: none; padding: 0; border-radius: 8px; min-height: 0; }
+QPushButton#plain:hover { background: $surface2; }
+QPushButton#plain:focus { border: 2px solid $focus; }
+QFrame#segmented { background: transparent; border: 1px solid $border; border-radius: 12px; }
+QPushButton#segment { border: none; background: transparent; min-height: 30px; border-radius: 9px; padding: 0 16px; font-size: 12px; color: $text2; }
+QPushButton#segment:checked { background: $accent_bg; color: $accent_text; }
+QPushButton#segment:focus { border: 2px solid $focus; padding: 0 14px; }
+QLabel#intro { color: $text2; }
+QPushButton#addchannel { border: 2px dashed $dashed; color: $text_dim; background: transparent; border-radius: 24px;
+    font-size: 14px; font-weight: 600; }
+QPushButton#addchannel:hover { border-color: $hover; color: $text; }
+QPushButton#addchannel:focus { border: 2px solid $focus; }
+QPushButton#quiet { background: transparent; border: 1px solid $border2; color: $text2; font-size: 12px; font-weight: 600; }
+QPushButton#quiet:checked { background: $accent_bg; color: $accent_text; border-color: transparent; }
+QPushButton#quiet:focus { border: 2px solid $focus; }
+QPushButton#devicebutton { background: $surface2; border: 1px solid $border2; color: $text2; font-size: 12px; font-weight: 500;
+    text-align: left; padding: 0 12px; }
+QPushButton#devicebutton:focus { border: 2px solid $focus; padding: 0 11px; }
+QPushButton#app { padding: 3px 12px; border-radius: 12px; }
+QPushButton#appassigned { padding: 3px 12px; border-radius: 12px; color: $strong; background: $applied; }
+QPushButton:flat { background: transparent; border: none; min-height: 0; padding: 2px 8px; font-size: 12px; }
+QToolButton { background: transparent; border: none; color: $text_dim; font-weight: 700; padding: 0 4px; border-radius: 8px; }
+QToolButton:hover { color: $strong; background: $surface2; }
+QToolButton:focus { border: 2px solid $focus; }
+QToolButton#remove:hover { color: $error; }
 QToolButton::menu-indicator { image: none; width: 0; }
 
 QComboBox {
-    background: $input; border: 1px solid $border; border-radius: 4px; padding: 3px 6px;
+    background: $surface2; border: 1px solid $border2; border-radius: 12px; padding: 0 12px; min-height: 38px;
+    font-size: 12px; font-weight: 500; color: $text2;
 }
 QComboBox:hover { border-color: $hover; }
+QComboBox:focus { border: 2px solid $focus; }
+QComboBox::drop-down { border: none; width: 24px; }
 QComboBox QAbstractItemView {
     background: $popup; border: 1px solid $button_border; selection-background-color: $select;
-    selection-color: $select_text;
+    selection-color: $select_text; font-size: 14px; padding: 8px; outline: 0;
 }
-QMenu { background: $popup; border: 1px solid $button_border; padding: 4px; }
-QMenu::item { padding: 5px 18px; border-radius: 3px; }
+QMenu { background: $popup; border: 1px solid $button_border; padding: 8px; border-radius: 12px; font-size: 14px; }
+QMenu::item { padding: 8px 24px; border-radius: 8px; }
 QMenu::item:selected { background: $select; color: $select_text; }
 QMenu::item:disabled { color: $text_off; }
-QMenu::separator { height: 1px; background: $border; margin: 4px 6px; }
+QMenu::separator { height: 1px; background: $border; margin: 8px 8px; }
 QMenuBar { background: $bg; color: $button_text; }
+QMenuBar::item { padding: 8px 12px; border-radius: 8px; }
 QMenuBar::item:selected { background: $chip; }
 QDialog { background: $dialog; }
-QProgressBar { background: $well; border: 1px solid $border_soft; border-radius: 5px; text-align: center; }
-QProgressBar::chunk { background: $accent; border-radius: 4px; }
-QTextBrowser { color: $list_text; background: $input; border: 1px solid $border_soft; padding: 6px; }
-QLineEdit { background: $input; border: 1px solid $border_soft; border-radius: 6px; padding: 5px 8px; color: $list_text;
+QMessageBox { background: $dialog; }
+QProgressBar { background: $well; border: 1px solid $border_soft; border-radius: 8px; text-align: center; min-height: 16px; }
+QProgressBar::chunk { background: $accent; border-radius: 7px; }
+QTextBrowser { color: $list_text; background: $input; border: 1px solid $border_soft; border-radius: 12px; padding: 8px; }
+QLineEdit { background: $input; border: 1px solid $border_soft; border-radius: 8px; padding: 8px; color: $list_text;
     selection-background-color: $select; selection-color: $select_text; }
-QLineEdit:focus { border-color: $accent; }
+QLineEdit:focus { border: 2px solid $focus; padding: 7px; }
 QCheckBox { spacing: 8px; color: $check_text; }
-QCheckBox::indicator { width: 14px; height: 14px; border: 1px solid $line; border-radius: 3px; background: $input; }
+QCheckBox::indicator { width: 16px; height: 16px; border: 1px solid $line; border-radius: 4px; background: $input; }
 QCheckBox::indicator:checked { background: $accent; border-color: $accent; }
-QListWidget { background: $input; border: 1px solid $border_soft; border-radius: 6px; padding: 4px; color: $list_text;
+QCheckBox::indicator:focus { border: 2px solid $focus; }
+QListWidget { background: $input; border: 1px solid $border_soft; border-radius: 12px; padding: 8px; color: $list_text;
     outline: 0; }
-QListWidget::item { padding: 5px 6px; border-radius: 4px; }
+QListWidget::item { padding: 8px; border-radius: 8px; }
 QListWidget::item:selected { background: $select_soft; color: $select_text; }
 QListWidget::item:hover:!selected { background: $row_hover; }
+QListWidget#chain { background: transparent; border: none; padding: 0; }
+QListWidget#chain::item, QListWidget#chain::item:selected, QListWidget#chain::item:hover:!selected { background: transparent; padding: 0; }
 QScrollBar:horizontal { background: $scroll_track; height: 12px; border-radius: 6px; margin: 0 2px; }
 QScrollBar::handle:horizontal { background: $line; border-radius: 6px; min-width: 48px; }
 QScrollBar::handle:horizontal:hover { background: $scroll_hover; }
@@ -242,17 +372,20 @@ QScrollBar::handle:horizontal:pressed { background: $scroll_press; }
 QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { background: transparent; }
 QScrollBar:vertical { background: transparent; width: 8px; }
 QScrollBar::handle:vertical { background: $line; border-radius: 4px; min-height: 24px; }
+QScrollBar::handle:vertical:hover { background: $scroll_hover; }
 QScrollBar::add-line, QScrollBar::sub-line { width: 0; height: 0; }
 
-QSlider::groove:vertical { background: $well; position: absolute; left: 12px; right: 12px;
-    border-radius: 3px; }
-QSlider::add-page:vertical { background: $fill; border-radius: 3px; }
-QSlider::handle:vertical { background: $handle; height: 22px; margin: 0 -9px;
-    border-radius: 4px; border: 1px solid $handle_edge; }
-QSlider::handle:vertical:hover { background: $handle_hover; }
-QSlider::groove:horizontal { background: $well; height: 6px; border-radius: 3px; }
-QSlider::sub-page:horizontal { background: $fill; border-radius: 3px; }
-QSlider::handle:horizontal { background: $handle; width: 14px; margin: -5px 0; border-radius: 4px; }
+/* sliders in dialogs (the faders of the mixer paint themselves) */
+QSlider::groove:horizontal { background: $track; height: 8px; border-radius: 4px; }
+QSlider::sub-page:horizontal { background: $accent; border-radius: 4px; }
+QSlider::handle:horizontal { background: $handle; border: 1px solid $handle_edge; width: 16px; height: 16px; margin: -5px 0;
+    border-radius: 9px; }
+QSlider::handle:horizontal:hover { background: $handle_hover; }
+QSlider::handle:horizontal:focus { border: 2px solid $focus; }
+QSlider::groove:vertical { background: $track; width: 8px; border-radius: 4px; }
+QSlider::add-page:vertical { background: $accent; border-radius: 4px; }
+QSlider::handle:vertical { background: $handle; border: 1px solid $handle_edge; height: 16px; width: 16px; margin: 0 -5px;
+    border-radius: 9px; }
 """)
 
 
@@ -323,6 +456,7 @@ def parse(data, fallback_name: str = "Imported theme") -> tuple:
             colors[key] = normalize_hex(value)
         except ThemeError as exc:
             raise ThemeError(f"“{key}”: {exc}") from exc
+    colors = complete(colors, given=[k for k in given if k in TOKEN_NAMES])
     return Theme(CUSTOM_PREFIX + slug(name), name, base, colors), notes
 
 
@@ -370,14 +504,49 @@ CONTRAST_CHECKS = (
     ("select_text", "select_soft", 4.5, "the selected line in a list"),
     ("text", "select", 3.0, "the highlighted line in a menu"),
     ("strong", "applied", 3.0, "the app buttons at the bottom"),
+    ("text2", "panel", 4.5, "the secondary text on the channel strips"),
+    ("text2", "surface2", 4.5, "the source names and device buttons"),
+    ("text_dim", "bg", 3.0, "the small grey text on the window"),
+    ("text_dim", "surface2", 3.0, "the small grey text on buttons and chips"),
+    ("text_dim", "panel", 3.0, "the small grey text on a strip"),
+    ("accent_text", "accent_bg", 4.5, "the text on a switched-on button"),
+    ("mute_fg", "mute_bg", 4.5, "the crossed speaker on a muted button"),
+    ("live_fg", "live_bg", 4.5, "the Live label"),
+    ("focus", "bg", 3.0, "the keyboard focus ring on the window"),
+    ("focus", "panel", 3.0, "the keyboard focus ring on a strip"),
+    ("accent", "panel", 3.0, "the accent colour on a strip"),
 )
+
+
+def polish(colors: dict) -> dict:
+    """The built-in themes only: small text moved just far enough to read (4.5 to 1) on every surface it sits on."""
+    c = dict(colors)
+    for name in ("text_dim", "text_faint"):
+        for surface in ("bg", "panel", "surface2"):
+            c[name] = readable(c[name], c[surface], 4.5)
+    for surface in ("surface2", "panel"):
+        c["text2"] = readable(c["text2"], c[surface], 4.5)
+    c["accent_text"] = readable(c["accent"], c["accent_bg"], 4.5)
+    c["mute_fg"] = readable(c["mute"], c["mute_bg"], 4.5)
+    c["live_fg"] = readable(c["ok"], c["live_bg"], 4.5)
+    return c
+
+
+for _palette in (CONTRAST, PURPLE, MIDNIGHT, AMBER, PAPER):  # the older sets get the 0.10.0 colours worked out from their own
+    _palette.update(polish(complete(_palette)))
+for _palette in (DARK, LIGHT):
+    _palette.update(polish(_palette))
+
+
+# Drawn things (the focus ring, the accent on a strip) need 3 to 1, the usual bar for graphics; only text needs 4.5.
+GRAPHICS = ("focus", "accent")
 
 
 def contrast_problems(colors: dict, strict: bool = False) -> list:
     """Plain-language list of text that would be hard to read. ``strict`` demands the usual 4.5 everywhere."""
     problems = []
     for fg, bg, minimum, what in CONTRAST_CHECKS:
-        need = 4.5 if strict else minimum
+        need = minimum if fg in GRAPHICS else (4.5 if strict else minimum)
         ratio = contrast_ratio(colors[fg], colors[bg])
         if ratio < need:
             problems.append(f"{what} ({fg} on {bg}) is hard to read: contrast {ratio:.1f}, it should be at least {need:g}")

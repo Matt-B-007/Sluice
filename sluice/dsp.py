@@ -19,7 +19,7 @@ from typing import Callable, Iterable, Optional
 
 import numpy as np
 
-from .effects import Chain, toolbox
+from .effects import Chain, Tap, toolbox
 
 LIMITER_CEILING_DB = -1.0
 SILENCE_TAIL_SECONDS = 6.0  # after this long without input, a channel's effect chain is skipped (reverb tails are shorter)
@@ -114,6 +114,9 @@ class ChannelDsp:
     def __init__(self, channel_id: str) -> None:
         self.id = channel_id
         self.board = None  # pedalboard.Pedalboard or None when the chain is empty
+        self.instances: list = []  # the EffectInstances the board was built from
+        self.tap_target = None  # the EffectInstance the Effects window is looking at, or None
+        self.tap: Optional[Tap] = None
         self.gains: dict = {}  # mix id -> target linear gain
         self.applied: dict = {}  # mix id -> gain reached at the end of the last block
         self.solo_gain: Optional[float] = None  # None: no own output; else the gain of the "<channel> only" output
@@ -146,6 +149,7 @@ class Graph:
         self.errors: list = []
         self._queue: deque = deque()
         self._captures: dict = {}  # channel id -> the Capture "Measure my room" is filling
+        self.taps: dict = {}  # channel id -> the Tap the Effects window reads (only while it is open)
         self._pb = _pedalboard()
 
     # ------------------------------------------------------------ control side
@@ -212,17 +216,52 @@ class Graph:
 
         self.submit(clear)
 
+    def _build_board(self, channel: "ChannelDsp") -> None:
+        """(Audio thread.) The channel's chain from its instances; the effect being looked at gets parts of its own."""
+        items, span = [], None
+        for instance in channel.instances:
+            start = len(items)
+            items.extend(instance.items)
+            if instance is channel.tap_target and instance.items:
+                span = (start, len(items))
+        if not items or not self._pb:
+            channel.board = None
+            return
+        tap = (span[0], span[1], channel.tap) if span and channel.tap is not None else None
+        channel.board = Chain(toolbox(self._pb), items, tap=tap)
+
     def set_chain(self, channel_id: str, instances: Iterable) -> None:
         """Set a channel's effect chain from usable ``EffectInstance`` objects."""
-        items = [item for inst in instances for item in inst.items]
+        instances = list(instances)
 
         def apply() -> None:
             channel = self.channels.get(channel_id)
             if channel is None:
                 return
-            channel.board = Chain(toolbox(self._pb), items) if (items and self._pb) else None
+            channel.instances = instances
+            self._build_board(channel)
 
         self.submit(apply)
+
+    def set_tap(self, channel_id: str, instance) -> Optional[Tap]:
+        """Look at the sound going into and out of one effect of a channel (None stops looking). Returns the Tap to read from.
+
+        Used by the live display of the Effects window while it is open; nothing is kept once it is closed."""
+        tap = Tap(self.sample_rate) if instance is not None else None  # made here, not on the audio thread
+        if tap is None:
+            self.taps.pop(channel_id, None)
+        else:
+            self.taps[channel_id] = tap
+
+        def apply() -> None:
+            channel = self.channels.get(channel_id)
+            if channel is None:
+                return
+            channel.tap_target, channel.tap = instance, tap
+            self._build_board(channel)
+
+        self.submit(apply)
+        return tap
 
     def set_gain(self, channel_id: str, mix_id: str, linear: float) -> None:
         def apply() -> None:

@@ -38,10 +38,11 @@ def test_the_colours_with_a_fixed_meaning_are_the_same_everywhere():
     assert themes.BUILT_IN["dark"].colors["mute"] == "#ef5258"
 
 
-def test_the_default_theme_is_dark_and_dark_is_the_old_look():
+def test_the_default_theme_is_dark_and_dark_is_the_new_look():
     assert themes.DEFAULT == "dark"
-    assert themes.BUILT_IN["dark"].colors["bg"] == "#181b20"
-    assert themes.BUILT_IN["dark"].colors["panel"] == "#232830"
+    assert themes.BUILT_IN["dark"].colors["bg"] == "#0e1116"
+    assert themes.BUILT_IN["dark"].colors["panel"] == "#151a22"
+    assert themes.BUILT_IN["dark"].colors["accent"] == "#3ddbc0"
 
 
 def test_switching_back_to_a_theme_reuses_its_style_sheet():
@@ -289,10 +290,10 @@ def test_the_meters_pick_up_the_new_colours(win):
     from PySide6.QtGui import QColor
 
     meters = win.findChildren(LevelMeter)
-    assert meters and all(m._well == QColor(themes.DARK["well"]) for m in meters)
+    assert meters and all(m._well == QColor(themes.DARK["meter_bg"]) for m in meters)
     meters[0]._lit_pixmap()
     win.apply_theme("light")
-    assert all(m._well == QColor(themes.LIGHT["well"]) for m in meters)
+    assert all(m._well == QColor(themes.LIGHT["meter_bg"]) for m in meters)
     assert all(m._lit is None for m in meters)  # redrawn in the new colours on the next paint
 
 

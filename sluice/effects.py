@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 import os
 import threading
+from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
@@ -187,10 +188,69 @@ class JointStage:
             self._joint.wake()
 
 
-class Chain:
-    """Runs plugins and Stages in order. Callable like a Pedalboard: ``chain(audio, sample_rate, reset=False)``."""
+class Tap:
+    """A look at the sound going into and coming out of one effect, for the live display in the Effects window.
 
-    def __init__(self, pb, items: list) -> None:
+    It exists only while that window is open on that effect. It keeps the peak of every block (for the waveform) and the last
+    few thousand samples before and after (for the spectrum), as numbers in memory: nothing is recorded, saved or sent anywhere."""
+
+    RING = 4096
+
+    def __init__(self, sample_rate: int) -> None:
+        self.rate = int(sample_rate)
+        self.pre = np.zeros(self.RING, dtype=np.float32)
+        self.post = np.zeros(self.RING, dtype=np.float32)
+        self.pos = 0
+        self.peaks: deque = deque(maxlen=4096)  # (peak going in, peak coming out) for each block, oldest first
+
+    def record(self, before: np.ndarray, after: np.ndarray) -> None:
+        n = min(before.shape[-1], after.shape[-1])
+        if n == 0:
+            return
+        self.peaks.append((float(np.max(np.abs(before[..., :n]))), float(np.max(np.abs(after[..., :n])))))
+        mono_before = before[..., :n].mean(axis=0) if before.ndim == 2 else before[:n]
+        mono_after = after[..., :n].mean(axis=0) if after.ndim == 2 else after[:n]
+        if n >= self.RING:
+            self.pre[:] = mono_before[-self.RING:]
+            self.post[:] = mono_after[-self.RING:]
+            self.pos = 0
+            return
+        end = self.pos + n
+        if end <= self.RING:
+            self.pre[self.pos:end] = mono_before
+            self.post[self.pos:end] = mono_after
+        else:
+            first = self.RING - self.pos
+            self.pre[self.pos:] = mono_before[:first]
+            self.pre[:end - self.RING] = mono_before[first:]
+            self.post[self.pos:] = mono_after[:first]
+            self.post[:end - self.RING] = mono_after[first:]
+        self.pos = end % self.RING
+
+    def drain_peaks(self) -> list:
+        """The block peaks since the last call (oldest first); each is taken out, so nothing is counted twice."""
+        found = []
+        while True:
+            try:
+                found.append(self.peaks.popleft())
+            except IndexError:
+                return found
+
+    def latest(self, count: int = 2048) -> tuple:
+        """The most recent ``count`` samples (before, after), oldest first."""
+        order = (np.arange(self.RING - count, self.RING) + self.pos) % self.RING
+        return self.pre[order].copy(), self.post[order].copy()
+
+
+class Chain:
+    """Runs plugins and Stages in order. Callable like a Pedalboard: ``chain(audio, sample_rate, reset=False)``.
+
+    ``tap`` = (first item, end of items, Tap): the items in that range are kept in parts of their own, and the sound going into
+    and coming out of them is handed to the Tap."""
+
+    def __init__(self, pb, items: list, tap: Optional[tuple] = None) -> None:
+        self._tap = tap[2] if tap else None
+        self._tap_in = self._tap_out = -1
         self._parts: list = []
         spectral_run: list = []
         native_run: list = []
@@ -209,7 +269,13 @@ class Chain:
             native_run.clear()
             run.clear()
 
-        for item in items:
+        for index, item in enumerate(items):
+            if tap and index == tap[0]:
+                flush()
+                self._tap_in = len(self._parts)
+            if tap and index == tap[1]:
+                flush()
+                self._tap_out = len(self._parts)
             if isinstance(item, Stage):
                 if native_run or run:
                     flush()
@@ -223,6 +289,10 @@ class Chain:
                     flush()
                 run.append(item)
         flush()
+        if tap and tap[1] >= len(items):
+            self._tap_out = len(self._parts)
+        if self._tap is not None and not (0 <= self._tap_in < self._tap_out):
+            self._tap = None  # the effect has nothing to run: nothing to look at
 
     def wake(self) -> None:
         """Sound is back after a long silence in which the chain was not run."""
@@ -231,11 +301,16 @@ class Chain:
                 part.wake()
 
     def __call__(self, audio: np.ndarray, sample_rate: int, reset: bool = False) -> np.ndarray:
-        for part in self._parts:
+        before = None
+        for index, part in enumerate(self._parts):
+            if self._tap is not None and index == self._tap_in:
+                before = np.array(audio, copy=True)  # a part may work in place
             if isinstance(part, (Stage, JointStage, NativeRun)):
                 audio = part.process(audio, sample_rate)
             else:
                 audio = np.asarray(part(audio, sample_rate, reset=reset), dtype=np.float32)
+            if self._tap is not None and index == self._tap_out - 1 and before is not None:
+                self._tap.record(before, audio)
         return audio
 
 

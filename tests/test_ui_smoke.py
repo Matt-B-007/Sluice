@@ -9,7 +9,7 @@ pytest.importorskip("PySide6")
 
 from PySide6.QtCore import Qt  # noqa: E402
 from PySide6.QtTest import QTest  # noqa: E402
-from PySide6.QtWidgets import QLabel, QMessageBox, QPushButton  # noqa: E402
+from PySide6.QtWidgets import QLabel, QMessageBox  # noqa: E402
 
 from sluice.audio_io import NullIO  # noqa: E402
 from sluice.backend import MockSystem  # noqa: E402
@@ -167,7 +167,9 @@ def test_moving_an_app_between_channels_through_the_ui(ui):
 def test_apps_bar_assigns_apps(ui):
     win, system, _ = ui
     bar = win.apps_bar
-    labels = [b.text() for b in bar.findChildren(QPushButton)]
+    assert bar.text().startswith("Playing now \u00b7 ")
+    bar._fill()
+    labels = [a.text() for a in bar.menu.actions()]
     assert any("Spotify" in t and "Music" in t for t in labels)
     bar._assign("firefox", "chat")
     assert sinks(system)["firefox"] == "sluice_ch_chat"
@@ -209,7 +211,8 @@ def test_tick_refreshes_the_apps_bar(ui):
     system.streams.append(type(system.streams[0])(77, "obs", "OBS Studio", system.sinks[0].name))
     win.engine._last_rules = 0.0
     win._tick_engine()
-    assert any("OBS Studio" in b.text() for b in win.apps_bar.findChildren(QPushButton))
+    win.apps_bar._fill()
+    assert any("OBS Studio" in a.text() for a in win.apps_bar.menu.actions())
 
 
 def test_shutdown_saves_and_cleans_up(ui, tmp_path):
@@ -253,10 +256,10 @@ def test_effects_dialog_adds_edits_bypasses_orders_and_removes(ui):
 def test_effects_button_counts_active_effects(ui):
     win, _, engine = ui
     mic = strip_for(win, "mic")
-    assert mic.fx_button.text() == "Effects (7/7 on)"
+    assert mic.fx_button.text() == "7 effects"
     engine.set_effect_bypass("mic", engine.mixer.channel("mic").effects[0].id, True)
     mic._update_fx_button()
-    assert mic.fx_button.text() == "Effects (6/7 on)"
+    assert mic.fx_button.text() == "6 of 7 on"
 
 
 def test_a_vst3_that_cannot_load_is_reported_and_not_added(ui, monkeypatch, tmp_path):
@@ -419,7 +422,7 @@ def test_version_is_shown_and_about_and_update_menu_exist(ui):
 
     win, *_ = ui
     assert __version__ in win.windowTitle()
-    assert any(label.text() == f"v{__version__}" for label in win.statusBar().findChildren(QLabel))
+    assert any(label.text() == f"v{__version__}" for label in win.findChildren(QLabel))  # small, grey, beside the name
     help_menu = next(a.menu() for a in win.menuBar().actions() if a.text().replace("&", "") == "Help")
     help_actions = [a.text() for a in help_menu.actions()]
     assert "Check for updates\u2026" in help_actions and f"About Sluice {__version__}" in help_actions
@@ -530,7 +533,8 @@ def test_menu_bar_has_the_usual_menus_in_the_usual_order(ui):
         "Theme", "Audio buffer", "Start when I log in", "When I close the window", "Add Sluice to the applications menu",
         "Update automatically when a new version is found", "MIDI controllers and Stream Deck…",
         "Reset all settings to the defaults…"]
-    assert _texts(_menu(win, "View")) == ["Full screen", "Reset window size"]
+    assert _texts(_menu(win, "View")) == ["Layout: Columns (a card for each channel)", "Layout: Rows (a line for each channel)",
+                                          "Full screen", "Reset window size"]
 
 
 def test_mixer_menu_toggles_follow_the_real_state(ui):
@@ -916,14 +920,14 @@ def _mic_button(win):
 def test_the_mic_strip_button_and_menu_item_mute_the_microphone(ui):
     win, _, engine = ui
     button = _mic_button(win)
-    assert button.text() == "Mic live" and not engine.mic_muted
+    assert "live" in button.toolTip() and not engine.mic_muted
     button.click()
-    assert engine.mic_muted and button.text() == "MIC MUTED" and button.isChecked()
+    assert engine.mic_muted and "muted" in button.toolTip().lower() and button.isChecked()
     win.mic_action.trigger()
-    assert not engine.mic_muted and button.text() == "Mic live"
+    assert not engine.mic_muted and "live" in button.toolTip()
     engine.set_mic_muted(True)  # something else (a controller, `sluice ctl mic-mute`) changed it
     win.sync_from_model()
-    assert button.text() == "MIC MUTED"
+    assert "muted" in button.toolTip().lower() and button.isChecked()
 
 
 def test_the_mixer_menu_offers_the_recording_mix_and_the_mic_mute(ui):

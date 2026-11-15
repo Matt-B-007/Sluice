@@ -7,13 +7,13 @@ from functools import partial
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import QTimer, Qt
-from PySide6.QtGui import QColor
+from PySide6.QtCore import QEvent, QRectF, QSize, QTimer, Qt
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPen
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
+    QFrame,
     QFileDialog,
-    QGridLayout,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -23,6 +23,9 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QScrollArea,
+    QStyle,
+    QStyledItemDelegate,
+    QToolTip,
     QVBoxLayout,
     QWidget,
 )
@@ -31,6 +34,7 @@ from .effects import BUILTINS, ParamInfo, builtin_names, scan_vst3, vst3_plugin_
 from . import logs, presets, themes
 from .model import MIN_DB, Effect, new_effect_id
 from .ui_room import MeasureEchoDialog, MeasureRoomDialog, MeasureVoiceDialog
+from .ui_live import LivePanel
 from .ui_widgets import ReadoutEdit, ResetSlider
 
 MAX_VST3_PARAMS = 64
@@ -116,6 +120,115 @@ LEVEL_WATCH_SECONDS = 6.0  # how long the microphone is watched before it is cal
 LOW_PEAK_DB = -26.0  # speech whose loudest moments stay below this is quiet (a normal voice peaks near -17 dB)
 
 
+CARD_W, CARD_H, ARROW_W = 128, 120, 24
+LIVE_W = 464
+SUMMARY_ROLE = Qt.ItemDataRole.UserRole + 1
+SUMMARIES = {
+    "gain": "Louder or quieter",
+    "highpass": "Cuts rumble",
+    "noise_reducer": "Lowers fan hiss",
+    "echo_reducer": "Lowers room echo",
+    "noise_gate": "Mutes the room",
+    "eq": "Shapes the tone",
+    "compressor": "Evens out volume",
+    "limiter": "Stops loud peaks",
+}
+
+
+class CardDelegate(QStyledItemDelegate):
+    """Draws each effect as a card: its number, an on/off switch, its name and a few words on what it does."""
+
+    SWITCH = (36, 20)
+
+    def sizeHint(self, option, index) -> QSize:
+        return QSize(CARD_W + ARROW_W, CARD_H + 8)
+
+    def _switch_rect(self, card: QRectF) -> QRectF:
+        w, h = self.SWITCH
+        return QRectF(card.right() - 12 - w, card.top() + 12, w, h)
+
+    def _card(self, option) -> QRectF:
+        return QRectF(option.rect.left(), option.rect.top() + 4, CARD_W, CARD_H)
+
+    def paint(self, painter, option, index) -> None:
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        card = self._card(option)
+        on = self._checked(index)
+        selected = bool(option.state & QStyle.StateFlag.State_Selected)
+        hover = bool(option.state & QStyle.StateFlag.State_MouseOver)
+        fill = themes.color("accent_bg") if selected else (themes.color("hover") if hover else themes.color("panel"))
+        border = QPen(QColor(themes.color("accent") if selected else themes.color("border2")), 2 if selected else 1)
+        painter.setPen(border)
+        painter.setBrush(QColor(fill))
+        painter.drawRoundedRect(card.adjusted(1, 1, -1, -1), 12, 12)
+        text = QColor(themes.color("text") if on else themes.color("text_dim"))
+        small = QFont(painter.font())
+        small.setPixelSize(12)
+        painter.setFont(small)
+        painter.setPen(QColor(themes.color("text_dim")))
+        painter.drawText(QRectF(card.left() + 12, card.top() + 12, 24, 20), int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter), str(index.row() + 1))
+        sw = self._switch_rect(card)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(themes.color("accent") if on else themes.color("track")))
+        painter.drawRoundedRect(sw, sw.height() / 2, sw.height() / 2)
+        knob = sw.height() - 6
+        x = sw.right() - 3 - knob if on else sw.left() + 3
+        painter.setBrush(QColor(themes.color("bg") if on else themes.color("text_dim")))
+        painter.drawEllipse(QRectF(x, sw.top() + 3, knob, knob))
+        name = QFont(painter.font())
+        name.setPixelSize(14)
+        name.setWeight(QFont.Weight.DemiBold)
+        painter.setFont(name)
+        painter.setPen(text)
+        metrics = QFontMetrics(name)
+        label = metrics.elidedText(str(index.data(Qt.ItemDataRole.DisplayRole)), Qt.TextElideMode.ElideRight, int(card.width() - 24))
+        painter.drawText(QRectF(card.left() + 12, card.top() + 48, card.width() - 24, 22), int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter), label)
+        painter.setFont(small)
+        painter.setPen(QColor(themes.color("text_dim")))
+        summary = str(index.data(SUMMARY_ROLE) or "")
+        painter.drawText(QRectF(card.left() + 12, card.top() + 72, card.width() - 24, 36), int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop | Qt.TextFlag.TextWordWrap), summary if on else "Off")
+        if index.row() < index.model().rowCount() - 1:
+            mid = QRectF(card.right(), card.center().y() - 8, ARROW_W, 16)
+            painter.setPen(QPen(QColor(themes.color("text_dim")), 2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            cx, cy = mid.center().x(), mid.center().y()
+            painter.drawLine(int(cx - 5), int(cy), int(cx + 5), int(cy))
+            painter.drawLine(int(cx + 1), int(cy - 4), int(cx + 5), int(cy))
+            painter.drawLine(int(cx + 1), int(cy + 4), int(cx + 5), int(cy))
+        if option.state & QStyle.StateFlag.State_HasFocus and selected:
+            painter.setPen(QPen(QColor(themes.color("focus")), 2))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRoundedRect(card.adjusted(-1, -1, 1, 1), 13, 13)
+        painter.restore()
+
+    @staticmethod
+    def _checked(index) -> bool:
+        value = index.data(Qt.ItemDataRole.CheckStateRole)
+        return value in (Qt.CheckState.Checked, Qt.CheckState.Checked.value)
+
+    @classmethod
+    def _toggle(cls, model, index) -> None:
+        on = cls._checked(index)
+        model.setData(index, Qt.CheckState.Unchecked if on else Qt.CheckState.Checked, Qt.ItemDataRole.CheckStateRole)
+
+    def editorEvent(self, event, model, option, index) -> bool:
+        kind = event.type()
+        if kind == QEvent.Type.MouseButtonRelease and event.button() == Qt.MouseButton.LeftButton:
+            if self._switch_rect(self._card(option)).adjusted(-6, -6, 6, 6).contains(event.position()):
+                self._toggle(model, index)
+                return True
+        if kind == QEvent.Type.KeyPress and event.key() in (Qt.Key.Key_Space, Qt.Key.Key_Select):
+            self._toggle(model, index)
+            return True
+        return False
+
+    def helpEvent(self, event, view, option, index) -> bool:
+        if event.type() == QEvent.Type.ToolTip and self._switch_rect(self._card(option)).adjusted(-6, -6, 6, 6).contains(event.pos()):
+            QToolTip.showText(event.globalPos(), "Switch this effect on or off", view)
+            return True
+        return super().helpEvent(event, view, option, index)
+
+
 class EffectsDialog(QDialog):
     def __init__(self, engine, channel, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
@@ -126,72 +239,96 @@ class EffectsDialog(QDialog):
         self._speech_started = None
         self._rows: dict = {}  # parameter key -> its ParamRow, for the effect being shown
         self.setWindowTitle(f"Effects — {channel.label}")
-        self.resize(760, 720)
+        self.resize(1280, 920)
 
-        outer = QHBoxLayout(self)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(24, 24, 24, 24)
+        root.setSpacing(24)
+        head = QVBoxLayout()
+        head.setSpacing(4)
+        heading = QLabel("Mic effects")
+        heading.setObjectName("title")
+        caption = QLabel("Sound passes through these from left to right.")
+        caption.setObjectName("hint")
+        head.addWidget(heading)
+        head.addWidget(caption)
+        root.addLayout(head)
 
-        left = QVBoxLayout()
-        hint = QLabel("Processed top to bottom. Untick to bypass.\nBuilt-in effects are placed in the best order for you; only VST3 plugins can be moved.")
-        hint.setWordWrap(True)
-        hint.setObjectName("hint")
-        left.addWidget(hint)
-        self.list = QListWidget()
-        self.list.setMinimumWidth(220)
-        self.list.setMinimumHeight(170)
-        left.addWidget(self.list, 1)
-        buttons = QHBoxLayout()
-        self.add_button = QPushButton("Add ▾")
-        self.add_button.setMenu(QMenu(self.add_button))
-        self.add_button.menu().aboutToShow.connect(self._build_add_menu)
-        up, down, remove = QPushButton("▲"), QPushButton("▼"), QPushButton("Remove")
-        up.setToolTip("Move up")
-        down.setToolTip("Move down")
-        up.clicked.connect(lambda: self._move(-1))
-        down.clicked.connect(lambda: self._move(1))
-        remove.clicked.connect(self._remove)
-        for button in (self.add_button, up, down, remove):
-            buttons.addWidget(button)
-        left.addLayout(buttons)
-        self.up, self.down = up, down
+        # Room and Voice style choices, and (right) My presets and Hear original mic
         self.sound_box = QWidget()
-        sound = QVBoxLayout(self.sound_box)
-        sound.setContentsMargins(0, 4, 0, 0)
+        sound = QHBoxLayout(self.sound_box)
+        sound.setContentsMargins(0, 0, 0, 0)
+        sound.setSpacing(24)
+        axes = QVBoxLayout()
+        axes.setSpacing(16)
         self._choice_buttons: dict = {}  # (axis, name) -> its button
         self._axis_status: dict = {}
         self._axis_reset: dict = {}
         for axis, title in (("room", "Room"), ("style", "Voice style")):
-            head = QHBoxLayout()
-            heading = QLabel(title)
-            heading.setObjectName("title")
-            head.addWidget(heading)
+            top = QHBoxLayout()
+            top.setSpacing(8)
+            label = QLabel(title)
+            label.setObjectName("tag")
+            top.addWidget(label)
             status = QLabel("")
             status.setObjectName("hint")
-            head.addWidget(status, 1)
+            top.addWidget(status, 1)
             reset = QPushButton("Reset")
             reset.setFlat(True)
             reset.setToolTip("Put every setting of this choice back to exactly what the name says.")
             reset.clicked.connect(partial(self._reset_axis, axis))
             reset.hide()
-            head.addWidget(reset)
-            sound.addLayout(head)
-            grid = QGridLayout()
-            grid.setSpacing(4)
-            for i, (name, (description, _entries)) in enumerate(presets.AXES[axis].items()):
+            top.addWidget(reset)
+            axes.addLayout(top)
+            frame = QFrame()
+            frame.setObjectName("segmented")
+            segments = QHBoxLayout(frame)
+            segments.setContentsMargins(4, 4, 4, 4)
+            segments.setSpacing(4)
+            for name, (description, _entries) in presets.AXES[axis].items():
                 button = QPushButton(name)
+                button.setObjectName("segment")
                 button.setCheckable(True)
-                button.setStyleSheet(f"QPushButton:checked {{ border: 2px solid {themes.color('accent')}; font-weight: bold; color: {themes.color('text')}; }}")
                 button.setToolTip(description)
                 button.clicked.connect(partial(self._choose, axis, name))
-                grid.addWidget(button, i // 2, i % 2)
+                segments.addWidget(button)
                 self._choice_buttons[(axis, name)] = button
-            sound.addLayout(grid)
+            axes.addWidget(frame)
             self._axis_status[axis], self._axis_reset[axis] = status, reset
+        self.preset_feedback = QLabel("")
+        self.preset_feedback.setObjectName("feedback")
+        self.preset_feedback.setWordWrap(True)
+        self.preset_feedback.hide()
+        axes.addWidget(self.preset_feedback)
+        self.level_prompt = QLabel("Your microphone sounds quiet. Quiet speech gives the Compressor nothing to do.")
+        self.level_prompt.setWordWrap(True)
+        self.level_prompt.setStyleSheet(f"color: {themes.color('warn')};")
+        self.level_button = QPushButton("Check my voice level…")
+        self.level_button.clicked.connect(self._measure_voice)
+        self.level_prompt.hide()
+        self.level_button.hide()
+        axes.addWidget(self.level_prompt)
+        axes.addWidget(self.level_button, 0, Qt.AlignmentFlag.AlignLeft)
+        self.room_hint = QLabel("Tip: open the Noise Gate and press Measure my room. Sluice listens and picks the Room "
+                                "choice that fits.")
+        self.room_hint.setWordWrap(True)
+        self.room_hint.setObjectName("hint")
+        self.room_hint.hide()
+        axes.addWidget(self.room_hint)
+        sound.addLayout(axes, 1)
+
+        side = QVBoxLayout()
+        side.setSpacing(8)
+        side_box = QWidget()
+        side_box.setFixedWidth(264)
+        side_box.setLayout(side)
+        side.setContentsMargins(0, 0, 0, 0)
         self.mine_button = QPushButton("My presets ▾")
         self.mine_button.setMenu(QMenu(self.mine_button))
         self.mine_button.menu().aboutToShow.connect(self._build_mine_menu)
         self.mine_button.setToolTip("Your own saved settings (they also keep the gate threshold and gain). "
                                     "Save as my preset works from any state, even after a tiny change.")
-        sound.addWidget(self.mine_button)
+        side.addWidget(self.mine_button)
         # After a change to a preset of yours: keep it, save it as a new one, or go back
         self._active_user: Optional[str] = None
         self.mine_changed_row = QWidget()
@@ -203,6 +340,7 @@ class EffectsDialog(QDialog):
         self.mine_changed_label.setObjectName("hint")
         changed_layout.addWidget(self.mine_changed_label)
         changed_buttons = QHBoxLayout()
+        changed_buttons.setSpacing(4)
         self.mine_update_button = QPushButton("Update preset…")
         self.mine_update_button.setToolTip("Replace your saved preset with the settings as they are now (it asks first).")
         self.mine_update_button.clicked.connect(self._update_my_preset)
@@ -213,41 +351,62 @@ class EffectsDialog(QDialog):
         self.mine_undo_button.setToolTip("Put every setting back to what your preset says.")
         self.mine_undo_button.clicked.connect(self._undo_to_my_preset)
         for button in (self.mine_update_button, self.mine_new_button, self.mine_undo_button):
-            changed_buttons.addWidget(button)
-        changed_buttons.addStretch(1)
-        changed_layout.addLayout(changed_buttons)
+            changed_layout.addWidget(button)
         self.mine_changed_row.hide()
-        sound.addWidget(self.mine_changed_row)
+        side.addWidget(self.mine_changed_row)
         self.compare_button = QPushButton("Hear my original microphone")
         self.compare_button.setCheckable(True)
         self.compare_button.setToolTip("Switches the whole effect chain off so you can compare with and without. "
                                        "Not saved: it ends when you untick it or close Sluice.")
         self.compare_button.toggled.connect(self._compare_chain)
-        sound.addWidget(self.compare_button)
-        self.preset_feedback = QLabel("")
-        self.preset_feedback.setObjectName("feedback")
-        self.preset_feedback.setWordWrap(True)
-        self.preset_feedback.hide()
-        sound.addWidget(self.preset_feedback)
-        self.level_prompt = QLabel("Your microphone sounds quiet. Quiet speech gives the Compressor nothing to do.")
-        self.level_prompt.setWordWrap(True)
-        self.level_prompt.setStyleSheet(f"color: {themes.color('warn')};")
-        self.level_button = QPushButton("Check my voice level…")
-        self.level_button.clicked.connect(self._measure_voice)
-        self.level_prompt.hide()
-        self.level_button.hide()
-        sound.addWidget(self.level_prompt)
-        sound.addWidget(self.level_button, 0, Qt.AlignmentFlag.AlignLeft)
-        self.room_hint = QLabel("Tip: open the Noise Gate and press Measure my room. Sluice listens and picks the Room "
-                                "choice that fits.")
-        self.room_hint.setWordWrap(True)
-        self.room_hint.setObjectName("hint")
-        self.room_hint.hide()
-        sound.addWidget(self.room_hint)
-        left.addWidget(self.sound_box)
-        outer.addLayout(left)
+        side.addWidget(self.compare_button)
+        side.addStretch(1)
+        sound.addWidget(side_box)
+        root.addWidget(self.sound_box)
 
-        right = QVBoxLayout()
+        # The chain: cards from left to right
+        chain = QVBoxLayout()
+        chain.setSpacing(8)
+        self.list = QListWidget()
+        self.list.setObjectName("chain")
+        self.list.setFlow(QListWidget.Flow.LeftToRight)
+        self.list.setWrapping(True)
+        self.list.setResizeMode(QListWidget.ResizeMode.Adjust)
+        self.list.setMovement(QListWidget.Movement.Static)
+        self.list.setSpacing(0)
+        self.list.setGridSize(QSize(CARD_W + ARROW_W, CARD_H + 8))
+        self.list.setFrameShape(QListWidget.Shape.NoFrame)
+        self.list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.list.setItemDelegate(CardDelegate(self.list))
+        self.list.setFixedHeight(CARD_H + 24)
+        self.list.setAccessibleName("Effect chain")
+        chain.addWidget(self.list)
+        buttons = QHBoxLayout()
+        buttons.setSpacing(8)
+        self.add_button = QPushButton("Add ▾")
+        self.add_button.setMenu(QMenu(self.add_button))
+        self.add_button.menu().aboutToShow.connect(self._build_add_menu)
+        up, down, remove = QPushButton("◀"), QPushButton("▶"), QPushButton("Remove")
+        up.setToolTip("Move earlier (VST3 plugins only)")
+        down.setToolTip("Move later (VST3 plugins only)")
+        up.clicked.connect(lambda: self._move(-1))
+        down.clicked.connect(lambda: self._move(1))
+        remove.clicked.connect(self._remove)
+        for button in (self.add_button, up, down, remove):
+            buttons.addWidget(button)
+        buttons.addStretch(1)
+        chain.addLayout(buttons)
+        self.up, self.down = up, down
+        root.addLayout(chain)
+
+        # The detail of the selected effect (left) and the live display (right)
+        lower = QHBoxLayout()
+        lower.setSpacing(24)
+        detail = QFrame()
+        detail.setObjectName("detail")
+        right = QVBoxLayout(detail)
+        right.setContentsMargins(24, 24, 24, 24)
+        right.setSpacing(8)
         self.title = QLabel("")
         self.title.setObjectName("title")
         self.error = QLabel("")
@@ -263,9 +422,17 @@ class EffectsDialog(QDialog):
         self.params_area.setStyleSheet("QScrollArea, QScrollArea > QWidget > QWidget { background: transparent; }")
         right.addWidget(self.title)
         right.addWidget(self.error)
-        right.addWidget(self.editor_button)
+        right.addWidget(self.editor_button, 0, Qt.AlignmentFlag.AlignLeft)
         right.addWidget(self.params_area, 1)
-        outer.addLayout(right, 1)
+        foot = QLabel("Untick an effect to bypass it. Built-in effects start in the best order; VST3 plugins can be moved.")
+        foot.setObjectName("hint")
+        foot.setWordWrap(True)
+        right.addWidget(foot)
+        lower.addWidget(detail, 1)
+        self.live = LivePanel(self.engine, self.channel)
+        self.live.setFixedWidth(LIVE_W)
+        lower.addWidget(self.live)
+        root.addLayout(lower, 1)
 
         self.activity_label: Optional[QLabel] = None
         self._activity_stage = None
@@ -281,10 +448,25 @@ class EffectsDialog(QDialog):
         self._level_timer.timeout.connect(self._check_level)
         self._level_timer.start()
         self.finished.connect(self._level_timer.stop)
+        self._live_timer = QTimer(self)
+        self._live_timer.setInterval(33)
+        self._live_timer.timeout.connect(self.live.tick)
+        self._live_timer.start()
+        self.finished.connect(self._live_timer.stop)
         self._show_room_hint()
         for button in self.findChildren(QPushButton):  # Enter must only finish a typed value, never press a button
             button.setAutoDefault(False)
             button.setDefault(False)
+
+    def _fit_list(self) -> None:
+        """As tall as the rows of cards need: one row, or more when a long chain wraps."""
+        per_row = max(1, self.list.viewport().width() // (CARD_W + ARROW_W))
+        rows = max(1, -(-self.list.count() // per_row))
+        self.list.setFixedHeight(rows * (CARD_H + 8) + 16)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._fit_list()
 
     def keyPressEvent(self, event) -> None:
         if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
@@ -303,12 +485,15 @@ class EffectsDialog(QDialog):
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(Qt.CheckState.Unchecked if effect.bypass else Qt.CheckState.Checked)
             item.setData(Qt.ItemDataRole.UserRole, effect.id)
+            item.setData(SUMMARY_ROLE, SUMMARIES.get(effect.type, "") if effect.kind == "builtin" else "VST3 plugin")
+            item.setSizeHint(QSize(CARD_W + ARROW_W, CARD_H + 8))
             if effect.kind == "vst3":
                 item.setToolTip(f"VST3: {effect.path}")
             if effect.bypass:
                 item.setForeground(QColor(themes.color("muted")))
             self.list.addItem(item)
         self.list.blockSignals(False)
+        self._fit_list()
         if self.channel.effects:
             row = 0 if select is None else max(0, min(select, len(self.channel.effects) - 1))
             self.list.setCurrentRow(row)
@@ -325,6 +510,7 @@ class EffectsDialog(QDialog):
 
     def _param_changed(self, effect_id: str, key: str, value: float) -> None:
         self.engine.set_effect_param(effect_id, key, value)
+        self.live.parameters_changed()
         self._update_presets_button()  # a moved slider may mean the settings no longer match the preset
 
     def _update_presets_button(self) -> None:
@@ -386,7 +572,8 @@ class EffectsDialog(QDialog):
         self.engine.set_chain_compare(self.channel.id, original)
         self.compare_button.setText("Back to my effects" if original else "Hear my original microphone")
 
-    def done(self, result) -> None:  # the before/after switch never outlives the window
+    def done(self, result) -> None:  # the before/after switch and the live look never outlive the window
+        self._stop_tap()
         if self.engine.chain_compare(self.channel.id):
             self.engine.set_chain_compare(self.channel.id, False)
         super().done(result)
@@ -498,6 +685,24 @@ class EffectsDialog(QDialog):
         row = self.list.currentRow()
         return self.channel.effects[row] if 0 <= row < len(self.channel.effects) else None
 
+    def _start_tap(self, effect: Optional[Effect]) -> None:
+        """Look at the sound around the selected effect (only while this window is open), and show it."""
+        setter = getattr(self.engine, "set_effect_tap", None)
+        if setter is not None:
+            try:
+                setter(self.channel.id, effect.id if effect is not None else None)
+            except Exception as error:  # the live display is an extra: never let it break the window
+                import logging; logging.getLogger("sluice").warning("live display unavailable: %s", error)
+        self.live.show_effect(effect)
+
+    def _stop_tap(self) -> None:
+        setter = getattr(self.engine, "set_effect_tap", None)
+        if setter is not None:
+            try:
+                setter(self.channel.id, None)
+            except Exception:
+                pass
+
     def _on_item_changed(self, item: QListWidgetItem) -> None:
         effect_id = item.data(Qt.ItemDataRole.UserRole)
         bypass = item.checkState() != Qt.CheckState.Checked
@@ -522,6 +727,10 @@ class EffectsDialog(QDialog):
 
     # ------------------------------------------------------------- parameters
     def _show_params(self, _row: int) -> None:
+        self._start_tap(self._current_effect())
+        self._build_params()
+
+    def _build_params(self) -> None:
         effect = self._current_effect()
         movable = effect is not None and effect.kind == "vst3"
         self.up.setEnabled(movable)

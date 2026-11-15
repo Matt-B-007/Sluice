@@ -168,7 +168,18 @@ def _uninstall(args) -> int:
         print("sluice is running. Close it first (Help > Uninstall Sluice closes it for you).", file=sys.stderr)
         return 1
     return uninstall.run(keep_settings=args.keep_settings, assume_yes=args.yes, dry_run=args.dry_run,
-                         cleanup_devices=_cleanup_devices)
+                         cleanup_devices=_cleanup_devices, list_devices=_list_devices,
+                         clear_caches=args.clear_caches, remove_git=args.remove_git_folder)
+
+
+def _list_devices() -> list:
+    from .backend import PulseSystem
+
+    system = PulseSystem(purge=False)
+    try:
+        return system.leftover_devices(legacy=True)
+    finally:
+        system.cleanup()
 
 
 def _cleanup_devices() -> int:
@@ -323,7 +334,11 @@ def main(argv: Optional[list] = None) -> int:
     parser.add_argument("--uninstall-desktop", action="store_true", help="remove Sluice from the applications menu")
     parser.epilog = "remote control: sluice ctl --help"
     parser.add_argument("--uninstall", action="store_true", help="remove Sluice completely (shows what it will remove and asks first)")
-    parser.add_argument("--keep-settings", action="store_true", help="with --uninstall: keep your settings, presets and controller bindings")
+    parser.add_argument("--keep-settings", action="store_true", help="with --uninstall: keep your settings, presets and controller bindings (the default is to remove everything)")
+    parser.add_argument("--clear-caches", action="store_true",
+                        help="with --uninstall: also clear the pip and cargo download caches (other programs share them)")
+    parser.add_argument("--remove-git-folder", action="store_true",
+                        help="with --uninstall: also remove the Sluice folder when it is a git clone (unpushed changes are lost)")
     parser.add_argument("--yes", action="store_true", help="with --uninstall: do not ask")
     parser.add_argument("--dry-run", action="store_true", help="with --uninstall: show what would be removed and change nothing")
     parser.add_argument("--minimized", action="store_true", help="start with the window minimized to the taskbar")

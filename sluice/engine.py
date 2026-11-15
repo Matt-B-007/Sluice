@@ -230,16 +230,26 @@ class Engine:
         bigger = [f for f in BUFFER_CHOICES if f > running]
         return bigger[0] if bigger else None
 
-    def status_text(self) -> str:
-        io = self.io
+    def dropout_text(self) -> str:
+        """"0 dropouts", or for three or more, who is probably to blame: "12 dropouts · mostly elsewhere"."""
         total, ours = self.dropout_counts()
-        text = f"{io.sample_rate} Hz · {io.blocksize} frames · {total} {'dropout' if total == 1 else 'dropouts'}"
+        text = f"{total} {'dropout' if total == 1 else 'dropouts'}"
         if total >= 3:  # one or two say nothing about who is to blame
             if ours * 2 >= total:
                 text += " · mostly Sluice"
             elif ours * 4 <= total:
                 text += " · mostly elsewhere"
         return text
+
+    def rate_text(self) -> str:
+        """"48 kHz · 512 frames": the sample rate and the buffer."""
+        rate = self.io.sample_rate
+        khz = f"{rate / 1000:g}"
+        return f"{khz} kHz · {self.io.blocksize} frames"
+
+    def status_text(self) -> str:
+        io = self.io
+        return f"{io.sample_rate} Hz · {io.blocksize} frames · {self.dropout_text()}"
 
     def mark_glitch(self) -> str:
         """The person heard something that was not counted as a dropout: write down the moment and what was going on."""
@@ -666,6 +676,19 @@ class Engine:
         if channel_id in self._chain_compare:
             live = []  # before/after: the whole chain is off for the moment (nothing about it is saved)
         self.graph.set_chain(channel_id, live)
+
+    def set_effect_tap(self, channel_id: str, effect_id: Optional[str]):
+        """Start (or with None, stop) looking at the sound going into and out of one effect, for the Effects window's live
+        display. Returns the Tap to read from, or None when there is nothing to look at."""
+        if self.graph is None:
+            return None
+        instance = self._instances.get(effect_id) if effect_id else None
+        if instance is not None and not instance.items:
+            instance = None
+        return self.graph.set_tap(channel_id, instance)
+
+    def effect_tap(self, channel_id: str):
+        return self.graph.taps.get(channel_id) if self.graph is not None else None
 
     def set_chain_compare(self, channel_id: str, original: bool) -> None:
         """Hear the microphone without any effect (True) or with them again (False). Not saved: it ends with the app."""

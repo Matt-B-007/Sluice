@@ -13,7 +13,7 @@ pytest.importorskip("pedalboard")
 
 from PySide6.QtGui import QDesktopServices  # noqa: E402
 from PySide6.QtTest import QTest  # noqa: E402
-from PySide6.QtWidgets import QLabel, QMessageBox, QPushButton, QToolButton  # noqa: E402
+from PySide6.QtWidgets import QLabel, QMessageBox, QPushButton  # noqa: E402
 
 from sluice import presets, room, ui as ui_module  # noqa: E402
 from sluice.audio_io import NullIO  # noqa: E402
@@ -99,8 +99,8 @@ def test_every_column_label_fits_its_column_and_says_in_full_what_it_is_on_hover
 def test_two_mixes_keep_the_old_width_and_get_the_add_a_mix_strip(two):
     win, _, _ = two
     assert all(s.width() == ui_module.CHANNEL_WIDTH for s in win.strips)
-    assert win.add_mix_button is not None and "Recording" in win.add_mix_button.text()
-    assert win.add_mix_button.width() == ui_module.ADD_MIX_WIDTH
+    assert win.add_mix_button is not None and "recording mix" in win.add_mix_button.text()
+    assert win.add_mix_button is next(s for s in win.mix_strips if s.mix.id == STREAM).add_button  # on the Broadcast card
     assert "restarts" in win.add_mix_button.toolTip()
 
 
@@ -123,7 +123,7 @@ def test_with_the_third_mix_there_is_no_add_strip_and_the_mix_can_be_removed_fro
     win, engine, _ = three
     assert win.add_mix_button is None
     strip = win.mix_strips[-1]
-    button = next(b for b in strip.findChildren(QToolButton) if b.objectName() == "menu")
+    button = strip.menu_button
     action = next(a for a in button.menu().actions() if "Remove the Recording mix" in a.text())
     asked = []
     monkeypatch.setattr(QMessageBox, "exec", lambda self: asked.append(self.text()) or 0)
@@ -131,7 +131,7 @@ def test_with_the_third_mix_there_is_no_add_strip_and_the_mix_can_be_removed_fro
     action.trigger()
     assert asked and "Remove the Recording mix" in asked[0] and engine.mixer.has_recording_mix
     for other in win.mix_strips[:2]:
-        assert not [b for b in other.findChildren(QToolButton) if b.objectName() == "menu"]
+        assert other.menu_button is None
 
 
 def test_the_faders_line_up_across_strips_with_and_without_a_microphone(three):
@@ -145,20 +145,21 @@ def test_the_faders_line_up_across_strips_with_and_without_a_microphone(three):
 
 
 # ------------------------------------------------------------------- the mic mute on the Mic strip
-def test_only_strips_with_a_microphone_show_the_mute_button_and_the_rest_keep_their_sources_list(two):
+def test_only_strips_with_a_microphone_show_the_mute_button_and_every_card_is_the_same_height(two):
     win, engine, _ = two
     win.show()
     QTest.qWait(50)
     mic, browser = strip_for(win, "mic"), strip_for(win, "browser")
-    assert mic.mic_row.isVisibleTo(win) and not browser.mic_row.isVisibleTo(win)
-    assert mic.sources_scroll.height() < browser.sources_scroll.height()
-    # give the Browser channel a microphone: it gets the button, and loses the same height from its list
+    assert mic.mic_button.isVisibleTo(win) and not browser.mic_button.isVisibleTo(win)
+    assert mic.sources_scroll.height() == browser.sources_scroll.height() == ui_module.SOURCES_HEIGHT
+    assert len({s.frame.height() for s in win.strips}) == 1
+    # give the Browser channel a microphone: it gets the button, and nothing else moves
     browser.engine.add_device("browser", "")
     browser.refresh_sources()
-    assert browser.mic_row.isVisibleTo(win) and browser.sources_scroll.height() == mic.sources_scroll.height()
+    assert browser.mic_button.isVisibleTo(win) and browser.sources_scroll.height() == mic.sources_scroll.height()
     browser.engine.remove_device("browser", "")
     browser.refresh_sources()
-    assert not browser.mic_row.isVisibleTo(win)
+    assert not browser.mic_button.isVisibleTo(win)
     win.hide()
 
 
@@ -172,11 +173,11 @@ def test_muting_on_the_strip_is_shown_everywhere_the_mic_state_is(two):
     win, engine, _ = two
     button = strip_for(win, "mic").mic_button
     button.click()
-    assert engine.mic_muted and button.isChecked() and button.text() == "MIC MUTED"
+    assert engine.mic_muted and button.isChecked() and "muted" in button.toolTip().lower()
     win._refresh_mixer_menu()
     assert win.mic_action.isChecked()
     win.mic_action.trigger()
-    assert not engine.mic_muted and button.text() == "Mic live" and not button.isChecked()
+    assert not engine.mic_muted and "live" in button.toolTip().lower() and not button.isChecked()
     assert "live" in win.status_label.text()
 
 
@@ -188,7 +189,7 @@ def test_a_second_microphone_channel_shows_the_same_state_on_its_strip(two):
     buttons = [s.mic_button for s in win.strips if s.channel.devices]
     assert len(buttons) == 2
     win.toggle_mic_mute()
-    assert all(b.text() == "MIC MUTED" for b in buttons)
+    assert all(b.isChecked() and "muted" in b.toolTip().lower() for b in buttons)
 
 
 def test_the_mute_button_works_in_the_three_mix_layout_too(three):

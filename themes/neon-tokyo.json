@@ -48,6 +48,19 @@
     "mute": "#ef5258",
     "limiter": "#35d0c0",
     "linked": "#a595d0",
-    "on_color": "#0e1014"
+    "on_color": "#0e1014",
+    "surface2": "#1e182d",
+    "border2": "#4c3677",
+    "text2": "#d6ccef",
+    "track": "#292338",
+    "meter_bg": "#0c0917",
+    "accent_bg": "#421339",
+    "accent_text": "#ff389a",
+    "mute_bg": "#431c2e",
+    "mute_fg": "#f16369",
+    "live_bg": "#1e2626",
+    "live_fg": "#8fd19e",
+    "dashed": "#2d2a35",
+    "focus": "#3b82f6"
   }
 }

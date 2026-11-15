@@ -15,17 +15,20 @@ An open-source virtual audio mixer for Linux (PipeWire). Put your mic, games, mu
 > and use the Sluice support forum. Please do not post the `sluice --report` file there: it contains device and app
 > names, so offer it in a private ticket instead.
 
-## What's new in 0.9.7
+## What's new in 0.10.0
 
-Bug reports that are easy to tell apart, clearer messages, a guard against a PulseAudio crash, and quieter installs. (The full
+A new look, a Columns/Rows choice, a live view of your voice in the Effects window, and an uninstaller that tells you what it left. (The full
 list for every version is in [CHANGELOG.md](CHANGELOG.md); Sluice also shows it once after an update, and under *Help > What's new in this version*.)
 
-- **Dated bug reports:** `sluice-report-0.9.7-2026-11-14-1002.txt`, plus `sluice-report-latest.txt`; the newest ten are kept.
-- **Saving a report that fails says why**, and the **"already running"** message names the running version and how to close it.
-- **PulseAudio crash guard:** a dead audio-server connection is no longer called into (it could abort the program).
-- **Quieter `./install.sh`** and no setuptools warnings.
+- **Refreshed interface** in dark and light, with equal-height channel cards, slim faders, gradient meters, icon mute buttons and a
+  keyboard focus ring. **Columns or Rows** layout from the top bar; the top bar shows the version, a Live chip, dropouts and `48 kHz · 512 frames`.
+- **First-run screen** with three steps and *Try the demo*.
+- **Effects window redesigned, with your voice live:** effect cards from left to right, and a display of your voice going in and coming out of the
+  selected effect (gate threshold, compressor curve and gain reduction, limiter ceiling, spectrum for the filters). Nothing is recorded.
+- **Uninstall reworked:** *keep my settings* or *remove everything*, a clear list of what goes and what stays, and a final check.
+- **All 30 themes updated** (older theme files still work).
 
-Earlier: 0.9.6 made *Measure my room* clearer and added the preset update note and the raw-microphone warning; 0.9.5 added the
+Earlier: 0.9.7 made bug reports dated and added a PulseAudio crash guard; 0.9.6 made *Measure my room* clearer; 0.9.5 added the
 optional Rust engine (see [docs/RUST.md](docs/RUST.md)) and *Help > Uninstall Sluice...*.
 
 ## What it does
@@ -59,7 +62,13 @@ optional Rust engine (see [docs/RUST.md](docs/RUST.md)) and *Help > Uninstall Sl
   own output so you can check it, and *Listen* returns when you turn it off. It always starts off.
 - Peak meters everywhere, a limiter on each mix, and your layout is saved to `~/.config/sluice/config.json`.
 
-![effects dialog](docs/effects.png)
+![Effects window: effect cards and your voice, live](docs/effects.png)
+
+The same mixer in the light theme, in the Rows layout, and the first-run screen:
+
+![Light theme](docs/screenshot-light.png)
+![Rows layout](docs/screenshot-rows.png)
+![First run](docs/first-run.png)
 
 ## Status: please read
 
@@ -255,10 +264,7 @@ To watch what it is doing while you test: `tail -f ~/.local/state/sluice/sluice.
   `sluice --cleanup` also removes devices left behind by the old name (pwmix).
 - **Audio still odd?** `systemctl --user restart pipewire pipewire-pulse wireplumber` resets PipeWire's running
   state (all audio is interrupted for a moment; none of your files are touched).
-- **Uninstall:** first run `.venv/bin/sluice --uninstall-desktop` from the Sluice folder (it removes the applications-menu
-  entry, the start-at-login entry, the launcher script and the icons), then delete the Sluice folder (the virtual
-  environment is inside it), then `rm -rf ~/.config/sluice ~/.local/state/sluice`. Nothing else was installed.
-  If you used it under its old name, `~/.config/pwmix` and `~/.local/state/pwmix` can go too.
+- **Uninstall:** *Help > Uninstall Sluice...* or `./uninstall.sh` (see *Uninstalling* below). It removes everything Sluice put on your computer and tells you when nothing is left.
 
 ## The menus
 
@@ -267,17 +273,25 @@ To watch what it is doing while you test: `tail -f ~/.local/state/sluice/sluice.
 | **File** | Save settings (Ctrl+S), Export settings, Import settings, Restore earlier settings, Open settings folder, Quit (Ctrl+Q) |
 | **Mixer** | Add channel (Ctrl+N), Refresh devices and apps (F5), Recording devices for OBS, Third mix: Recording, Mute my microphone (Ctrl+M), Hear Broadcast (Ctrl+B), Mute Listen (Ctrl+Shift+L), Mute Broadcast (Ctrl+Shift+B) |
 | **Settings** | Theme, Audio buffer, Start when I log in, When I close the window, Add Sluice to the applications menu, Update automatically, MIDI controllers and Stream Deck, Reset all settings to the defaults |
-| **View** | Full screen (F11), Reset window size |
+| **View** | Columns, Rows, Full screen (F11), Reset window size |
 | **Help** | Keyboard shortcuts (F1), What's new in this version, Check for updates, Go back to the previous version, Save bug report, Open log folder, Report a problem, Join the Discord, Project page on GitHub, About |
 
 Settings are saved automatically a few seconds after every change and when you quit (see *Saving*). **Import settings** checks the file, keeps your current settings as
 `config.before-import.json`, and takes effect the next time Sluice starts; quitting does not overwrite the imported file.
 
-## Undoing everything
+## Uninstalling
 
-*Help > Uninstall Sluice...* (or `./uninstall.sh`) lists what it will remove and asks first: the launcher and apps-menu
-entry, autostart, Sluice's virtual devices, settings, logs, and the install folder. `./uninstall.sh --keep-settings`
-keeps your settings, `--dry-run` only lists, `--yes` does not ask.
+*Help > Uninstall Sluice...* (or `./uninstall.sh`) lists exactly what it will remove and asks first. Two choices:
+
+- **Uninstall, keep my settings:** removes the launcher and apps-menu entry, autostart, Sluice's virtual devices, logs, and the install
+  folder, but leaves `~/.config/sluice` so a later install picks up where you left off.
+- **Remove everything:** the same, plus your settings.
+
+Also: a tick-box **Also clear download caches** (pip and cargo, off by default, because other programs share them); if the install folder is a
+git clone, a question whether to delete the `.git` folder too; and at the end a check that says *nothing of Sluice is left* or lists exactly what
+is. What stays: system packages you installed (PipeWire, the JACK library), shared caches, and files Sluice did not create.
+From a terminal: `./uninstall.sh [--keep-settings] [--clear-caches] [--remove-git-folder] [--dry-run] [--yes]`
+(`--dry-run` only lists, `--yes` does not ask).
 
 ## Themes
 

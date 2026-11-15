@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.10.0
+A new look, a Columns/Rows choice, a live view of your voice in the Effects window, and an uninstaller that tells you what it left.
+- **A refreshed interface.** Calmer dark and light looks on one 8-pixel grid with three text sizes. Every channel card is
+  the same height, with a dashed **+ Add app or device** chip, slim painted faders, gradient level meters, icon mute
+  buttons and plain wording (*Link levels*, *Limiter on*). Listen and Broadcast are matching cards. **Playing now** is one
+  button that lists the apps making sound. A visible focus ring shows where the keyboard is, and the faders work from
+  the keyboard (arrows, Page Up/Down, Home, End).
+- **Columns or Rows.** Switch from the top bar or *View*; Rows puts every channel on one line with a small meter and
+  fader for each mix. Your choice is saved.
+- **The top bar shows what matters again:** the version (small and grey), a *Live* chip, and a chip with the dropout count
+  and `48 kHz · 512 frames`. Hover it for what the numbers mean.
+- **A first-run screen** for an empty mixer: three steps (choose your microphone, add your apps, pick Sluice in your
+  streaming app) and *Try the demo*.
+- **Effects window redesigned.** Your effects are cards from left to right with numbers, short descriptions and an on/off
+  switch. Room and Voice style are one-line choices, *My presets* and *Hear my original microphone* sit beside them, and
+  the selected effect's sliders are in a panel of their own.
+- **Your voice, live.** The Effects window now draws your voice going in (grey) and coming out (colour) of the effect you
+  have selected. The Noise Gate shows its threshold, whether it is open, and where your room and your voice sit; the
+  Compressor shows its curve with a dot for your voice and how much it is turning you down; the Limiter shows its
+  ceiling; the EQ, High-pass, Noise Reducer and Echo Reducer show your voice by pitch. Nothing is recorded or stored:
+  it only looks at the sound in memory while the window is open, and stops when you close it.
+- **Uninstall reworked.** *Help > Uninstall Sluice...* and `./uninstall.sh` offer **Uninstall, keep my settings** and
+  **Remove everything**, list what they will remove, optionally clear pip and cargo download caches, ask whether to
+  delete the git folder when the install is a clone, and finish with a check that says either "nothing of Sluice is
+  left" or lists exactly what is. They also say what stays (system packages, shared caches, files Sluice did not create).
+  New options: `--keep-settings`, `--clear-caches`, `--remove-git-folder`, `--yes`, `--dry-run`.
+- **All 30 themes updated** with 13 new colours (surfaces, text, meter background, mute, live chip, dashed lines, focus
+  ring). Older theme files still work: Sluice works out any colour they leave out. Theme previews and the README
+  screenshots were regenerated.
+
 ## 0.9.7
 Bug reports that are easy to tell apart, clearer messages, a guard against a PulseAudio crash, and quieter installs.
 - **Bug reports have dated names.** *Help > Save bug report* and `sluice --report` now suggest

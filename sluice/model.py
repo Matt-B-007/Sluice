@@ -224,6 +224,7 @@ class Mixer:
         self.hints_seen: list = []  # one-time tips already shown (they are only ever shown once)
         self.buffer_frames = DEFAULT_BUFFER  # used the next time Sluice starts
         self.auto_update = False  # download new releases in the background and install them when Sluice closes (off by default)
+        self.layout = "columns"  # how the channels are laid out: "columns" (a card each) or "rows" (a line each)
         self.theme = "dark"  # a theme id: dark, light, contrast, purple, system, or custom:<name> (an imported file)
         self.close_action = DEFAULT_CLOSE  # "quit", "minimize" (keep running in the taskbar) or "tray" (keep running in the system tray)
 
@@ -380,6 +381,7 @@ class Mixer:
             "close_action": self.close_action,
             "auto_update": self.auto_update,
             "theme": self.theme,
+            "layout": self.layout,
             "channels": [
                 {
                     "id": c.id,
@@ -430,6 +432,8 @@ class Mixer:
         theme = data.get("theme")
         if isinstance(theme, str) and 0 < len(theme) <= 80:
             mixer.theme = theme  # an id that no longer exists simply shows the default theme
+        if data.get("layout") in ("columns", "rows"):
+            mixer.layout = data["layout"]
         seen_hints = data.get("hints_seen")
         if isinstance(seen_hints, list):
             mixer.hints_seen = [h for h in seen_hints if isinstance(h, str)][:50]

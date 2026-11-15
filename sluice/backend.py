@@ -323,19 +323,32 @@ class PulseSystem(AudioSystem):
             except Exception as exc:
                 log.warning("could not unload module %s (%s): %s", index, name, exc)
 
+    def _stale_modules(self, legacy: bool) -> list:
+        """The loaded modules that are Sluice's own virtual devices (and, with ``legacy``, the old pwmix ones)."""
+        prefixes = (PREFIX, LEGACY_PREFIX) if legacy else (PREFIX,)
+        found = []
+        for module in self._pulse.module_list():
+            argument = module.argument or ""
+            if module.name == "module-remap-source" and any(f"source_name={p}" in argument for p in prefixes):
+                found.append(module)
+            elif module.name == "module-null-sink" and any(f"sink_name={p}" in argument for p in prefixes):
+                found.append(module)
+        return found
+
+    def leftover_devices(self, legacy: bool = True) -> list:
+        """Names of Sluice virtual devices that exist right now (used by the uninstall check)."""
+        names = []
+        for module in self._stale_modules(legacy):
+            match = re.search(r"(?:sink|source)_name=(\S+)", module.argument or "")
+            names.append(match.group(1) if match else module.name)
+        return names
+
     def purge_stale(self, legacy: bool = False) -> int:
         """Remove virtual devices a crashed earlier run left behind. Returns how many were removed.
         ``legacy`` also removes the ones left by the old name (pwmix); only ``--cleanup`` asks for that."""
         removed = 0
-        prefixes = (PREFIX, LEGACY_PREFIX) if legacy else (PREFIX,)
-        for module in self._pulse.module_list():
+        for module in self._stale_modules(legacy):
             argument = module.argument or ""
-            if module.name == "module-remap-source" and any(f"source_name={p}" in argument for p in prefixes):
-                pass
-            elif module.name == "module-null-sink" and any(f"sink_name={p}" in argument for p in prefixes):
-                pass
-            else:
-                continue
             try:
                 self._pulse.module_unload(module.index)
                 removed += 1

@@ -1,6 +1,6 @@
 # Sluice theme pack
 
-Thirty colour themes for [Sluice](https://github.com/Matt-B-007/Sluice) 0.9.2 or newer. A picture of each is in
+Thirty colour themes for [Sluice](https://github.com/Matt-B-007/Sluice) 0.9.2 or newer, all updated for the 0.10.0 look (the previews show it). A picture of each is in
 the `previews` folder (same name as the theme file).
 
 **Sluice 0.9.3 and newer already has Midnight Blue, Amber Console and Paper built in** (under Settings > Theme); their
@@ -52,6 +52,10 @@ Imported themes are kept in Sluice's themes folder (**Settings > Theme > Open th
 of them in the menu. **Remove an imported theme** deletes one.
 
 ## Good to know
+
+- 0.10.0 added 13 colours (`surface2`, `border2`, `text2`, `track`, `meter_bg`, `accent_bg`, `accent_text`, `mute_bg`, `mute_fg`,
+  `live_bg`, `live_fg`, `dashed`, `focus`). The files here list all of them. A theme file that leaves them out still works: Sluice works
+  them out from the colours the file does give.
 
 - A theme only changes colours. It cannot change anything else in Sluice.
 - The level meters' green-to-red colours, the Mute red and the Limiter teal are the same in every theme, so they
