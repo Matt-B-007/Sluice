@@ -1,27 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
   <title>Sluice</title>
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#1a212b"/>
-      <stop offset="1" stop-color="#0e1116"/>
-    </linearGradient>
-    <linearGradient id="water" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#5ff0d6"/>
-      <stop offset="1" stop-color="#2bb8a0"/>
-    </linearGradient>
-    <clipPath id="tile"><rect width="128" height="128" rx="30"/></clipPath>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1c2430"/><stop offset="1" stop-color="#0d1015"/></linearGradient>
+    <linearGradient id="wave" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#5ff0d6"/><stop offset="1" stop-color="#2bb8a0"/></linearGradient>
   </defs>
   <rect width="128" height="128" rx="30" fill="url(#bg)"/>
   <rect x="1" y="1" width="126" height="126" rx="29" fill="none" stroke="#2a3340" stroke-width="2"/>
-  <g clip-path="url(#tile)">
-    <!-- the two gate posts: slim fader tracks -->
-    <rect x="22" y="22" width="10" height="84" rx="5" fill="#2d3745"/>
-    <rect x="96" y="22" width="10" height="84" rx="5" fill="#2d3745"/>
-    <!-- water rising between them -->
-    <path d="M12 72 Q 28 58 44 72 T 76 72 T 116 72" fill="none" stroke="#3ddbc0" stroke-width="7" stroke-linecap="round"/>
-    <path d="M12 94 Q 28 82 44 94 T 76 94 T 116 94" fill="none" stroke="#3ddbc0" stroke-width="5" stroke-linecap="round" opacity="0.5"/>
-    <!-- the gate: a pill handle like the faders -->
-    <rect x="16" y="26" width="96" height="16" rx="8" fill="#f4f7fb"/>
-    <rect x="16" y="26" width="96" height="16" rx="8" fill="none" stroke="#0e1116" stroke-opacity="0.25" stroke-width="1"/>
+  <g transform="rotate(180 64 64)">
+  <polyline points="64.8,62.8 67.3,63.7 69.8,64.7 72.3,65.7 74.7,66.8 77.0,68.0 79.1,69.2 81.2,70.6 83.1,72.0 84.8,73.6 86.3,75.2 87.6,77.1 88.6,79.0 89.4,81.2 89.8,83.5 90.0,86.0 89.8,88.5 89.4,90.9 88.6,93.0 87.6,95.0" fill="none" stroke="#ef4444" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  <polyline points="87.6,95.0 79.8,93.5 84.9,107.3 74.2,97.1 73.7,111.9 66.1,99.1 61.6,113.3 57.1,99.1 49.5,111.9 49.0,97.1 38.5,107.6 43.2,93.8 29.9,99.6 34.0,92.0" fill="none" stroke="#ef4444" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <polyline points="92.0,34.0 91.3,32.1 90.2,30.3 89.0,28.7 87.5,27.2 85.8,25.9 83.9,24.7 81.8,23.6 79.6,22.8 77.3,22.0 74.9,21.5 72.4,21.1 69.8,20.8 67.2,20.7 64.6,20.8 62.0,21.0 59.4,21.4 56.9,21.9 54.4,22.6 52.0,23.5 49.8,24.5 47.6,25.7 45.7,27.1 43.9,28.6 42.3,30.3 40.9,32.1 39.7,34.2 38.9,36.4 38.3,38.7 38.0,41.3 38.0,44.0 38.4,45.9 39.0,47.7 39.9,49.3 41.1,50.8 42.5,52.2 44.2,53.6 46.0,54.8 48.0,55.9 50.1,57.0 52.4,58.0 54.7,59.0 57.2,59.9 59.7,60.9 62.2,61.8 64.8,62.8" fill="none" stroke="url(#wave)" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
+  <rect x="30" y="56" width="68" height="16" rx="8" fill="#f4f7fb"/>
+  <rect x="30" y="56" width="68" height="16" rx="8" fill="none" stroke="#0d1015" stroke-opacity="0.22"/>
 </svg>

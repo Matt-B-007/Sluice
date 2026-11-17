@@ -15,7 +15,15 @@ An open-source virtual audio mixer for Linux (PipeWire). Put your mic, games, mu
 > and use the Sluice support forum. Please do not post the `sluice --report` file there: it contains device and app
 > names, so offer it in a private ticket instead.
 
-## What's new in 0.10.1
+## What's new in 0.10.2
+
+A new logo (an S that turns red noise into a clean teal wave as it passes the gate), a tidier system tray (one *Running in the
+background* menu, a tray icon that lights up while you talk and shows a red badge while you are muted, and a fuller right-click
+menu), a one-time question the first time you close the window, and a new section in the bug report that shows how much CPU
+and memory Sluice itself uses. 0.10.1 is below.
+
+**Added in 0.10.1:**
+
 
 Apps and games now show their own pictures, the **+ Add app or device** button always stays in view, Listen (blue) and Broadcast (amber) are
 easy to tell apart in Rows, and icons are drawn crisply for your screen. Clicking Mute or Limiter no longer resizes the window, and
@@ -206,22 +214,32 @@ the **last 5** and deletes older ones by itself. *File > Restore earlier setting
 channels; choosing one makes it the saved settings (your current ones go to `config.before-import.json`) and takes
 effect the next time Sluice starts. *File > Export settings* never makes backups.
 
-## Closing the window
+## Running in the background
 
-*File > When I close the window* chooses what the window's close button does: **Quit Sluice** (the default; the virtual
-devices are removed and your apps go back to your normal output), **Keep running, minimized to the taskbar**, so the
-mixer keeps working while the window is out of the way (click it in the taskbar to bring it back), or **Keep running in
-the system tray**. In tray mode Sluice puts an icon in the system tray; closing *or minimizing* the window hides it
-there, a click on the icon shows or hides the window, and a right-click offers *Show/Hide Sluice*, *Mute my microphone*
-and *Quit*. Starting Sluice a second time also brings the window back, and *Start minimized* at login starts in the
-tray. If your desktop has no system tray (some GNOME setups need an extension for it), Sluice says so and minimizes to the
-taskbar instead, so the window can never get lost. *File > Quit* (Ctrl+Q) always quits. The choice is saved with your
-settings. The tray was tested with a simulated tray only, not on a real KDE or GNOME desktop.
+*Settings > Running in the background* holds both choices in one place.
 
-## Starting at login
+**When I close the window:** **Quit Sluice** (the default; the virtual devices are removed and your apps go back to your normal
+output), **Keep running in the taskbar**, so the mixer keeps working while the window is out of the way (click it in the
+taskbar to bring it back), or **Keep running in the tray**. In tray mode Sluice puts an icon in the system tray; closing *or
+minimizing* the window hides it there, and a click on the icon shows or hides the window. Starting Sluice a second time also
+brings the window back. *File > Quit* (Ctrl+Q) always quits. If your desktop has no system tray (some GNOME setups need an
+extension for it), the menu says so and Sluice minimizes to the taskbar instead, so the window can never get lost. The tray was tested with a simulated tray only, not on a real KDE or GNOME desktop.
 
-*File > Start when I log in* has three choices: do not start automatically, start with the window open, or start
-**minimized to the taskbar** (the mixer keeps running; click it in the taskbar to open it; with *Keep running in the system tray* chosen, it starts in the tray instead). The same from a terminal:
+**The tray icon shows what is going on.** It is the Sluice logo; while you talk the gate handle and the edge light up teal
+(it follows your microphone after its effects, so a closed Noise Gate stays dark), and while your microphone is muted it has
+a red badge. A right-click offers *Show/Hide Sluice*, *Mute my microphone*, *Mute Listen*, *Mute Broadcast*, *Hear
+Broadcast* and *Quit*; the tick marks always match the real state.
+
+**The first time you close the window** (and only if your desktop has a system tray and you have not chosen yet) Sluice asks
+whether to quit or keep running in the tray. Choosing the tray is remembered; for *Quit* you can tick *Do not ask again*; *Cancel*
+keeps the window open.
+
+**Costs next to nothing.** With the window hidden in the tray, a small watcher looks at your microphone level five times a second
+so the icon can light up. It stops when the window is shown (the meters do the job then), when your microphone is muted, and
+when there is no tray icon. With no tray, a hidden or minimized window runs no timers at all.
+
+**When I log in:** do not start automatically, start with the window open, or start **minimized**, to the tray if *Keep running
+in the tray* is chosen and to the taskbar otherwise (the menu label says which). The same from a terminal:
 `sluice --autostart off|window|minimized`, and `sluice --minimized` starts minimized once. At login Sluice waits up to
 30 seconds for PipeWire, so it does not fall back to demo mode because the sound system was a moment late. Starting
 Sluice again while it is already running (from the menu, or at login) simply brings the open window to the front.
@@ -281,7 +299,7 @@ To watch what it is doing while you test: `tail -f ~/.local/state/sluice/sluice.
 |---|---|
 | **File** | Save settings (Ctrl+S), Export settings, Import settings, Restore earlier settings, Open settings folder, Quit (Ctrl+Q) |
 | **Mixer** | Add channel (Ctrl+N), Refresh devices and apps (F5), Recording devices for OBS, Third mix: Recording, Mute my microphone (Ctrl+M), Hear Broadcast (Ctrl+B), Mute Listen (Ctrl+Shift+L), Mute Broadcast (Ctrl+Shift+B) |
-| **Settings** | Theme, Audio buffer, Start when I log in, When I close the window, Add Sluice to the applications menu, Update automatically, MIDI controllers and Stream Deck, Reset all settings to the defaults |
+| **Settings** | Theme, Audio buffer, Running in the background, Add Sluice to the applications menu, Update automatically, MIDI controllers and Stream Deck, Reset all settings to the defaults |
 | **View** | Columns, Rows, Full screen (F11), Reset window size |
 | **Help** | Keyboard shortcuts (F1), What's new in this version, Check for updates, Go back to the previous version, Save bug report, Open log folder, Report a problem, Join the Discord, Project page on GitHub, About |
 
@@ -380,11 +398,21 @@ Normal runs log the important events. `sluice --debug` also logs every connectio
 the terminal: use it when something does not connect. Nothing is ever logged from the audio thread.
 
 **To report a bug:** use **Help > Save bug report...** in the window, or run `sluice --report`. The file has the
-self-check results, versions, Sluice's devices and connections, your settings, CPU and USB details, and this
-session's log (with the end of the one before it). It
+self-check results, versions, Sluice's devices and connections, your settings, CPU and USB details, how much CPU and memory
+Sluice itself uses (see below), and this session's log (with the end of the one before it). It
 contains device names, app names and plugin paths, so look it over before sharing. Please also say what you did,
 what you expected, and what happened (silence, crackling, the wrong output...). If a plugin crashed it, send
 `crash.log` too. **Help > Open log folder** opens the folder.
+
+**Sluice's own efficiency.** The first lines of the report carry a one-line summary (for example *Efficiency: CPU 1.2% of one core
+on average, RAM 180 MB (peak 210), audio load 4% average, 18% worst, no flags.*) and a section further down gives the detail: CPU
+(a percent of one core, the audio thread and helper programs included) with the window open and with it hidden, memory now and at its peak, how much of
+each audio block Sluice's own processing uses, how many meter updates a second it makes, how often it starts a helper program
+(`pw-link`, to read and make connections) and what those cost, and which features were on (counts only:
+no device, app or channel names, and no audio). *Flags* name anything that looks wasteful, such as a hidden window using CPU,
+memory that keeps growing, or the Rust engine not being in use. A running Sluice keeps this in memory and saves a small snapshot
+once a minute and when it quits, so `sluice --report` from a terminal can show it too. The time each single effect takes is not
+measured: that would put a clock on the audio thread.
 
 Reports are named with the Sluice version, date and time (for example `sluice-report-0.9.7-2026-11-14-1002.txt`), so
 several of them are easy to tell apart. Each save writes one file, and the newest ten are kept in the folder.

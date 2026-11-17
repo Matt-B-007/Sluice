@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from . import __version__, logs
+from . import __version__, efficiency, logs
 from .model import config_path
 
 LOG_LINES = 300
@@ -349,11 +349,16 @@ def _section(title: str, body: str) -> str:
 def build_report(log_lines: int = LOG_LINES) -> str:
     from .diagnose import report as diagnose_report
 
+    try:
+        efficiency_data, efficiency_source = efficiency.for_report()
+    except Exception as exc:  # the report must still be written
+        efficiency_data, efficiency_source = None, f"(could not read: {exc})"
     parts = [
         "sluice bug report\n"
         "Your user name, computer name, home folder, USB serial numbers and Bluetooth addresses are replaced.\n"
         "It still contains device names, app names and plugin file paths. Look it over before sharing it.\n"
-        f"Created: {time.strftime('%Y-%m-%d %H:%M:%S %Z')} by Sluice {__version__}"
+        f"Created: {time.strftime('%Y-%m-%d %H:%M:%S %Z')} by Sluice {__version__}\n"
+        + efficiency.summary_line(efficiency_data)
     ]
     parts.append(_section("sluice", f"version {__version__}\nPython {platform.python_version()}\n{platform.platform()}"))
 
@@ -384,6 +389,8 @@ def build_report(log_lines: int = LOG_LINES) -> str:
     except OSError:
         config = "(no saved settings yet)"
     parts.append(_section(f"Settings ({config_path()})", config))
+    parts.append(_section("Sluice's own efficiency (its CPU, memory and wake-ups; numbers only)",
+                          efficiency.format_section(efficiency_data, efficiency_source)))
     parts.append(_section("Computer (CPU and USB, which matter for dropouts)", hardware_summary()))
     parts.append(_section("How busy the computer is right now", busy_programs()))
     parts.append(_section("USB connects, disconnects and resets in the kernel log (last hours)", usb_events()))

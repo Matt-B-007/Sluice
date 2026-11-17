@@ -54,7 +54,7 @@ def test_after_an_update_the_notes_appear_once_and_are_remembered(make):
     win._maybe_show_whats_new()
     assert len(shown) == 1
     dialog = shown[0]
-    assert __version__ in dialog.heading.text() and "Measure my room" in dialog.view.toPlainText()
+    assert __version__ in dialog.heading.text() and dialog.view.toPlainText().startswith(__version__)
     assert whatsnew.read_marker(config) == __version__
     win._maybe_show_whats_new()
     assert len(shown) == 1  # only once
@@ -64,7 +64,7 @@ def test_settings_from_before_the_record_was_kept_count_as_the_first_public_vers
     win, config, shown = make(config_exists=True, marker=None)
     assert whatsnew.read_marker(config) == ""  # an existing install is not assumed to be new
     win._maybe_show_whats_new()
-    assert len(shown) == 1 and "Measure my room" in shown[0].view.toPlainText()
+    assert len(shown) == 1 and shown[0].view.toPlainText().startswith(__version__)
 
 
 def test_starting_the_same_version_again_shows_nothing(make):

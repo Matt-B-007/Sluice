@@ -89,6 +89,7 @@ class Engine:
         self._loop_warned: set = set()
         self.server_lost = False  # the audio server (PipeWire) went away: the window then restarts Sluice (see reconnect.py)
         self._guard_streak = 0
+        self.mic_level = 0.0  # the loudest microphone channel at the last meter update (0 to 1), for the tray icon
         self.mic_muted = False  # not saved either: Sluice always starts with the microphone live
         self.hear_broadcast = False  # not saved: it always starts off, so nobody is surprised by the wrong mix
         self._started = False
@@ -110,6 +111,8 @@ class Engine:
         self._prev_devices: Optional[dict] = None
         self._prev_default_source: Optional[str] = None
         self._prev_streams: Optional[dict] = None
+        self._load_total, self._load_blocks, self._load_worst = 0.0, 0, 0.0  # the whole session, for the bug report
+        self.tap_open = False  # the Effects window is showing the live voice display
         self._load = (0.0, 0.0)           # (average, worst) share of a block that Sluice's own work uses, recently
         self._known_inputs: Optional[set] = None
         self._notices: list = []
@@ -557,6 +560,9 @@ class Engine:
         xruns = self.io.xruns
         average, worst = self.io.take_load()
         if average or worst:
+            self._load_total += average
+            self._load_blocks += 1
+            self._load_worst = max(self._load_worst, worst)
             self._load = (0.7 * self._load[0] + 0.3 * average if self._load[0] else average, max(worst, self._load[1] * 0.9))
         if now < self._quiet_until:
             self._xrun_base = xruns
@@ -569,6 +575,11 @@ class Engine:
         if self._pending_xruns and now - self._last_xrun_log >= XRUN_LOG_SECONDS:
             self._log_dropouts(now)
         return changed
+
+    def load_stats(self) -> tuple:
+        """(average, worst, samples): the share of a block's time Sluice's own audio work used over the whole session."""
+        average = self._load_total / self._load_blocks if self._load_blocks else 0.0
+        return average, self._load_worst, self._load_blocks
 
     def check_raw_mic(self, now: float) -> None:
         """Note apps that listen to a microphone straight from the device while a channel has effects on it."""
@@ -699,6 +710,7 @@ class Engine:
         instance = self._instances.get(effect_id) if effect_id else None
         if instance is not None and not instance.items:
             instance = None
+        self.tap_open = instance is not None
         return self.graph.set_tap(channel_id, instance)
 
     def effect_tap(self, channel_id: str):
@@ -977,10 +989,14 @@ class Engine:
         """Peak levels since the last call. 'ch:<id>:<mix>' is after effects and fader; 'mix:<id>' is the output."""
         peaks = self.graph.take_peaks() if self.graph else {}
         result: dict = {}
+        mic_level = 0.0
         for channel in self.mixer.channels:
             raw = peaks.get(f"ch:{channel.id}", 0.0)
+            if channel.devices:
+                mic_level = max(mic_level, raw)
             for mix in self.mixer.mixes:
                 result[f"ch:{channel.id}:{mix.id}"] = min(1.0, raw * self.mixer.route_gain(channel, mix))
         for mix in self.mixer.mixes:
             result[f"mix:{mix.id}"] = min(1.0, peaks.get(f"mix:{mix.id}", 0.0))
+        self.mic_level = min(1.0, mic_level)
         return result

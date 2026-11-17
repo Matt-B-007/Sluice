@@ -494,9 +494,9 @@ def test_the_settings_menu_ticks_follow_the_real_state(two, tmp_path, monkeypatc
 
 
 def test_the_minimized_start_option_says_where_it_goes(two):
-    win, _, _ = two
-    text = win.autostart_actions["minimized"].text()
-    assert "Start minimized" in text and "system tray" in text and "taskbar" not in text
+    win, engine, _ = two
+    win._refresh_background_menu()
+    assert win.autostart_actions["minimized"].text() == "Start minimized to the taskbar"  # no tray chosen (or none on this desktop)
 
 
 def test_the_controllers_item_lives_in_settings_between_the_options_and_reset(two):

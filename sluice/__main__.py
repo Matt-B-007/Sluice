@@ -341,7 +341,7 @@ def main(argv: Optional[list] = None) -> int:
                         help="with --uninstall: also remove the Sluice folder when it is a git clone (unpushed changes are lost)")
     parser.add_argument("--yes", action="store_true", help="with --uninstall: do not ask")
     parser.add_argument("--dry-run", action="store_true", help="with --uninstall: show what would be removed and change nothing")
-    parser.add_argument("--minimized", action="store_true", help="start with the window minimized to the taskbar")
+    parser.add_argument("--minimized", action="store_true", help="start with the window minimized (to the tray if \"Keep running in the tray\" is chosen, otherwise to the taskbar)")
     parser.add_argument("--startup", action="store_true", help=argparse.SUPPRESS)  # only the launcher script uses this
     parser.add_argument("--autostart", choices=["off", "window", "minimized"], help="start Sluice when you log in: with the window open, minimized, or never")
     parser.add_argument("--screenshot", metavar="PNG", help=argparse.SUPPRESS)  # developer option
@@ -373,7 +373,8 @@ def main(argv: Optional[list] = None) -> int:
                 return 1
             print({"off": "Sluice will no longer start when you log in.",
                    "window": "Sluice will start when you log in, with its window open.",
-                   "minimized": "Sluice will start when you log in, minimized to the taskbar."}[args.autostart])
+                   "minimized": "Sluice will start when you log in, minimized (to the tray if \"Keep running in the tray\" is chosen, "
+                                "otherwise to the taskbar)."}[args.autostart])
             return 0
         if args.install_desktop or args.uninstall_desktop:
             return _desktop(install=args.install_desktop)

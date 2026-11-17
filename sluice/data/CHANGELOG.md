@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.10.2
+- **The tray, tidied up.** *Settings > Running in the background* now holds *When I log in* and *When I close the window* together
+  (they used to be two separate menus that referred to each other), with plainer wording (*Keep running in the tray*) and a
+  label that says where *Start minimized* goes, to the tray or the taskbar. A desktop without a tray gets a note in the menu.
+- **A tray icon that shows what is happening.** It lights up (the gate handle and the edge turn teal) while you talk, and has a
+  red badge while your microphone is muted. It follows your microphone after its effects, so a closed Noise Gate keeps it dark.
+- **A fuller tray menu:** Show/Hide, Mute my microphone, Mute Listen, Mute Broadcast, Hear Broadcast and Quit, all ticked to match.
+- **A one-time question when you first close the window.** If your desktop has a tray and you have not chosen what closing does,
+  Sluice asks once: *Keep running in the tray* or *Quit Sluice* (with *Do not ask again*), or *Cancel*. Changing the choice in
+  Settings also stops the question.
+- **Its efficiency in the bug report.** A one-line summary at the top and a section with Sluice's own CPU (window open and hidden),
+  memory, how much of each audio block its processing uses, meter updates a second, which features were on, and plain *flags* for
+  anything wasteful. Numbers only: no device, app or channel names. A running Sluice saves a snapshot once a minute and when it
+  quits, so `sluice --report` from a terminal shows it too.
+- **Helper programs in the efficiency numbers.** The CPU figure now includes the CPU of `pw-link`, the helper program Sluice
+  starts to read and make connections, and the report says how often it is started (and flags it if that is often). Starting a
+  program costs more than the work itself, so this shows whether polling is a real cost.
+- **The tray icon follows your voice with the window hidden.** A watcher (5 times a second) runs only while the window is hidden in
+  the tray with the microphone live; it stops when the window shows, when you mute and when there is no tray. Starting in the tray
+  also stops the window's meters, which used to keep running although the window was never shown.
+- **Command-line text:** `--minimized` and `--autostart minimized` now say "to the tray or the taskbar".
+- **A new logo.** The sluice gate is now an S: sound comes in as red noise at the top, passes the gate handle, and goes out as a
+  clean teal curve at the bottom. The SVG and every PNG size (16 to 512) were redrawn.
+
 ## 0.10.1
 A polish release for the 0.10.0 look: pictures for your apps, an add button that never disappears, a clearer Rows layout and crisper drawing.
 - **App and game pictures.** Every app, game and device on a channel now shows its own picture next to its name: the icon

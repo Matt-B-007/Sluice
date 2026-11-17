@@ -530,7 +530,7 @@ def test_menu_bar_has_the_usual_menus_in_the_usual_order(ui):
                                                "Third mix: Recording…"]
     assert "Hear Broadcast" in _texts(_menu(win, "Mixer")) and "Mute my microphone" in _texts(_menu(win, "Mixer"))
     assert _texts(_menu(win, "Settings")) == [
-        "Theme", "Audio buffer", "Start when I log in", "When I close the window", "Add Sluice to the applications menu",
+        "Theme", "Audio buffer", "Running in the background", "Add Sluice to the applications menu",
         "Update automatically when a new version is found", "MIDI controllers and Stream Deck…",
         "Reset all settings to the defaults…"]
     assert _texts(_menu(win, "View")) == ["Layout: Columns (a card for each channel)", "Layout: Rows (a line for each channel)",
@@ -1118,3 +1118,87 @@ def test_the_tray_icon_is_there_from_the_start_when_saved_that_way(app, tmp_path
     finally:
         win.shutdown()
     assert not win.tray_active
+
+
+# ------------------------------------------------------------------ the tray, reworked in 0.10.2
+def test_start_and_close_choices_live_together_in_one_submenu(ui):
+    win, _, _ = ui
+    submenu = next(a.menu() for a in _menu(win, "Settings").actions() if a.text().replace("&", "") == "Running in the background")
+    texts = [a.text() for a in submenu.actions() if a.text()]
+    assert texts[:3] == ["When I log in", "Do not start automatically", "Start with the window open"]
+    assert "When I close the window" in texts and "Quit Sluice" in texts and "Keep running in the tray" in texts
+    assert win.autostart_actions["off"].menu() is None and set(win.close_actions) == {"quit", "minimize", "tray"}
+
+
+def test_the_background_menu_says_where_sluice_will_go_and_notes_a_missing_tray(ui, tray):
+    win, _, engine = ui
+    engine.mixer.close_action = "tray"
+    win._refresh_background_menu()
+    assert win.autostart_actions["minimized"].text() == "Start minimized to the tray" and not win.no_tray_note.isVisible()
+    engine.mixer.close_action = "minimize"
+    win._refresh_background_menu()
+    assert win.autostart_actions["minimized"].text() == "Start minimized to the taskbar"
+
+
+def test_the_background_menu_notes_a_desktop_without_a_tray(ui):
+    win, _, _ = ui
+    win._refresh_background_menu()
+    assert win.no_tray_note.isVisible()  # shown: the offscreen platform has no tray
+    assert "no system tray" in win.no_tray_note.text() and not win.no_tray_note.isEnabled()
+
+
+def test_the_tray_menu_has_every_quick_control(ui, tray):
+    win, _, engine = ui
+    win.close_actions["tray"].trigger()
+    texts = [a.text() for a in win._tray_menu.actions() if a.text()]
+    assert texts == ["Show Sluice", "Mute my microphone", "Mute Listen", "Mute Broadcast", "Hear Broadcast", "Quit"]
+    win._tray_mutes["stream"].trigger()
+    win._tray_hear.trigger()
+    win._refresh_tray_menu()
+    assert engine.mixer.mix("stream").mute and engine.hear_broadcast
+    assert win._tray_mutes["stream"].isChecked() and win._tray_hear.isChecked() and not win._tray_mutes["monitor"].isChecked()
+
+
+def test_the_tray_icon_shows_muted_and_lights_up_while_you_talk(ui, tray):
+    from sluice import ui_icons
+
+    win, _, engine = ui
+    win.close_actions["tray"].trigger()
+    assert win._tray_state == "idle"
+    engine.mic_level = 0.2
+    win._refresh_tray_icon()
+    assert win._tray_state == "talking"
+    engine.mic_level = 0.0
+    win._voice_until = 0.0  # the hold has run out
+    win._refresh_tray_icon()
+    assert win._tray_state == "idle"
+    win._tray_mic.trigger()
+    assert win._tray_state == "muted" and "muted" in win._tray.toolTip()
+    engine.mic_level = 0.5
+    win._refresh_tray_icon()
+    assert win._tray_state == "muted"  # a muted microphone never lights up
+    win._tray_mic.trigger()
+    assert win._tray_state in ("idle", "talking")
+    images = {s: ui_icons.tray_pixmap(s, 32).toImage() for s in ui_icons.TRAY_STATES}
+    assert images["idle"] != images["talking"] and images["idle"] != images["muted"] and images["talking"] != images["muted"]
+
+
+def test_the_tray_icon_is_not_redrawn_while_nothing_changes(ui, tray, monkeypatch):
+    win, _, engine = ui
+    win.close_actions["tray"].trigger()
+    calls = []
+    monkeypatch.setattr(win._tray, "setIcon", lambda icon: calls.append(1))
+    engine.mic_level = 0.0
+    for _ in range(20):
+        win._refresh_tray_icon()
+    assert calls == []
+    engine.mic_level = 0.3
+    for _ in range(20):
+        win._refresh_tray_icon()
+    assert len(calls) == 1
+
+
+def test_the_engine_reports_the_microphone_level_for_the_tray(ui):
+    _win, _, engine = ui
+    engine.levels()
+    assert 0.0 <= engine.mic_level <= 1.0

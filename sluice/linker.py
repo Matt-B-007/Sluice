@@ -8,9 +8,11 @@ from __future__ import annotations
 
 import logging
 import subprocess
+import time
 from abc import ABC, abstractmethod
 from typing import Callable, Iterable, Optional
 
+from . import efficiency
 
 log = logging.getLogger("sluice.linker")
 
@@ -116,11 +118,14 @@ class PwLinker(Linker):
         self._owned: set = set()
 
     def _subprocess_run(self, args: list) -> tuple:
+        started = time.perf_counter()
         try:
             done = subprocess.run([self._binary, *args], capture_output=True, text=True, timeout=5)
         except (OSError, subprocess.SubprocessError) as exc:
             log.debug("%s %s could not run: %s", self._binary, args, exc)
+            efficiency.helper_launched(time.perf_counter() - started)
             return 127, ""
+        efficiency.helper_launched(time.perf_counter() - started)  # for the bug report: how often, and how long
         if done.returncode != 0:
             log.debug("%s %s exited with %d: %s", self._binary, args, done.returncode, done.stderr.strip()[:200])
         return done.returncode, done.stdout

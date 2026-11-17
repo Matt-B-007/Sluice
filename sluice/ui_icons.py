@@ -262,3 +262,59 @@ def app_pixmap(spec: str, label: str, size: int = 20, ratio: float = 1.0, key: s
         p.drawText(QRectF(0, 0, size, size), int(_Qt.AlignmentFlag.AlignCenter), letter)
     p.end()
     return pixmap
+
+
+# ------------------------------------------------------------------------------------------ the system tray icon
+TRAY_STATES = ("idle", "talking", "muted")
+_TRAY_SIZES = (16, 22, 24, 32, 48, 64)
+
+
+@lru_cache(maxsize=32)
+def tray_pixmap(state: str, px: int) -> QPixmap:
+    """The logo for the system tray: plain, lit up while you talk (a teal ring and the gate handle in teal), or with a red badge while
+    your microphone is muted. Drawn at the exact pixel size so it stays sharp in the tray."""
+    from PySide6.QtSvg import QSvgRenderer
+
+    from .desktop import bundled_icon
+
+    pixmap = QPixmap(px, px)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    k = px / 128.0
+    renderer = QSvgRenderer(str(bundled_icon()))
+    if renderer.isValid():
+        renderer.render(painter, QRectF(0, 0, px, px))
+    else:  # the picture is missing: a plain teal tile is better than nothing
+        painter.setBrush(QColor("#1c2430"))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawRoundedRect(QRectF(0, 0, px, px), 30 * k, 30 * k)
+    if state == "talking":
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor("#3ddbc0"))
+        painter.drawRoundedRect(QRectF(30 * k, 56 * k, 68 * k, 16 * k), 8 * k, 8 * k)  # the gate handle lights up
+        ring = QPen(QColor("#3ddbc0"), max(2.0, 7 * k))
+        painter.setPen(ring)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        inset = ring.widthF() / 2
+        painter.drawRoundedRect(QRectF(inset, inset, px - 2 * inset, px - 2 * inset), 30 * k - inset, 30 * k - inset)
+    elif state == "muted":
+        centre, radius = QPointF(97 * k, 97 * k), 29 * k
+        painter.setPen(QPen(QColor("#10131a"), max(1.0, 5 * k)))  # a dark rim so the badge stands out on any tray
+        painter.setBrush(QColor("#ef4444"))
+        painter.drawEllipse(centre, radius, radius)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor("#ffffff"))
+        painter.drawRoundedRect(QRectF(centre.x() - 15 * k, centre.y() - 4 * k, 30 * k, 8 * k), 4 * k, 4 * k)
+    painter.end()
+    return pixmap
+
+
+def tray_icon(state: str) -> QIcon:
+    """The tray icon for ``state`` (idle, talking or muted) at every size a tray might ask for."""
+    if state not in TRAY_STATES:
+        raise ValueError(f"no tray state called {state}")
+    result = QIcon()
+    for px in _TRAY_SIZES:
+        result.addPixmap(tray_pixmap(state, px))
+    return result
