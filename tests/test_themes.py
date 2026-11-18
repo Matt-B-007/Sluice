@@ -247,8 +247,8 @@ def win(qapp, tmp_path):
 
 
 def _theme_menu(win):
-    settings = next(a.menu() for a in win.menuBar().actions() if a.text().replace("&", "") == "Settings")
-    menu = next(a.menu() for a in settings.actions() if a.menu() and a.text().replace("&", "") == "Theme")
+    view = next(a.menu() for a in win.menuBar().actions() if a.text().replace("&", "") == "View")
+    menu = next(a.menu() for a in view.actions() if a.menu() and a.text().replace("&", "") == "Theme")
     win._fill_theme_menu()
     return menu
 

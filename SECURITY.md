@@ -17,11 +17,11 @@ anything that puts users at risk.
 
 ## Supported versions
 
-Only the newest release is supported. Sluice is a beta (0.x): update with *Help > Check for updates*.
+Only the newest release is supported. Sluice is a beta (0.x): update with *Settings > Check for updates*.
 
 ## How updates are protected
 
-- *Help > Check for updates* only talks to this project's GitHub releases.
+- *Settings > Check for updates* only talks to this project's GitHub releases.
 - A downloaded update is installed only if its SHA-256 checksum matches the `.sha256` file of the same release. This catches
   a damaged or incomplete download. It cannot, by itself, catch someone who has taken over the repository and replaced both
   files, so release files also carry a **GitHub build attestation** that you can check yourself:
@@ -31,7 +31,7 @@ Only the newest release is supported. Sluice is a beta (0.x): update with *Help 
   ```
 
 - Automatic updating is off by default (*Settings > Update automatically when a new version is found*). Until you turn it on,
-  nothing is downloaded or installed unless you choose *Help > Check for updates*.
+  nothing is downloaded or installed unless you choose *Settings > Check for updates*.
 
 ## What Sluice reads and writes
 

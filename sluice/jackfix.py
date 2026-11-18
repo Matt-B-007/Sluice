@@ -58,6 +58,6 @@ def retry_with_pipewire_jack(argv: Optional[list] = None) -> bool:
         try:
             stream.flush()
         except Exception:
-            pass
+            pass  # about to replace this process: nothing left to report to, and the retry must go ahead
     os.execve(sys.executable, args, env)
     return True  # not reached

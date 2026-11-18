@@ -28,7 +28,7 @@ app names, so never commit one (post it in an issue only after reading it).
 tools/set-github-repo.sh Matt-B-007            # or: tools/set-github-repo.sh Matt-B-007 other-repo-name
 ```
 
-This sets the project links and the address *Help > Check for updates* asks. It uses GitHub's **list** of releases, because
+This sets the project links and the address *Settings > Check for updates* asks. It uses GitHub's **list** of releases, because
 GitHub's "latest release" address skips pre-releases and every 0.x version is published as one.
 
 ## 4. Push the code
@@ -79,17 +79,42 @@ Elgato Wave XLR; please report anything else with `sluice --report`.*
 
 ## 7. Releasing the next version
 
-1. Change `version` in `pyproject.toml` and `__version__` in `sluice/__init__.py` (they must match).
-2. Add a section at the top of `CHANGELOG.md` headed exactly `## 0.9.4` (use the new version). It becomes the GitHub release
-   notes, the window people see after updating, and what *Check for updates* shows, so write it for users: what they
+1. Change `version` in `pyproject.toml` and `__version__` in `sluice/__init__.py` (they must match). The Rust crate
+   (`rust/sluice_dsp`) keeps its own version: change it only when the Rust code changes.
+2. Add a section at the top of `CHANGELOG.md` headed exactly `## 0.10.3` (use the new version). It becomes the GitHub release
+   notes, the window people see after updating, and what *Settings > Check for updates* shows, so write it for users: what they
    can do now and what changed for them. Then copy it into the package: `cp CHANGELOG.md sluice/data/CHANGELOG.md`.
 3. Update the "What's new in ..." section at the top of `README.md` to the new version.
 4. Run `pytest`: it fails if the changelog copy differs, if the newest changelog section is not this version, or if the
    README's "What's new" heading is for another version.
-5. `git commit -am "Sluice 0.9.4 (beta)"`, `git push`, wait for the green tick, then `git tag v0.9.4 && git push origin v0.9.4`.
+5. Commit, push, wait for the green tick, then tag (the safe way to do this is below).
 
-The release is then titled "Sluice 0.9.4 (beta)" (tag `v0.9.4`) with its `.sha256` file; people who turned on *Update automatically*
-or press *Update now* get it from there. The updater only works for copies installed from the release zip, not for a git checkout.
+The release is then titled "Sluice 0.10.3 (beta)" (tag `v0.10.3`) with its `.sha256` file; people who turned on
+*Update automatically* or press *Update now* get it from there. The updater only works for copies installed from the
+release zip, not for a git checkout.
+
+### Putting a new version into your clone safely
+
+The release zip is applied over your clone with `rsync`. Two mistakes cost a lot of time once, so follow these rules:
+
+- **Never use `rsync --delete` unless the folder was just checked.** If `cd` failed, `--delete` runs in the wrong folder and
+  removes files there. Chain every step with `; and` (fish) or `&&` (bash), and test that the folder is the clone first
+  (`test -f ~/Sluice/pyproject.toml`).
+- **Make sure the clone is current before applying the zip.** A clone that is behind makes the push fail, and a forced push
+  would throw away the newer commits. Use `git fetch; and git status` first, and fix a stale clone with
+  `git reset --hard origin/main` before copying the new files in. Never force-push.
+
+```fish
+cd ~/Sluice; and test -f pyproject.toml; and git fetch; and git status -sb
+# if it says "behind", bring it up to date first:  git reset --hard origin/main
+mkdir -p /tmp/sluice-new; and unzip -oq ~/Downloads/sluice-v0.10.3.zip -d /tmp/sluice-new
+rsync -a --dry-run --itemize-changes /tmp/sluice-new/sluice/ ~/Sluice/ | head -40     # read it; add --delete only if the list is right
+rsync -a /tmp/sluice-new/sluice/ ~/Sluice/; and git add -A; and git status -sb
+git commit -m "Sluice 0.10.3 (beta)"; and git tag v0.10.3; and git push; and git push origin v0.10.3
+```
+
+The zip unpacks into a folder called `sluice`: check its name with `ls /tmp/sluice-new` before the `rsync` lines.
+The Rust crate, the tests and the docs are part of the zip, so the dry run lists them too.
 
 While the version starts with `0.`, every release is marked as a pre-release. When you decide it is ready, release `1.0.0`
 (the workflow then publishes a normal release).

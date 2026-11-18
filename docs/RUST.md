@@ -48,4 +48,4 @@ message, never a crash. Allocation inside the callback is limited to the block's
 ## Not done
 
 A fully Rust mixing graph with no Python in the callback at all would need VST3 hosting in Rust. That is a possible
-later step, together with a Windows version (WASAPI instead of JACK); neither is part of 0.9.6.
+later step, together with a Windows version (WASAPI instead of JACK); neither is planned yet.

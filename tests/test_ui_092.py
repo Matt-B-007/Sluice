@@ -460,8 +460,8 @@ def test_the_voice_button_is_on_the_gate_and_the_compressor_pages_of_a_microphon
 # ------------------------------------------------------------------- the reorganised menus
 def test_the_menus_hold_the_agreed_items(two):
     win, _, _ = two
-    assert [a.text().replace("&", "") for a in win.menuBar().actions()] == ["File", "Mixer", "Settings", "View", "Help"]
-    assert texts(menu_of(win, "Help"))[-5:] == ["Report a problem…", "Join the Discord…", "Project page on GitHub…",
+    assert [a.text().replace("&", "") for a in win.menuBar().actions()] == ["File", "Mixer", "View", "Settings", "Help"]
+    assert texts(menu_of(win, "Help"))[-5:] == ["Report a problem", "Join the Discord", "Project page on GitHub",
                                                 f"About Sluice {ui_module.__version__}", "Uninstall Sluice\u2026"]
 
 
@@ -570,8 +570,8 @@ def test_the_help_links_open_the_right_pages(two, monkeypatch):
     opened = []
     monkeypatch.setattr(QDesktopServices, "openUrl", staticmethod(lambda url: opened.append(url.toString()) or True))
     help_menu = menu_of(win, "Help")
-    for label in ("Report a problem…", "Join the Discord…", "Project page on GitHub…"):
-        next(a for a in help_menu.actions() if a.text() == label).trigger()
+    for label in ("Report a problem", "Join the Discord", "Project page on GitHub"):
+        next(a for a in help_menu.actions() if a.text().replace("&", "") == label).trigger()
     assert opened == [ui_module.ISSUES_URL, ui_module.DISCORD_URL, ui_module.PROJECT_URL]
     assert ui_module.DISCORD_URL == "https://discord.gg/awDvJ5Vj2S" and ui_module.ISSUES_URL.endswith("/Sluice/issues")
 

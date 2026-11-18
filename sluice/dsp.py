@@ -13,6 +13,8 @@ threads at once.
 """
 from __future__ import annotations
 
+import logging
+import threading
 import os
 from collections import deque
 from typing import Callable, Iterable, Optional
@@ -20,6 +22,8 @@ from typing import Callable, Iterable, Optional
 import numpy as np
 
 from .effects import Chain, Tap, toolbox
+
+log = logging.getLogger(__name__)
 
 LIMITER_CEILING_DB = -1.0
 SILENCE_TAIL_SECONDS = 6.0  # after this long without input, a channel's effect chain is skipped (reverb tails are shorter)
@@ -79,7 +83,8 @@ if not os.environ.get("SLUICE_NO_RUST") and not os.environ.get("SLUICE_NO_RUST_M
             _rust = None
         else:
             PeakLimiter = _rust.PeakLimiter
-    except Exception:
+    except Exception as exc:  # no Rust module, or one for another Python or CPU: the Python mixer is used (the report says which)
+        log.debug("Rust mixer not used: %s", exc)
         _rust = None
 MIX_BACKEND = "rust" if _rust is not None else "python"
 
@@ -144,6 +149,7 @@ class Graph:
     def __init__(self, sample_rate: int, mix_ids: Iterable) -> None:
         self.sample_rate = int(sample_rate)
         self.live = False  # set by the audio backend while blocks are being processed
+        self.audio_thread_id: Optional[int] = None  # the system id of the thread that runs ``process`` (the bug report's CPU split)
         self.channels: dict = {}
         self.mixes: dict = {mix_id: MixDsp(mix_id) for mix_id in mix_ids}
         self.errors: list = []
@@ -320,6 +326,8 @@ class Graph:
 
     def process(self, inputs: dict, frames: int) -> dict:
         """inputs: channel id -> (2, frames) float32. Returns mix id -> (2, frames) float32."""
+        if self.audio_thread_id is None:
+            self.audio_thread_id = threading.get_native_id()  # once: the thread the bug report's CPU split calls "the audio callback"
         self._drain()
         outputs = {mid: np.zeros((2, frames), dtype=np.float32) for mid in self.mixes}
 

@@ -21,6 +21,7 @@ What it never touches: system packages such as PipeWire, files Sluice did not cr
 """
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import sys
@@ -30,6 +31,8 @@ from typing import Callable, Optional
 
 from . import desktop, logs, selfupdate
 from .model import config_path
+
+log = logging.getLogger(__name__)
 
 DESKTOP_KINDS = ("applications-menu entry", "start-at-login entry", "launcher script", "icon")
 
@@ -217,8 +220,8 @@ def leftovers(result: Plan, list_devices: Optional[Callable[[], list]] = None) -
         try:
             for name in list_devices():
                 left.append(f"the virtual audio device {name} still exists")
-        except Exception:
-            pass  # PipeWire not answering means there are no devices to find
+        except Exception as exc:  # PipeWire not answering means there are no devices to find
+            log.debug("could not list the virtual devices for the final check: %s", exc)
     for pid, command in running_processes():
         left.append(f"a Sluice program is still running (process {pid}: {command})")
     return left

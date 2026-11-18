@@ -14,13 +14,17 @@ A running Sluice writes a small snapshot file once a minute (and when it quits),
 from __future__ import annotations
 
 import json
+import logging
 import os
+import re
 import threading
 import time
 from pathlib import Path
 from typing import Optional
 
 from . import logs
+
+log = logging.getLogger(__name__)
 
 SNAPSHOT_NAME = "efficiency.json"
 SNAPSHOT_SECONDS = 60.0
@@ -78,6 +82,76 @@ def _status(field: str) -> Optional[float]:
     except (OSError, ValueError, IndexError):
         pass
     return None
+
+
+# --------------------------------------------------------------------------------------- threads
+_CLOCK_TICKS = float(os.sysconf("SC_CLK_TCK")) if hasattr(os, "sysconf") else 100.0
+
+
+def _group_name(name: str) -> str:
+    """One name for a family of threads (``Thread-3``, ``OpenBLAS-7`` ...): digits and a trailing counter are dropped."""
+    name = re.sub(r"[-_ ]?\d+$", "", name.strip()) or name.strip() or "unnamed"
+    return name
+
+
+def thread_table(audio_thread: Optional[int] = None) -> list:
+    """[(group name, thread count, cpu seconds, is the window's thread, is the audio thread)] for every thread of this process, biggest
+    CPU first. Python threads are named by their ``threading`` name, the rest by the name the system gives them (the libraries that start
+    them, such as OpenBLAS or Qt, name their own). The CPU of a thread that has already ended is not in here: see ``cpu_split``."""
+    names = {}
+    try:
+        for t in threading.enumerate():
+            if getattr(t, "native_id", None):
+                names[t.native_id] = t.name
+    except Exception as exc:  # the Python names are a nicety: the system's own thread names still show
+        log.debug("could not read the Python thread names: %s", exc)
+    pid = os.getpid()
+    groups: dict = {}
+    try:
+        tids = [int(x) for x in os.listdir("/proc/self/task")]
+    except (OSError, ValueError):
+        return []
+    for tid in tids:
+        try:
+            raw = Path(f"/proc/self/task/{tid}/stat").read_text(encoding="utf-8")
+            comm = Path(f"/proc/self/task/{tid}/comm").read_text(encoding="utf-8").strip()
+            rest = raw[raw.rindex(")") + 2:].split()
+            cpu = (int(rest[11]) + int(rest[12])) / _CLOCK_TICKS  # utime + stime
+        except (OSError, ValueError, IndexError):
+            continue
+        gui, audio = tid == pid, tid == audio_thread
+        if gui:
+            label = "window (main thread, with the engine's timers)"
+        elif audio:
+            label = "audio callback"
+        else:
+            label = _group_name(names.get(tid) or comm)
+        entry = groups.setdefault(label, [0, 0.0, gui, audio])
+        entry[0] += 1
+        entry[1] += cpu
+    return sorted(((n, c, cpu, g, a) for n, (c, cpu, g, a) in groups.items()), key=lambda r: (-r[2], r[0]))
+
+
+def _process_age() -> Optional[float]:
+    """Seconds since this process started (from /proc), so thread CPU, which counts from each thread's birth, has a fair denominator."""
+    try:
+        start = int(Path("/proc/self/stat").read_text(encoding="utf-8").rsplit(")", 1)[1].split()[19]) / _CLOCK_TICKS
+        return max(0.0, float(Path("/proc/uptime").read_text(encoding="utf-8").split()[0]) - start)
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def cpu_split(table: list, helper_cpu: float, total_cpu: Optional[float] = None) -> dict:
+    """Where Sluice's CPU went since the process started: the window, the audio callback, every other thread, helper programs, and what
+    threads that have already ended used (the difference to the process total)."""
+    t = os.times()
+    own = (t.user + t.system) if total_cpu is None else total_cpu
+    gui = sum(r[2] for r in table if r[3])
+    audio = sum(r[2] for r in table if r[4])
+    other = sum(r[2] for r in table if not r[3] and not r[4])
+    ended = max(0.0, own - gui - audio - other)
+    return {"window": round(gui, 2), "audio": round(audio, 2), "other_threads": round(other, 2), "ended_threads": round(ended, 2),
+            "helpers": round(helper_cpu, 2)}
 
 
 class Tracker:
@@ -138,6 +212,18 @@ class Tracker:
             "threads": _status("Threads"),
             "helper_cpu_seconds": round(max(0.0, _helper_cpu_seconds() - self.helper_cpu_start), 3),
         }
+        table = thread_table(getattr(getattr(engine, "graph", None), "audio_thread_id", None))
+        data["thread_groups"] = [{"name": n, "count": c, "cpu_seconds": round(cpu, 2)} for n, c, cpu, _g, _a in table[:25]]
+        data["thread_groups_more"] = max(0, len(table) - 25)
+        t = os.times()
+        data["cpu_split"] = cpu_split(table, t.children_user + t.children_system, t.user + t.system)
+        data["process_seconds"] = round(_process_age() or 0.0, 1)
+        try:
+            from . import backend
+
+            data["pulse_recent"] = backend.recent_pulse_calls()
+        except Exception as exc:  # never let the report fail over this
+            log.debug("could not read the audio-server call list: %s", exc)
         with _helpers_lock:
             data["helper_launches"] = _helpers["launches"] - self.helpers_start[0]
             data["helper_seconds"] = round(_helpers["seconds"] - self.helpers_start[1], 2)
@@ -316,6 +402,33 @@ def format_section(data: Optional[dict], source: str = "") -> str:
         lines.append(text + (f"; {int(data['threads'])} threads" if data.get("threads") else ""))
     else:
         lines.append("  (not available on this system)")
+    split = data.get("cpu_split")
+    if split:
+        age = data.get("process_seconds") or data.get("seconds", 0.0)
+        total = sum(split.values()) or 0.0
+        lines.append("")
+        lines.append(f"Where the CPU went (since the process started, {_duration(age)}; a percent of ONE core)")
+        names = (("window", "window and engine timers (main thread)"), ("audio", "audio callback"),
+                 ("other_threads", "all other threads"), ("ended_threads", "threads that have ended"),
+                 ("helpers", "helper programs (pw-link)"))
+        for key, text in names:
+            share = split.get(key, 0.0)
+            pct = f"{100.0 * share / age:6.2f}%" if age else "     -"
+            part = f"{100.0 * share / total:3.0f}%" if total else "  -"
+            lines.append(f"  {text:<40} {share:7.1f} s  {pct}  {part} of the total")
+    groups = data.get("thread_groups")
+    if groups:
+        lines.append("")
+        lines.append("Threads by name (a thread's CPU counts from when it started; names come from Python or from the library that made them)")
+        for g in groups:
+            lines.append(f"  {g['count']:>3} x {g['name']:<46} {g['cpu_seconds']:7.1f} s")
+        if data.get("thread_groups_more"):
+            lines.append(f"  ... and {data['thread_groups_more']} more groups")
+    recent = data.get("pulse_recent")
+    if recent:
+        lines.append("")
+        lines.append("Last calls to the audio server (newest last; 'closed' means the connection was found dead and the call was not made)")
+        lines.append("  " + ", ".join(f"{name} {ago:g}s before this ({outcome})" for name, ago, outcome in recent))
     lines.append("")
     lines.append("Audio work (share of each block's time that Sluice's own processing used)")
     if data.get("audio_load_samples", 0):

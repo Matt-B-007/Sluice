@@ -3,7 +3,7 @@
 
 How it works, and what it will never do:
 
-* It only runs when you ask (Help > Check for updates > Update now) or when you switched on *Update automatically*.
+* It only runs when you ask (Settings > Check for updates > Update now) or when you switched on *Update automatically*.
 * It downloads the release zip and its ``.sha256`` file from the release page, over https, and refuses to go on unless
   the zip matches the checksum. (That catches a damaged or cut-off download. It cannot catch a release that was
   tampered with on GitHub itself: the checksum comes from the same place.)

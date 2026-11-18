@@ -6,6 +6,7 @@ holds only the saved description; instances are created by the engine.
 """
 from __future__ import annotations
 
+import logging
 import base64
 import os
 import threading
@@ -19,6 +20,8 @@ import numpy as np
 from .model import Effect
 from .spectral import EchoReducer, Joint, NoiseReducer
 from . import spectral
+
+log = logging.getLogger(__name__)
 
 
 class EffectError(Exception):
@@ -527,8 +530,8 @@ class EffectInstance:
         if self.effect.state:
             try:
                 plugin.raw_state = base64.b64decode(self.effect.state)
-            except Exception:
-                pass  # a stale or incompatible saved state is not fatal
+            except Exception as exc:  # a stale or incompatible saved state is not fatal: the plugin starts with its defaults
+                log.warning("could not restore the saved settings of %s: %s", Path(path).name, exc)
         self._vst3 = plugin
         self.plugins = [plugin]
 
@@ -551,7 +554,8 @@ class EffectInstance:
                 default = getattr(param, "default_raw_value", None)
                 infos.append(ParamInfo(key, str(getattr(param, "name", key)), 0.0, 1.0, float(param.raw_value), "", True,
                                        float(default) if isinstance(default, (int, float)) else None))
-            except Exception:
+            except Exception as exc:  # one odd parameter must not hide the others
+                log.debug("skipping plugin parameter %s: %s", key, exc)
                 continue
         return infos
 
@@ -587,8 +591,8 @@ class EffectInstance:
         if self._vst3 is not None:
             try:
                 self.effect.state = base64.b64encode(bytes(self._vst3.raw_state)).decode("ascii")
-            except Exception:
-                pass
+            except Exception as exc:  # keep the state saved last time rather than lose it
+                log.warning("could not read the settings of a VST3 plugin to save them: %s", exc)
 
     # ------------------------------------------------------------ plugin window
     @property
@@ -605,8 +609,8 @@ class EffectInstance:
         def run() -> None:
             try:
                 self._vst3.show_editor()
-            except Exception:
-                pass
+            except Exception as exc:  # a plugin's own window failed: the plugin keeps working without it
+                log.warning("the plugin window could not be shown: %s", exc)
 
         self._editor_thread = threading.Thread(target=run, name="vst3-editor", daemon=True)
         self._editor_thread.start()
@@ -653,7 +657,8 @@ def vst3_plugin_names(path: str) -> list:
     """Names of the plugins inside a VST3 file (some bundles hold several)."""
     try:
         return list(_pedalboard().VST3Plugin.get_plugin_names_for_file(path))
-    except Exception:
+    except Exception as exc:  # not a plugin file, or one that cannot be opened: no names to offer
+        log.debug("could not read the plugin names in %s: %s", path, exc)
         return []
 
 

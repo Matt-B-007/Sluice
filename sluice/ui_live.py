@@ -10,6 +10,7 @@ All of it is drawn from numbers Sluice already has in memory while this window i
 """
 from __future__ import annotations
 
+import logging
 import math
 from collections import deque
 from typing import Optional
@@ -20,6 +21,8 @@ from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath, Q
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
 from . import presets, themes
+
+log = logging.getLogger(__name__)
 
 FLOOR_DB = -60.0       # the centre line of the waveform, the edge of the compressor curve
 SPECTRUM_TOP = -30.0   # the spectrum shows band levels from here down to SPECTRUM_FLOOR
@@ -427,7 +430,8 @@ class LivePanel(QFrame):
     def _value(self, key: str, default: float) -> float:
         try:
             return float(presets.current_value(self.effect, key))
-        except Exception:
+        except Exception as exc:  # an effect without that setting: draw with the default
+            log.debug("no value for %s: %s", key, exc)
             return default
 
     def _update_params(self) -> None:

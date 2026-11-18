@@ -17,11 +17,14 @@ def _pedalboard() -> tuple:
 
 def _pulse() -> tuple:
     try:
-        import pulsectl
+        from .backend import connect_pulse
 
-        with pulsectl.Pulse("sluice-diagnose") as pulse:
+        pulse = connect_pulse("sluice-diagnose")  # behind the same liveness check as the program's own connection
+        try:
             info = pulse.server_info()
             return True, f"{info.server_name} {info.server_version}, default output: {info.default_sink_name}"
+        finally:
+            pulse.close()
     except Exception as exc:
         from .distro import install_hint
 
@@ -48,10 +51,13 @@ def inputs_left_unused(cards) -> list:
 
 def _cards() -> tuple:
     try:
-        import pulsectl
+        from .backend import connect_pulse
 
-        with pulsectl.Pulse("sluice-diagnose") as pulse:
+        pulse = connect_pulse("sluice-diagnose")
+        try:
             found = inputs_left_unused(pulse.card_list())
+        finally:
+            pulse.close()
     except Exception as exc:
         return False, f"{type(exc).__name__}: {exc}"
     if not found:
@@ -111,15 +117,15 @@ def _engine() -> tuple:
         from .effects import native_backend
 
         parts["effects"] = native_backend()
-    except Exception:
-        pass
+    except Exception as exc:
+        parts["effects"] = f"unknown ({type(exc).__name__}: {exc})"  # say so in the check itself
     try:
         import sluice_dsp
 
         off = os.environ.get("SLUICE_NO_RUST") or os.environ.get("SLUICE_NO_RUST_IO")
         parts["audio client"] = "rust" if hasattr(sluice_dsp, "JackEngine") and not off else "python"
-    except Exception:
-        parts["audio client"] = "python"
+    except Exception as exc:
+        parts["audio client"] = f"python ({type(exc).__name__}: {exc})"  # the Rust module is missing or broken: say why
     text = ", ".join(f"{k}: {v}" for k, v in parts.items())
     if spectral.RUST_VERSION:
         text += f" (sluice_dsp {spectral.RUST_VERSION})"

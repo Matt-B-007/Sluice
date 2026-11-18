@@ -10,12 +10,15 @@ speech (``python tools/tune_room.py`` repeats it).
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Callable, Optional
 
 import os
 
 import numpy as np
+
+log = logging.getLogger(__name__)
 
 # The heavy arithmetic runs in Rust when sluice_dsp is installed (same numbers to float rounding);
 # SLUICE_NO_RUST=1 or SLUICE_NO_RUST_ROOM=1 keeps the numpy versions below.
@@ -26,7 +29,8 @@ if not os.environ.get("SLUICE_NO_RUST") and not os.environ.get("SLUICE_NO_RUST_R
 
         if not hasattr(_rust, "echo_energy"):  # an older build
             _rust = None
-    except Exception:
+    except Exception as exc:  # no Rust module, or one for another Python or CPU: the Python version is used
+        log.debug("Rust room measuring not used: %s", exc)
         _rust = None
 ROOM_BACKEND = "rust" if _rust is not None else "python"
 

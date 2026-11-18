@@ -37,7 +37,7 @@ def _real_parts():
         raise RuntimeError("pw-link not found or PipeWire is not running")
     from .model import Mixer, config_path
 
-    # The block size the user chose (View > Audio buffer). A PIPEWIRE_LATENCY set in the environment still wins.
+    # The block size the user chose (Settings > Audio buffer). A PIPEWIRE_LATENCY set in the environment still wins.
     os.environ.setdefault("PIPEWIRE_LATENCY", f"{Mixer.load(config_path()).buffer_frames}/48000")
     system = PulseSystem()
     try:
@@ -224,7 +224,8 @@ def _run_gui(args, log_file: Optional[Path]) -> int:
                 send({"cmd": "show"}, timeout=2.0)
                 print("sluice is already running; its window was brought to the front.", file=sys.stderr)
                 return 0
-            except Exception:
+            except Exception as exc:  # the other copy does not answer: the message below says what to do
+                log.debug("could not ask the running Sluice to show its window: %s", exc)
                 print(_already_running_message(), file=sys.stderr)
                 return 1
         try:
@@ -403,7 +404,7 @@ def run() -> None:
         try:
             stream.flush()
         except Exception:
-            pass
+            pass  # exiting: a closed output stream is nothing to report to anyone
     os._exit(code)
 
 

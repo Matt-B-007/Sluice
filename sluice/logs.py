@@ -186,7 +186,7 @@ def shutdown() -> None:
     try:
         faulthandler.disable()
     except Exception:
-        pass
+        pass  # shutting the log down: there is no log left to tell
     if _fault_file is not None:
         try:
             _fault_file.close()
@@ -203,7 +203,7 @@ def _close_handlers(logger: logging.Logger) -> None:
         try:
             handler.close()
         except Exception:
-            pass
+            pass  # closing the log's own files: there is nowhere left to report a failure
 
 
 def _install_crash_hooks() -> None:

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Check whether a newer sluice exists. Runs when the user asks (Help > Check for updates), and once after start-up only
+"""Check whether a newer sluice exists. Runs when the user asks (Settings > Check for updates), and once after start-up only
 if they switched on *Update automatically*.
 
 ``RELEASE_URL`` is the GitHub releases feed of the project (or set ``SLUICE_UPDATE_URL`` to use another one).

@@ -297,10 +297,8 @@ def test_help_menu_saves_a_bug_report(ui, tmp_path, monkeypatch):
     from sluice import __version__
 
     assert [a.text().replace("&", "") for a in help_menu.actions() if a.text()] == [
-        "Keyboard shortcuts", "What's new in this version\u2026", "Check for updates\u2026",
-        "Go back to the previous version\u2026", "Save bug report\u2026", "I heard a glitch (mark this moment)",
-        "Open folder", "Report a problem\u2026",
-        "Join the Discord\u2026", "Project page on GitHub\u2026", f"About Sluice {__version__}", "Uninstall Sluice\u2026"]
+        "Keyboard shortcuts", "What's new in this version", "Save bug report\u2026", "I heard a glitch",
+        "Report a problem", "Join the Discord", "Project page on GitHub", f"About Sluice {__version__}", "Uninstall Sluice\u2026"]
     target = tmp_path / "report.txt"
     win.save_report_to(target)
     assert target.read_text().startswith("sluice bug report")
@@ -425,7 +423,9 @@ def test_version_is_shown_and_about_and_update_menu_exist(ui):
     assert any(label.text() == f"v{__version__}" for label in win.findChildren(QLabel))  # small, grey, beside the name
     help_menu = next(a.menu() for a in win.menuBar().actions() if a.text().replace("&", "") == "Help")
     help_actions = [a.text() for a in help_menu.actions()]
-    assert "Check for updates\u2026" in help_actions and f"About Sluice {__version__}" in help_actions
+    assert f"&About Sluice {__version__}" in help_actions
+    settings = next(a.menu() for a in win.menuBar().actions() if a.text().replace("&", "") == "Settings")
+    assert "Check for updates\u2026" in [a.text().replace("&", "") for a in settings.actions()]
 
 
 def test_check_for_updates_reports_each_outcome(ui, monkeypatch):
@@ -523,18 +523,19 @@ def test_menu_bar_has_the_usual_menus_in_the_usual_order(ui):
 
     win.attach_controls(FakeControls())
     names = [a.text().replace("&", "") for a in win.menuBar().actions()]
-    assert names == ["File", "Mixer", "Settings", "View", "Help"]
-    assert _texts(_menu(win, "File")) == ["Save settings", "Export settings…", "Import settings…",
-                                          "Restore earlier settings", "Quit"]
-    assert _texts(_menu(win, "Mixer"))[:4] == ["Add channel…", "Refresh devices and apps", "Recording devices for OBS…",
-                                               "Third mix: Recording…"]
+    assert names == ["File", "Mixer", "View", "Settings", "Help"]
+    assert _texts(_menu(win, "File")) == ["Save settings", "Import settings…", "Export settings…",
+                                          "Restore earlier settings", "Open folder", "Quit"]
+    assert _texts(_menu(win, "Mixer"))[:4] == ["Add channel…", "Refresh devices and apps", "Recording mix (a third mix)",
+                                               "Recording devices for OBS"]
     assert "Hear Broadcast" in _texts(_menu(win, "Mixer")) and "Mute my microphone" in _texts(_menu(win, "Mixer"))
     assert _texts(_menu(win, "Settings")) == [
-        "Theme", "Audio buffer", "Running in the background", "Add Sluice to the applications menu",
-        "Update automatically when a new version is found", "MIDI controllers and Stream Deck…",
+        "Startup", "Running in the background", "Add Sluice to the applications menu",
+        "Audio", "Audio buffer", "MIDI controllers and Stream Deck…",
+        "Updates", "Update automatically when a new version is found", "Check for updates…", "Go back to the previous version…",
         "Reset all settings to the defaults…"]
-    assert _texts(_menu(win, "View")) == ["Layout: Columns (a card for each channel)", "Layout: Rows (a line for each channel)",
-                                          "Full screen", "Reset window size"]
+    assert _texts(_menu(win, "View")) == ["Layout", "Columns (a card for each channel)", "Rows (a line for each channel)",
+                                          "Theme", "Full screen", "Reset window size"]
 
 
 def test_mixer_menu_toggles_follow_the_real_state(ui):
@@ -934,7 +935,7 @@ def test_the_mixer_menu_offers_the_recording_mix_and_the_mic_mute(ui):
     win, _, engine = ui
     menu = next(a.menu() for a in win.menuBar().actions() if a.menu() and a.text().replace("&", "") == "Mixer")
     texts = [a.text().replace("&", "") for a in menu.actions() if a.text()]
-    assert "Mute my microphone" in texts and any(t.startswith("Third mix: Recording") for t in texts)
+    assert "Mute my microphone" in texts and any(t.startswith("Recording mix") for t in texts)
     assert not win.recording_action.isChecked()
 
 

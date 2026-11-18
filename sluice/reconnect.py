@@ -28,12 +28,13 @@ def server_is_back() -> bool:
         import jack
 
         client = jack.Client("sluice-probe", no_start_server=True, use_exact_name=False)
-    except Exception:
+    except Exception as exc:  # no server yet: the caller keeps waiting
+        log.debug("the audio server is not back yet: %s", exc)
         return False
     try:
         client.close()
-    except Exception:
-        pass
+    except Exception as exc:  # it answered, which is all this asks
+        log.debug("the probe connection did not close cleanly: %s", exc)
     return True
 
 
@@ -56,6 +57,6 @@ def restart_self(show_window: bool = False) -> None:  # pragma: no cover - repla
         from . import logs
 
         logs.mark_clean_exit()  # the process id stays the same, so the next start must not mistake this for a crash
-    except Exception:
-        pass
+    except Exception as exc:  # the restart goes ahead; the worst case is a "did not end normally" note next time
+        log.warning("could not mark this session as ended cleanly before restarting: %s", exc)
     os.execv(command[0], command)

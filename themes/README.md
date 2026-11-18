@@ -3,7 +3,7 @@
 Thirty colour themes for [Sluice](https://github.com/Matt-B-007/Sluice) 0.9.2 or newer, all updated for the 0.10.0 look (the previews show it). A picture of each is in
 the `previews` folder (same name as the theme file).
 
-**Sluice 0.9.3 and newer already has Midnight Blue, Amber Console and Paper built in** (under Settings > Theme); their
+**Sluice 0.9.3 and newer already has Midnight Blue, Amber Console and Paper built in** (under View > Theme); their
 files are here for 0.9.2. The rest need importing.
 
 ## The themes
@@ -45,10 +45,10 @@ files are here for 0.9.2. The rest need importing.
 ## How to use one
 
 1. Download the `.json` file you want (on GitHub: open it, then the download button).
-2. In Sluice, open **Settings > Theme > Import theme...** and pick the file.
-3. It switches right away. To change, use **Settings > Theme** and pick another.
+2. In Sluice, open **View > Theme > Import theme...** and pick the file.
+3. It switches right away. To change, use **View > Theme** and pick another.
 
-Imported themes are kept in Sluice's themes folder (**Settings > Theme > Open theme folder**), and Sluice shows up to 40
+Imported themes are kept in Sluice's themes folder (**File > Open folder > Themes**), and Sluice shows up to 40
 of them in the menu. **Remove an imported theme** deletes one.
 
 ## Good to know
@@ -67,5 +67,5 @@ of them in the menu. **Remove an imported theme** deletes one.
 
 ## Make your own
 
-Use **Settings > Theme > Export current theme...** to save the theme you are using, edit the colours in any text
+Use **View > Theme > Export current theme...** to save the theme you are using, edit the colours in any text
 editor (`#rrggbb`), and import it. Share yours in the Discord.

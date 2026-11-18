@@ -17,6 +17,7 @@ import logging
 import re
 import time
 from abc import ABC, abstractmethod
+from collections import deque
 from dataclasses import dataclass
 from typing import Optional
 
@@ -192,6 +193,25 @@ class MockSystem(AudioSystem):
 
 
 # ========================================================================== pulse
+# The last few calls made to the audio server, newest last: (call name, time.monotonic(), "ok" | "closed"). A native abort inside
+# libpulse leaves nothing behind but a stack trace, so this is what a bug report shows about what led up to it.
+_BREADCRUMBS: deque = deque(maxlen=8)
+
+
+def recent_pulse_calls(now: Optional[float] = None) -> list:
+    """[(call, seconds ago, outcome)] for the last few audio-server calls, newest last."""
+    now = time.monotonic() if now is None else now
+    return [(name, round(max(0.0, now - at), 2), outcome) for name, at, outcome in list(_BREADCRUMBS)]
+
+
+def connect_pulse(client_name: str = "sluice"):
+    """A new connection to the audio server, always behind the liveness check (``_LiveCheck``): every connection Sluice keeps goes
+    through here, so none can be left without it."""
+    import pulsectl
+
+    return _LiveCheck(pulsectl.Pulse(client_name))
+
+
 class _LiveCheck:
     """Wraps the pulsectl connection so every call first checks the connection is alive.
 
@@ -213,7 +233,8 @@ class _LiveCheck:
             from pulsectl import _pulsectl as lib
 
             return pulse._ctx is not None and lib.pa.context_get_state(pulse._ctx) == lib.PA_CONTEXT_READY
-        except Exception:
+        except Exception as exc:  # cannot even ask: treat the connection as dead (the caller reconnects)
+            log.debug("could not read the audio-server connection state: %s", exc)
             return False
 
     def __getattr__(self, name):
@@ -223,7 +244,9 @@ class _LiveCheck:
 
         def checked(*args, **kwargs):
             if not self._alive():
+                _BREADCRUMBS.append((name, time.monotonic(), "closed"))
                 raise ConnectionError("Audio server shut down: the PulseAudio connection is closed")
+            _BREADCRUMBS.append((name, time.monotonic(), "ok"))
             return attr(*args, **kwargs)
 
         return checked
@@ -236,9 +259,7 @@ class PulseSystem(AudioSystem):
     label = "PipeWire (JACK)"
 
     def __init__(self, purge: bool = True) -> None:
-        import pulsectl  # imported lazily so demo mode works without it
-
-        self._pulse = _LiveCheck(pulsectl.Pulse("sluice"))  # raises if the server is unreachable
+        self._pulse = connect_pulse("sluice")  # raises if the server is unreachable (pulsectl is imported there, so demo mode works without it)
         self._modules: dict = {}  # virtual device name -> [module indexes]
         log.info("connected to the PulseAudio protocol")
         if purge:
@@ -361,14 +382,12 @@ class PulseSystem(AudioSystem):
     # ----------------------------------------------------------------- streams
     def _reconnect(self) -> None:
         """Open a fresh connection to the audio server (the old one is dropped without waiting for it)."""
-        import pulsectl
-
-        old, self._pulse = self._pulse, pulsectl.Pulse("sluice")
+        old, self._pulse = self._pulse, connect_pulse("sluice")  # behind the same liveness check as the first connection
         self.__dict__.pop("_sink_names", None)
         try:
             old.close()
-        except Exception:
-            pass
+        except Exception as exc:  # it was already broken: that is why it is being replaced
+            log.debug("the old audio-server connection did not close cleanly: %s", exc)
         log.warning("reconnected to the PulseAudio protocol after the connection to the audio server broke")
 
     def list_streams(self) -> list:
@@ -442,5 +461,5 @@ class PulseSystem(AudioSystem):
             self.remove_null_sink(name)
         try:
             self._pulse.close()
-        except Exception:
-            pass
+        except Exception as exc:  # shutting down: a connection that is already gone is fine
+            log.debug("the audio-server connection did not close cleanly: %s", exc)

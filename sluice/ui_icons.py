@@ -290,22 +290,34 @@ def tray_pixmap(state: str, px: int) -> QPixmap:
         painter.setPen(Qt.PenStyle.NoPen)
         painter.drawRoundedRect(QRectF(0, 0, px, px), 30 * k, 30 * k)
     if state == "talking":
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor("#3ddbc0"))
-        painter.drawRoundedRect(QRectF(30 * k, 56 * k, 68 * k, 16 * k), 8 * k, 8 * k)  # the gate handle lights up
-        ring = QPen(QColor("#3ddbc0"), max(2.0, 7 * k))
-        painter.setPen(ring)
+        # The ring closes and glows: its two gaps fill in, it gets heavier and brighter, and the tile gets a teal edge.
+        lit = QColor("#5ff5dc")
         painter.setBrush(Qt.BrushStyle.NoBrush)
-        inset = ring.widthF() / 2
+        edge = QPen(QColor("#2ee6c5"), max(1.5, 5 * k))
+        painter.setPen(edge)
+        inset = edge.widthF() / 2
         painter.drawRoundedRect(QRectF(inset, inset, px - 2 * inset, px - 2 * inset), 30 * k - inset, 30 * k - inset)
+        ring = QPen(lit, max(1.5, 9 * k))
+        painter.setPen(ring)
+        painter.drawEllipse(QPointF(64 * k, 64 * k), 38 * k, 38 * k)
     elif state == "muted":
-        centre, radius = QPointF(97 * k, 97 * k), 29 * k
-        painter.setPen(QPen(QColor("#10131a"), max(1.0, 5 * k)))  # a dark rim so the badge stands out on any tray
-        painter.setBrush(QColor("#ef4444"))
+        # The ring turns red where it was teal, and a red badge with a white bar sits in the corner the ring leaves free.
+        red = QColor("#ef4444")
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.setPen(QPen(red, max(1.5, 6 * k)))
+        rect = QRectF(26 * k, 26 * k, 76 * k, 76 * k)  # the ring's circle: centre (64, 64), radius 38
+        for start in (207, 27):  # the two arcs of the logo's ring, 144 degrees each, clockwise
+            arc = QPainterPath()
+            arc.arcMoveTo(rect, start)
+            arc.arcTo(rect, start, -144)
+            painter.drawPath(arc)
+        centre, radius = QPointF(100 * k, 100 * k), 24 * k
+        painter.setPen(QPen(QColor("#10131a"), max(1.0, 4 * k)))  # a dark rim so the badge stands out on any tray
+        painter.setBrush(red)
         painter.drawEllipse(centre, radius, radius)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor("#ffffff"))
-        painter.drawRoundedRect(QRectF(centre.x() - 15 * k, centre.y() - 4 * k, 30 * k, 8 * k), 4 * k, 4 * k)
+        painter.drawRoundedRect(QRectF(centre.x() - 12 * k, centre.y() - 3.5 * k, 24 * k, 7 * k), 3.5 * k, 3.5 * k)
     painter.end()
     return pixmap
 

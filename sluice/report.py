@@ -323,7 +323,7 @@ def anonymize(text: str) -> str:
         text = text.replace(home, "~")
     try:
         user = os.environ.get("USER") or os.environ.get("LOGNAME") or Path.home().name
-    except Exception:
+    except Exception:  # no home folder or user name on this system: nothing to hide, so nothing to replace
         user = ""
     host = platform.node()
     # 'User Name: x' / 'Host Name: y' lines from pactl info, then every other mention of the same words

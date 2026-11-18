@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.10.3
+A tidy-up release: a new logo, menus that are organised the way other apps' are, a clearer bug report, and a fix that keeps one rare crash from coming back.
+- **A new logo.** An upright white S inside a teal ring with two gaps, on a dark rounded tile. It replaces the red-noise S in the window,
+  the applications menu, the tray and the README. The S is the letter from the font Inter Bold (SIL Open Font License), converted to a shape.
+- **The tray icon, redrawn for the new logo.** While you talk the ring closes and glows and the tile gets a teal edge; while your
+  microphone is muted the ring turns red and a red badge with a bar appears in the corner.
+- **Menus put in order.** Every item now lives in exactly one place:
+  *File* holds your settings and files (Save, Import, Export, Restore earlier settings, **Open folder**, Quit);
+  *Mixer* holds what you do while mixing; *View* holds how the window looks (Layout, **Theme**, Full screen, Reset window size);
+  *Settings* is grouped under *Startup*, *Audio* and **Updates** (Update automatically, Check for updates and Go back to the previous version now sit together);
+  *Help* holds the shortcuts, what's new, the bug report, the links, About and, last, Uninstall.
+  A "..." now ends only an item that opens a window asking for something; switches and choices have none.
+- **The shortcuts list is built from the menus**, so it cannot disagree with them. It was missing Ctrl+M (mute my microphone).
+- **The bug report shows where the CPU goes.** A new block splits Sluice's CPU between the window (and the engine's timers), the audio
+  callback, every other thread, threads that have ended and the helper programs, and a list of threads by name (with how many of each
+  and what they used) explains the thread count. Numbers and thread names only.
+- **A PulseAudio crash, cleaned up.** Three old crash traces ended inside the audio library when it was asked for a list on a dead
+  connection. The check that prevents this (added in 0.9.7) was lost whenever Sluice reconnected after an error; the new connection now
+  has it too. The bug report also lists the last few calls to the audio server, so a future crash shows what led up to it, and the
+  self-check (`sluice --diagnose`) uses the same check.
+- **No silent errors.** Every place that catches any error now logs it (or says in a comment why silence is right), so problems that
+  were swallowed before can show up in the log and the bug report. A test fails if a new silent one is added.
+- **Inside:** the 3,000-line `ui.py` is split into the window, `ui_menus.py`, `ui_themes.py`, `ui_tray.py` and `ui_updating.py`
+  (no change in behaviour). `docs/PUBLISHING.md` now has the safe way to put a new version into a clone.
+
 ## 0.10.2
 - **The tray, tidied up.** *Settings > Running in the background* now holds *When I log in* and *When I close the window* together
   (they used to be two separate menus that referred to each other), with plainer wording (*Keep running in the tray*) and a

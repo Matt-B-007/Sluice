@@ -224,7 +224,8 @@ def make_jack_io(client_name: str = CLIENT) -> AudioIO:
             import sluice_dsp
 
             usable = hasattr(sluice_dsp, "JackEngine")
-        except Exception:
+        except Exception as exc:  # no Rust module (or one for another Python): python-jack is used, which is normal
+            log.debug("no Rust audio client: %s", exc)
             usable = False
         if usable:
             try:
@@ -284,8 +285,8 @@ class JackIO(AudioIO):
         for port in old:
             try:
                 port.unregister()
-            except Exception:
-                pass
+            except Exception as exc:  # the server may already have dropped the port
+                log.debug("could not unregister an old port: %s", exc)
 
     def start(self, graph) -> None:
         self._graph = graph
@@ -344,7 +345,7 @@ class JackIO(AudioIO):
                     left.get_array()[:] = 0.0
                     right.get_array()[:] = 0.0
                 except Exception:
-                    pass
+                    pass  # on the audio thread: no logging here (it can block); the first error is kept in self.error above
         busy = time.perf_counter() - start
         self._in_block = False
         self._last_busy = busy

@@ -2,6 +2,7 @@
 """Effects dialog: a channel's effect chain, built-in effects and VST3 plugins."""
 from __future__ import annotations
 
+import logging
 import time
 from functools import partial
 from pathlib import Path
@@ -36,6 +37,8 @@ from .model import MIN_DB, Effect, new_effect_id
 from .ui_room import MeasureEchoDialog, MeasureRoomDialog, MeasureVoiceDialog
 from .ui_live import LivePanel
 from .ui_widgets import ReadoutEdit, ResetSlider
+
+log = logging.getLogger(__name__)
 
 MAX_VST3_PARAMS = 64
 SLIDER_STEPS = 1000
@@ -692,7 +695,7 @@ class EffectsDialog(QDialog):
             try:
                 setter(self.channel.id, effect.id if effect is not None else None)
             except Exception as error:  # the live display is an extra: never let it break the window
-                import logging; logging.getLogger("sluice").warning("live display unavailable: %s", error)
+                log.warning("live display unavailable: %s", error)
         self.live.show_effect(effect)
 
     def _stop_tap(self) -> None:
@@ -700,8 +703,8 @@ class EffectsDialog(QDialog):
         if setter is not None:
             try:
                 setter(self.channel.id, None)
-            except Exception:
-                pass
+            except Exception as exc:  # closing the dialog must always work; the engine drops a stale tap by itself
+                log.debug("could not close the live-display tap: %s", exc)
 
     def _on_item_changed(self, item: QListWidgetItem) -> None:
         effect_id = item.data(Qt.ItemDataRole.UserRole)

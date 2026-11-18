@@ -10,9 +10,8 @@ import threading
 import time
 from typing import Optional
 
-from PySide6.QtCore import QEasingCurve, QEvent, QObject, QPropertyAnimation, QRectF, QSize, Qt, QTimer, QUrl, Signal
-from PySide6.QtGui import (QAction, QActionGroup, QColor, QDesktopServices, QFontMetrics, QGuiApplication, QIcon, QKeySequence,
-                           QLinearGradient, QPainter, QPainterPath, QPalette, QPen, QPixmap)
+from PySide6.QtCore import QEasingCurve, QEvent, QPropertyAnimation, QRectF, QSize, Qt, QTimer, QUrl, Signal
+from PySide6.QtGui import (QAction, QColor, QDesktopServices, QFontMetrics, QGuiApplication, QIcon, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap)
 from PySide6.QtWidgets import (
     QAbstractSlider,
     QCheckBox,
@@ -27,7 +26,6 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMenu,
     QMessageBox,
-    QProgressDialog,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -42,20 +40,22 @@ from PySide6.QtWidgets import (
 from . import efficiency, rawmic, __version__, logs, report, selfupdate, themes, updates, whatsnew
 from . import ui_icons as icons
 from .engine import Engine
-from .model import BUFFER_CHOICES, MAX_DB, MIN_DB, MONITOR, RECORDING, STREAM, Channel, Mix, Mixer, config_path, linear_to_db, list_backups
+from .model import MAX_DB, MIN_DB, MONITOR, RECORDING, STREAM, Channel, Mix, Mixer, linear_to_db, list_backups
+from .ui_constants import (AUTO_UPDATE_DELAY_MS, AUTOSAVE_MS, CLOSE_HINT, DEFAULT_SIZE, DISCORD_URL, ISSUES_URL, PROJECT_URL,
+                           TALKING_HOLD, TALKING_LEVEL, THEMES_URL, TRAY_WATCH_MS)
 from .ui_effects import EffectsDialog
+from .ui_menus import MenusMixin
+from .ui_themes import ThemesMixin, _palette_for
+from .ui_tray import TrayMixin
+from .ui_updating import UpdatingMixin, _UpdateBridge
 from .ui_widgets import ReadoutEdit
 
 log = logging.getLogger("sluice.ui")
-AUTOSAVE_MS = 5000  # how often to look for unsaved changes
-TALKING_LEVEL = 0.03  # the microphone peak (0 to 1, about -30 dB) above which the tray icon lights up
-CLOSE_HINT = "closechoice"  # in hints_seen once the close choice has been made or the first-close question answered
-TRAY_WATCH_MS = 200  # how often the hidden window's tray watcher looks at the microphone
-TALKING_HOLD = 0.35  # seconds it stays lit after the last sound, so it does not flicker between words
-AUTO_UPDATE_DELAY_MS = 20000  # the automatic update (if switched on) looks once, this long after start-up
+# Names that moved to other modules but are still reachable as ``ui.NAME`` (the tests and other code use them there).
+__all__ = ["AUTO_UPDATE_DELAY_MS", "AUTOSAVE_MS", "CLOSE_HINT", "DEFAULT_SIZE", "DISCORD_URL", "ISSUES_URL", "PROJECT_URL", "TALKING_HOLD",
+           "TALKING_LEVEL", "THEMES_URL", "TRAY_WATCH_MS", "_palette_for"]
 NONE_DATA = "__none__"  # combo item data for "no device" (Qt dislikes None)
 SOURCES_HEIGHT = 80  # the list of a channel's devices and apps: always this tall, so every card is the same height
-DEFAULT_SIZE = (1456, 800)  # wide enough for five channels beside the two master cards
 COLUMN_WIDTH = 80            # one mix's column on a channel card: the fader, its meter, the level and the mute button
 CHANNEL_WIDTH = 2 * COLUMN_WIDTH + 32     # a channel card with two mixes (Listen and Broadcast)
 CHANNEL_WIDTH_THREE = 3 * COLUMN_WIDTH + 32   # ...and with the optional third one
@@ -72,10 +72,6 @@ MIX_TAGS = {MONITOR: "LISTEN", STREAM: "BROADCAST", RECORDING: "RECORDING"}
 MIX_HEADINGS = {MONITOR: "you hear", STREAM: "audience hears", RECORDING: "recorder hears"}
 MIX_NAMES = {MONITOR: "Listen: what you hear", STREAM: "Broadcast: what your audience hears",
              RECORDING: "Recording: what your recorder hears"}
-DISCORD_URL = "https://discord.gg/awDvJ5Vj2S"
-PROJECT_URL = "https://github.com/Matt-B-007/Sluice"
-ISSUES_URL = PROJECT_URL + "/issues"
-THEMES_URL = PROJECT_URL + "/tree/main/themes"
 
 
 def channel_width(mix_count: int) -> int:
@@ -1467,15 +1463,6 @@ class FirstRun(QFrame):
         layout.addWidget(self.demo_link)
 
 
-class _UpdateBridge(QObject):
-    """Carries the answer of the update check from its worker thread back to the window."""
-
-    done = Signal(object)
-    progress = Signal(int, int)  # bytes downloaded so far, total (0 = unknown)
-    staged = Signal(object)      # (version, "") when an update was downloaded and verified, ("", message) when it was not
-    quiet = Signal(object)       # the same, for the automatic update: no dialogs
-
-
 class SmoothScrollArea(QScrollArea):
     """A scroll area whose mouse wheel scrolls sideways with a short animation (touchpads scroll directly)."""
 
@@ -1513,27 +1500,7 @@ class SmoothScrollArea(QScrollArea):
         event.accept()
 
 
-def _palette_for(colors: dict) -> QPalette:
-    """Qt's own palette in the theme's colours, for the widgets the style sheet does not reach (dialogs, tooltips)."""
-    palette = QPalette()
-    role = QPalette.ColorRole
-
-    def c(name: str) -> QColor:
-        return QColor(colors[name])
-
-    for which, name in ((role.Window, "bg"), (role.WindowText, "text"), (role.Base, "input"), (role.AlternateBase, "panel"),
-                        (role.Text, "list_text"), (role.Button, "button"), (role.ButtonText, "button_text"),
-                        (role.ToolTipBase, "popup"), (role.ToolTipText, "text"), (role.Highlight, "select"),
-                        (role.HighlightedText, "select_text"), (role.Link, "link"), (role.PlaceholderText, "text_dim"),
-                        (role.BrightText, "strong")):
-        palette.setColor(which, c(name))
-    for which in (role.WindowText, role.Text, role.ButtonText):
-        palette.setColor(QPalette.ColorGroup.Disabled, which, c("text_off"))
-    return palette
-
-
-# ------------------------------------------------------------------ main window
-class MainWindow(QMainWindow):
+class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow):
     def __init__(self, engine: Engine, config_file: Optional[Path] = None, notice: str = "") -> None:
         super().__init__()
         self.engine = engine
@@ -1711,7 +1678,7 @@ class MainWindow(QMainWindow):
         self.settings_button = QPushButton("Settings")
         self.settings_button.setFixedHeight(40)
         self.settings_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.settings_button.setToolTip("Theme, audio buffer, start at login, controllers and more")
+        self.settings_button.setToolTip("Start at login, audio buffer, controllers, updates and more")
         self.settings_button.setMenu(self.settings_menu)
         row.addWidget(self.settings_button)
         return bar
@@ -1883,419 +1850,6 @@ class MainWindow(QMainWindow):
             "Close Sluice, then start it again with:  sluice --demo")
 
     # ------------------------------------------------------------------- menus
-    def _action(self, menu: QMenu, text: str, slot, shortcut=None, checkable: bool = False) -> QAction:
-        action = menu.addAction(text)
-        action.setCheckable(checkable)
-        if shortcut is not None:
-            action.setShortcut(QKeySequence(shortcut))
-            self.addAction(action)  # the menu bar is out of sight (the menu button holds the menus): shortcuts belong to the window
-        action.triggered.connect(lambda _checked=False: slot())
-        return action
-
-    def _build_menus(self) -> None:
-        bar = self.menuBar()
-        file_menu = bar.addMenu("&File")
-        self._action(file_menu, "&Save settings", self.save_settings, QKeySequence.StandardKey.Save)
-        file_menu.addSeparator()
-        self._action(file_menu, "&Export settings\u2026", self.export_settings)
-        self._action(file_menu, "&Import settings\u2026", self.import_settings)
-        self.restore_menu = file_menu.addMenu("&Restore earlier settings")
-        self.restore_menu.aboutToShow.connect(self._fill_restore_menu)
-        file_menu.addSeparator()
-        self._action(file_menu, "&Quit", self.quit_app, QKeySequence.StandardKey.Quit)
-
-        mixer_menu = bar.addMenu("&Mixer")
-        self._action(mixer_menu, "&Add channel\u2026", self.add_channel, "Ctrl+N")
-        self._action(mixer_menu, "&Refresh devices and apps", self.refresh_now, "F5")
-        self._action(mixer_menu, "&Recording devices for OBS\u2026", self.show_own_devices)
-        self.recording_action = self._action(mixer_menu, "Third mix: &Recording\u2026", self.toggle_recording_mix, checkable=True)
-        mixer_menu.addSeparator()
-        self.mic_action = self._action(mixer_menu, "Mute my &microphone", self.toggle_mic_mute, "Ctrl+M", checkable=True)
-        self.hear_action = self._action(mixer_menu, "&Hear Broadcast", self.toggle_hear_broadcast, "Ctrl+B", checkable=True)
-        self.mute_actions = {}
-        for mix in self.engine.mixer.mixes:
-            shortcut = {MONITOR: "Ctrl+Shift+L", STREAM: "Ctrl+Shift+B"}.get(mix.id, "")
-            self.mute_actions[mix.id] = self._action(mixer_menu, f"&Mute {mix.label}", partial(self.toggle_mix_mute, mix.id),
-                                                     shortcut, checkable=True)
-        mixer_menu.aboutToShow.connect(self._refresh_mixer_menu)
-
-        # Settings: everything that is chosen once and then left alone.
-        self.settings_menu = settings_menu = bar.addMenu("&Settings")
-        self.theme_menu = settings_menu.addMenu("&Theme")
-        self.theme_menu.aboutToShow.connect(self._fill_theme_menu)
-        buffer_menu = settings_menu.addMenu("Audio &buffer")
-        self.buffer_actions = {}
-        labels = {256: "Smallest (256 frames): lowest delay, most CPU", 512: "Small (512 frames): the default",
-                  1024: "Large (1024 frames): less CPU", 2048: "Largest (2048 frames): least CPU, most delay"}
-        for frames in BUFFER_CHOICES:
-            self.buffer_actions[frames] = self._action(buffer_menu, labels[frames], partial(self.set_buffer, frames), checkable=True)
-        buffer_menu.aboutToShow.connect(self._refresh_buffer_menu)
-        background = settings_menu.addMenu("Running in the &background")
-        background.addSection("When I log in")
-        group = QActionGroup(self)
-        self.autostart_actions = {}
-        for key, text in (("off", "Do not start automatically"), ("window", "Start with the window open"),
-                          ("minimized", "Start minimized")):  # the last label says where it goes: see _refresh_background_menu
-            action = background.addAction(text)
-            action.setCheckable(True)
-            action.setActionGroup(group)
-            action.triggered.connect(lambda _c=False, key=key: self.set_autostart(key))
-            self.autostart_actions[key] = action
-        background.addSection("When I close the window")
-        close_group = QActionGroup(self)
-        self.close_actions = {}
-        for key, text in (("quit", "Quit Sluice"), ("minimize", "Keep running in the taskbar"),
-                          ("tray", "Keep running in the tray")):
-            action = background.addAction(text)
-            action.setCheckable(True)
-            action.setActionGroup(close_group)
-            action.triggered.connect(lambda _c=False, key=key: self.set_close_action(key))
-            self.close_actions[key] = action
-        background.addSeparator()
-        self.no_tray_note = background.addAction("This desktop has no system tray, so \u201ctray\u201d falls back to the taskbar.")
-        self.no_tray_note.setEnabled(False)
-        background.aboutToShow.connect(self._refresh_background_menu)
-        self.background_menu = background
-        self.launcher_action = self._action(settings_menu, "Add Sluice to the &applications menu", self.toggle_launcher, checkable=True)
-        self.auto_update_action = self._action(settings_menu, "&Update automatically when a new version is found",
-                                               self.toggle_auto_update, checkable=True)
-        settings_menu.addSeparator()
-        self.controllers_separator = settings_menu.addSeparator()  # "MIDI controllers and Stream Deck" is added here by attach_controls()
-        self._action(settings_menu, "&Reset all settings to the defaults\u2026", self.reset_settings)
-        settings_menu.aboutToShow.connect(self._refresh_settings_menu)
-
-        view_menu = bar.addMenu("&View")
-        self.layout_actions = {}
-        layout_group = QActionGroup(self)
-        for key, text in (("columns", "Layout: &Columns (a card for each channel)"), ("rows", "Layout: &Rows (a line for each channel)")):
-            action = view_menu.addAction(text)
-            action.setCheckable(True)
-            action.setActionGroup(layout_group)
-            action.triggered.connect(lambda _c=False, key=key: self.set_layout(key))
-            self.layout_actions[key] = action
-        view_menu.addSeparator()
-        self.fullscreen_action = self._action(view_menu, "&Full screen", self.toggle_fullscreen, "F11", checkable=True)
-        self._action(view_menu, "&Reset window size", self.reset_window_size)
-        view_menu.aboutToShow.connect(lambda: self.fullscreen_action.setChecked(self.isFullScreen()))
-
-        self.help_menu = bar.addMenu("&Help")
-        self._action(self.help_menu, "&Keyboard shortcuts", self.show_shortcuts, "F1")
-        self.help_menu.addSeparator()
-        self.help_menu.addAction("What's new in this version\u2026", self.show_whats_new)
-        self.help_menu.addAction("Check for updates\u2026", self.check_for_updates)
-        self.rollback_action = self._action(self.help_menu, "Go back to the previous version\u2026", self.rollback_update)
-        self.help_menu.aboutToShow.connect(self._refresh_update_menu)
-        self.help_menu.addSeparator()
-        self.help_menu.addAction("Save bug report\u2026", self.save_report)
-        self._action(self.help_menu, "I heard a &glitch (mark this moment)", self.mark_glitch, "Ctrl+Shift+G")
-        folders = self.help_menu.addMenu("Open &folder")
-        folders.addAction("&Settings", self.open_settings_folder)
-        folders.addAction("&Logs", self.open_log_folder)
-        folders.addAction("&Themes", self.open_theme_folder)
-        self.help_menu.addAction("Report a problem\u2026", partial(self.open_link, ISSUES_URL))
-        self.help_menu.addSeparator()
-        self.help_menu.addAction("Join the Discord\u2026", partial(self.open_link, DISCORD_URL))
-        self.help_menu.addAction("Project page on GitHub\u2026", partial(self.open_link, PROJECT_URL))
-        self.help_menu.addAction(f"About Sluice {__version__}", self.show_about)
-        self.uninstall_action = self.help_menu.addAction("Uninstall Sluice\u2026", self.uninstall_app)
-
-        # The menus live behind the menu button (and the Settings button) in the top bar; the classic bar stays out of sight.
-        self.main_menu = QMenu(self)
-        for menu in (file_menu, mixer_menu, view_menu, self.help_menu):
-            self.main_menu.addMenu(menu)
-        bar.setVisible(False)
-
-    def uninstall_app(self) -> None:
-        """Two ways to remove Sluice, each showing exactly what it removes; then Sluice closes and a separate process does it."""
-        import subprocess
-
-        from . import uninstall
-
-        if "Demo" in self.engine.io.label:
-            QMessageBox.information(self, "Uninstall Sluice", "Demo mode changes nothing, so there is nothing to uninstall here.")
-            return
-        keep_plan = uninstall.plan(keep_settings=True)
-        all_plan = uninstall.plan(keep_settings=False, remove_git=True)
-
-        def listing(result) -> str:
-            return uninstall.describe(result).replace("Sluice will remove:", "This will remove:")
-
-        box = QMessageBox(self)
-        box.setWindowTitle("Uninstall Sluice")
-        box.setText("How much of Sluice should be removed?")
-        box.setInformativeText(
-            "Uninstall, keep my settings\n" + listing(keep_plan) +
-            "\n\nRemove everything\n" + listing(all_plan).replace("\n  (nothing: it is not installed here)", "") +
-            "\n\nBoth close Sluice first and remove these a moment later, then check that nothing was missed. "
-            + " ".join(uninstall.STAYS))
-        caches = QCheckBox("Also clear download caches (pip and cargo; other programs use them too)")
-        caches.setToolTip("Clears ~/.cache/pip and ~/.cargo/registry. Programs that use them just download again when they need to.")
-        box.setCheckBox(caches)
-        keep_button = box.addButton("Uninstall, keep my settings", QMessageBox.ButtonRole.AcceptRole)
-        everything_button = box.addButton("Remove everything", QMessageBox.ButtonRole.DestructiveRole)
-        box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
-        box.exec()
-        clicked = box.clickedButton()
-        if clicked not in (keep_button, everything_button):
-            return
-        keep = clicked is keep_button
-        remove_git = False
-        if not keep and all_plan.git_folder:
-            answer = QMessageBox.question(
-                self, "Delete the git folder?",
-                "The Sluice folder is a git clone. Deleting it also deletes any changes in it that you have not committed "
-                "or pushed.\n\nDelete it too?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No)
-            remove_git = answer == QMessageBox.StandardButton.Yes
-        command = uninstall.command_for_gui(keep, clear_caches=caches.isChecked(), remove_git=remove_git)
-        script = ('sleep 4; out=$("$@" 2>&1); '
-                  'command -v notify-send >/dev/null 2>&1 && notify-send "Sluice uninstall" "$out"; exit 0')
-        try:
-            # a few seconds' wait lets this process finish closing (it holds the single-copy lock until then)
-            subprocess.Popen(["sh", "-c", script, "sluice-uninstall", *command], start_new_session=True,
-                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except OSError as exc:
-            QMessageBox.warning(self, "Uninstall Sluice", f"Could not start the uninstall: {exc}\nRun this in a terminal instead: sluice --uninstall")
-            return
-        self.quit_app()
-
-    def open_link(self, url: str) -> None:
-        if not QDesktopServices.openUrl(QUrl(url)):
-            QMessageBox.information(self, "Open link", f"Sluice could not open your browser. The address is:\n\n{url}")
-
-    def _refresh_mixer_menu(self) -> None:
-        self.hear_action.setChecked(self.engine.hear_broadcast)
-        self.mic_action.setChecked(self.engine.mic_muted)
-        self.recording_action.setChecked(self.engine.mixer.has_recording_mix)
-        for mix_id, action in self.mute_actions.items():
-            action.setChecked(self.engine.mixer.mix(mix_id).mute)
-
-    def _refresh_settings_menu(self) -> None:
-        self._refresh_file_menu()
-        self.auto_update_action.setChecked(self.engine.mixer.auto_update)
-
-    # ------------------------------------------------------------------ themes
-    def _system_is_dark(self) -> bool:
-        hints = QGuiApplication.styleHints()
-        scheme = getattr(hints, "colorScheme", None)  # Qt 6.5 and newer; an older one has no word on it: stay dark
-        return scheme is None or scheme() != Qt.ColorScheme.Light
-
-    def _themes_folder(self) -> Optional[Path]:
-        return themes.themes_dir(self.config_file)
-
-    def current_theme(self) -> "themes.Theme":
-        return themes.resolve(self.engine.mixer.theme, self._system_is_dark(), self._themes_folder())
-
-    def apply_theme(self, theme_id: Optional[str] = None) -> "themes.Theme":
-        """Show a theme now (or the one saved in the settings): the style sheet, the palette and the meters."""
-        if theme_id is not None:
-            self.engine.mixer.theme = theme_id
-        theme = self.current_theme()
-        themes.set_current(theme.colors)
-        self.setStyleSheet(themes.build_style(theme.colors))
-        app = QGuiApplication.instance()
-        if app is not None:
-            app.setPalette(_palette_for(theme.colors))
-        self.refresh_theme_widgets()
-        return theme
-
-    def _on_system_scheme_changed(self, *_args) -> None:
-        if self.engine.mixer.theme == themes.SYSTEM and not self._closed:
-            self.apply_theme()
-
-    def _fill_theme_menu(self) -> None:
-        menu = self.theme_menu
-        menu.clear()
-        group = QActionGroup(menu)
-        chosen = themes.canonical_id(self.engine.mixer.theme, self._themes_folder())
-
-        def add(theme_id: str, text: str, tip: str = "") -> None:
-            action = menu.addAction(text)
-            action.setCheckable(True)
-            action.setActionGroup(group)
-            action.setChecked(chosen == theme_id)
-            if tip:
-                action.setToolTip(tip)
-            action.triggered.connect(lambda _c=False, theme_id=theme_id: self.choose_theme(theme_id))
-
-        for theme in themes.BUILT_IN.values():
-            add(theme.id, theme.name)
-        add(themes.SYSTEM, themes.SYSTEM_LABEL, "Dark or Light, following your desktop's own setting")
-        custom = themes.custom_themes(self._themes_folder())
-        if custom:
-            menu.addSeparator()
-            for theme in custom:
-                add(theme.id, theme.name)
-        if chosen.startswith(themes.CUSTOM_PREFIX) and not any(t.id == chosen for t in custom):  # not in the folder any more
-            menu.addSeparator()
-            missing = menu.addAction("An imported theme that is no longer in the themes folder (showing Dark)")
-            missing.setCheckable(True)
-            missing.setChecked(True)
-            missing.setEnabled(False)
-        menu.addSeparator()
-        menu.addAction("&Import theme\u2026", self.import_theme)
-        menu.addAction("&Export current theme\u2026", self.export_theme)
-        if custom:
-            remove = menu.addMenu("&Remove an imported theme")
-            for theme in custom:
-                remove.addAction(theme.name, partial(self.remove_theme, theme.id))
-        menu.addSeparator()
-        more = menu.addAction("&Get more themes\u2026", partial(self.open_link, THEMES_URL))
-        more.setToolTip("Opens the theme collection on the project page in your browser: download a file, then Import theme")
-        menu.setToolTipsVisible(True)
-
-    def choose_theme(self, theme_id: str) -> None:
-        theme = self.apply_theme(theme_id)
-        if theme_id == themes.SYSTEM:
-            self.say(f"Theme: following your system (right now {theme.name}).")
-        else:
-            self.say(f"Theme: {theme.name}.")
-
-    def import_theme_from(self, path) -> "themes.Theme":
-        """Check a theme file, keep a copy in the themes folder and switch to it. Raises ThemeError."""
-        folder = self._themes_folder()
-        if folder is None:
-            raise themes.ThemeError("Demo mode does not keep imported themes.")
-        theme, notes = themes.load_file(path)
-        problems = themes.contrast_problems(theme.colors)
-        if problems:
-            ask = QMessageBox.question(
-                self, "Hard to read",
-                f"The theme \u201c{theme.name}\u201d may be hard to read:\n\n" + "\n".join("\u2022 " + p for p in problems[:4])
-                + "\n\nUse it anyway? You can switch back in Settings > Theme.")
-            if ask != QMessageBox.StandardButton.Yes:
-                raise themes.ThemeError("The theme was not imported.")
-        stored = themes.save_custom(theme, folder)
-        self.apply_theme(stored.id)
-        self.say(f"Theme \u201c{stored.name}\u201d imported and in use." + (f" ({'; '.join(notes[:3])}.)" if notes else ""))
-        return stored
-
-    def import_theme(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "Import theme", str(Path.home()), "Themes (*.json)")
-        if not path:
-            return
-        try:
-            self.import_theme_from(path)
-        except themes.ThemeError as exc:
-            QMessageBox.warning(self, "Could not import the theme", str(exc))
-
-    def export_theme_to(self, path) -> None:
-        theme = self.current_theme()
-        name = theme.name if theme.id.startswith(themes.CUSTOM_PREFIX) else f"{theme.name} copy"
-        data = themes.export_dict(themes.Theme(theme.id, name, theme.base, theme.colors))
-        Path(path).write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-        self.say(f"Theme saved to {logs.short_path(path)}. Edit the colours, then use Settings > Theme > Import theme.")
-
-    def export_theme(self) -> None:
-        path, _ = QFileDialog.getSaveFileName(self, "Export current theme", str(Path.home() / "sluice-theme.json"),
-                                              "Themes (*.json)")
-        if path:
-            try:
-                self.export_theme_to(path)
-            except OSError as exc:
-                QMessageBox.warning(self, "Could not save the theme", str(exc))
-
-    def remove_theme(self, theme_id: str) -> None:
-        if themes.remove_custom(theme_id, self._themes_folder()):
-            if self.engine.mixer.theme == theme_id:
-                self.apply_theme(themes.DEFAULT)
-            self.say("Theme removed.")
-        else:
-            self.say("That theme could not be removed.")
-
-    def open_theme_folder(self) -> None:
-        folder = self._themes_folder()
-        if folder is None:
-            self.say("Demo mode does not keep imported themes.")
-            return
-        folder.mkdir(parents=True, exist_ok=True)
-        QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
-
-    def toggle_recording_mix(self) -> None:
-        mixer = self.engine.mixer
-        turn_on = not mixer.has_recording_mix
-        text = ("Add a third mix, \u201cRecording\u201d: a second virtual microphone, \u201cSluice (Recording)\u201d, with its own "
-                "faders and mutes, so a recorder can get a different blend from the one your audience hears."
-                if turn_on else "Remove the Recording mix and its virtual microphone.")
-        ask = QMessageBox(self)
-        ask.setWindowTitle("Recording mix")
-        ask.setText(text + "\n\nSluice has to restart to do this. Your settings are saved first.")
-        restart = ask.addButton("Restart now", QMessageBox.ButtonRole.AcceptRole)
-        ask.addButton("Not now", QMessageBox.ButtonRole.RejectRole)
-        ask.exec()
-        self.recording_action.setChecked(mixer.has_recording_mix)
-        if ask.clickedButton() is not restart:
-            return
-        mixer.set_recording_mix(turn_on)
-        from . import reconnect
-
-        self.shutdown()  # saves the settings
-        reconnect.restart_self(show_window=True)
-
-    def toggle_mic_mute(self) -> None:
-        self.engine.set_mic_muted(not self.engine.mic_muted)  # from the real state, like the other toggles
-        self._show_mic_state()
-        self._refresh_tray_icon()
-        self._sync_tray_timer()
-        self.say("Your microphone is muted everywhere, including Sluice (Mic)." if self.engine.mic_muted
-                 else "Your microphone is live.")
-
-    def _show_mic_state(self) -> None:
-        for strip in self.strips:
-            strip.show_mic_state()
-
-    def toggle_hear_broadcast(self) -> None:
-        on = not self.engine.hear_broadcast  # from the real state, so a stale tick mark can never invert it
-        self.engine.set_hear_broadcast(on)
-        self.sync_from_model()
-        self.say("Your output now plays the Broadcast mix: this is what your audience hears." if on
-                 else "Your output is back on the Listen mix.")
-
-    def toggle_mix_mute(self, mix_id: str) -> None:
-        mix = self.engine.mixer.mix(mix_id)
-        self.engine.set_master_mute(mix_id, not mix.mute)
-        self.sync_from_model()
-        self.say(f"{mix.label} is {'muted' if mix.mute else 'on'}.")
-
-    def _refresh_buffer_menu(self) -> None:
-        for frames, action in self.buffer_actions.items():
-            action.setChecked(frames == self.engine.mixer.buffer_frames)
-
-    def set_buffer(self, frames: int) -> None:
-        self.engine.mixer.buffer_frames = frames
-        self.say(f"Audio buffer set to {frames} frames. It is used the next time Sluice starts "
-                 f"(running now: {self.engine.io.blocksize}).")
-
-    def show_own_devices(self) -> None:
-        OwnDevicesDialog(self.engine, self).exec()
-
-    def refresh_now(self) -> None:
-        self.engine.refresh_devices()
-        self.repopulate_devices()
-        self.refresh_sources()
-        self.say("Devices and apps refreshed.")
-
-    def toggle_fullscreen(self) -> None:
-        if self.isFullScreen():
-            self.showNormal()
-        else:
-            self.showFullScreen()
-
-    def reset_window_size(self) -> None:
-        if self.isFullScreen():
-            self.showNormal()
-        self.resize(*DEFAULT_SIZE)
-
-    def show_shortcuts(self) -> None:
-        rows = [("Ctrl+S", "Save settings"), ("Ctrl+N", "Add a channel"), ("Ctrl+B", "Hear Broadcast on or off"),
-                ("Ctrl+Shift+L", "Mute or unmute Listen"), ("Ctrl+Shift+B", "Mute or unmute Broadcast"),
-                ("Ctrl+Shift+G", "Mark a glitch you just heard"),
-                ("F5", "Refresh devices and apps"), ("F11", "Full screen"), ("F1", "This list"), ("Ctrl+Q", "Quit")]
-        table = "".join(f"<tr><td><b>{key}</b>&nbsp;&nbsp;&nbsp;</td><td>{what}</td></tr>" for key, what in rows)
-        QMessageBox.information(self, "Keyboard shortcuts", f"<table>{table}</table><br>"
-                                "Faders: scroll the mouse wheel over one, or use the arrow keys when it is selected.<br>"
-                                "For buttons and knobs outside the app, see <b>Settings > MIDI controllers and Stream Deck</b>.")
-
     # ------------------------------------------------------------------- settings files
     def _snapshot(self) -> str:
         return json.dumps(self.engine.mixer.to_dict(), sort_keys=True)
@@ -2456,168 +2010,6 @@ class MainWindow(QMainWindow):
                      "the window back; right-click it for Quit.")
         else:
             self.say("Closing the window will keep Sluice running, minimized to the taskbar. Use File > Quit to exit.")
-
-    # ------------------------------------------------------------------ system tray
-    @property
-    def tray_active(self) -> bool:
-        """True while the tray icon is on screen: then closing or minimizing the window hides it into the tray."""
-        return self._tray is not None and self._tray.isVisible()
-
-    def _update_tray(self) -> None:
-        """Show the tray icon exactly while the close setting is 'tray' (and the desktop has a tray)."""
-        from PySide6.QtWidgets import QMenu, QSystemTrayIcon
-
-        want = self.engine.mixer.close_action == "tray" and not self._closed and QSystemTrayIcon.isSystemTrayAvailable()
-        if not want:
-            if self._tray is not None:
-                self._tray.hide()
-            self._sync_tray_timer()
-            return
-        if self._tray is None:
-            self._tray = QSystemTrayIcon(icons.tray_icon("idle"), self)
-            self._tray_state = "idle"
-            self._voice_until = 0.0
-            menu = QMenu(self)
-            self._tray_show = menu.addAction("Show Sluice", self.bring_to_front)
-            menu.addSeparator()
-            self._tray_mic = menu.addAction("Mute my microphone", self.toggle_mic_mute)
-            self._tray_mic.setCheckable(True)
-            self._tray_mutes = {}
-            for mix in self.engine.mixer.mixes:
-                action = menu.addAction(f"Mute {mix.label}", partial(self.toggle_mix_mute, mix.id))
-                action.setCheckable(True)
-                self._tray_mutes[mix.id] = action
-            self._tray_hear = menu.addAction("Hear Broadcast", self.toggle_hear_broadcast)
-            self._tray_hear.setCheckable(True)
-            menu.addSeparator()
-            menu.addAction("Quit", self.quit_app)
-            menu.aboutToShow.connect(self._refresh_tray_menu)
-            self._tray.setContextMenu(menu)
-            self._tray_menu = menu  # keep a reference: Qt does not own a tray icon's menu
-            self._tray.activated.connect(self._on_tray_activated)
-        self._refresh_tray_icon(force=True)
-        self._tray.show()
-        self._sync_tray_timer()
-
-    def _window_state_changed(self) -> None:
-        """The window was shown, hidden or minimized: tell the efficiency tracker, and start or stop the tray watcher."""
-        showing = self.isVisible() and not self.isMinimized()
-        self.tracker.set_state("open" if showing else ("tray" if self.tray_active else "background"))
-        self._sync_tray_timer()
-
-    def _sync_tray_timer(self) -> None:
-        """With the window hidden in the tray nothing reads the microphone level, so the tray icon would never light up. A light
-        watcher (5 times a second) does that, and only while it is needed: not with the window showing (the meter timer does it
-        then), not with the microphone muted (the icon is fixed), and not with no tray icon."""
-        meters = getattr(self, "meter_timer", None)
-        want = (self.tray_active and not (meters is not None and meters.isActive()) and not self.engine.mic_muted and not self._closed)
-        if want and not self.tray_timer.isActive():
-            self.tray_timer.start(TRAY_WATCH_MS)
-        elif not want and self.tray_timer.isActive():
-            self.tray_timer.stop()
-
-    def _tray_tick(self) -> None:
-        self.engine.levels()  # reads the microphone level (and clears the peaks, as the meters would)
-        self.tracker.meter_tick()
-        self._refresh_tray_icon()
-
-    def _tray_tooltip(self) -> str:
-        return "Sluice" + (" (microphone muted)" if self.engine.mic_muted else "")
-
-    def _refresh_tray_icon(self, force: bool = False) -> None:
-        """Muted: a red badge. Talking: lit up (the engine's microphone level, held for a moment so it does not flicker). Else plain."""
-        if self._tray is None or not (force or self._tray.isVisible()):
-            return
-        if self.engine.mic_muted:
-            state = "muted"
-        else:
-            now = time.monotonic()
-            if self.engine.mic_level > TALKING_LEVEL:
-                self._voice_until = now + TALKING_HOLD
-            state = "talking" if now < self._voice_until else "idle"
-        if state != self._tray_state or force:
-            self._tray_state = state
-            self._tray.setIcon(icons.tray_icon(state))  # only when it changes: nothing is redrawn while the state is steady
-        self._tray.setToolTip(self._tray_tooltip())
-
-    def _refresh_tray_menu(self) -> None:
-        self._tray_show.setText("Hide Sluice" if self.isVisible() and not self.isMinimized() else "Show Sluice")
-        self._tray_mic.setChecked(self.engine.mic_muted)
-        for mix_id, action in self._tray_mutes.items():
-            action.setChecked(self.engine.mixer.mix(mix_id).mute)
-        self._tray_hear.setChecked(self.engine.hear_broadcast)
-
-    def _on_tray_activated(self, reason) -> None:
-        from PySide6.QtWidgets import QSystemTrayIcon
-
-        if reason == QSystemTrayIcon.ActivationReason.Trigger:  # a plain click: show it, or hide it if it is already in front
-            if self.isVisible() and not self.isMinimized() and self.isActiveWindow():
-                self.hide()
-            else:
-                self.bring_to_front()
-
-    def start_minimized(self) -> None:
-        """Start without showing the window: into the tray if that is how Sluice is set to run, else to the taskbar."""
-        self._update_tray()
-        if self.tray_active:
-            self.say("Sluice is running in the system tray.")
-            self._set_meters_running(False)  # the window was never shown, so no hide event will stop the meters (or start the tray watcher)
-        else:
-            self.showMinimized()
-
-    def quit_app(self) -> None:
-        """Really quit (File > Quit, Ctrl+Q), whatever closing the window is set to do."""
-        self._quitting = True
-        self.close()
-
-    def _tray_possible(self) -> bool:
-        from PySide6.QtWidgets import QSystemTrayIcon
-
-        return QSystemTrayIcon.isSystemTrayAvailable()
-
-    def _refresh_background_menu(self) -> None:
-        """Tick the current choices and say, in the labels, where Sluice will actually go."""
-        from . import desktop
-
-        state = desktop.autostart_state()
-        for key, action in self.autostart_actions.items():
-            action.setChecked(key == state)
-        for key, action in self.close_actions.items():
-            action.setChecked(key == self.engine.mixer.close_action)
-        in_tray = self.engine.mixer.close_action == "tray" and self._tray_possible()
-        self.autostart_actions["minimized"].setText("Start minimized to the tray" if in_tray else "Start minimized to the taskbar")
-        self.no_tray_note.setVisible(not self._tray_possible())
-
-    def set_autostart(self, mode: str) -> None:
-        from . import desktop
-
-        try:
-            desktop.set_autostart(mode)
-        except OSError as exc:
-            QMessageBox.warning(self, "Could not change start-up", str(exc))
-            return
-        self.say({"off": "Sluice will not start by itself.",
-                  "window": "Sluice will start when you log in, with its window open.",
-                  "minimized": "Sluice will start when you log in, minimized to the "
-                               + ("tray." if self.engine.mixer.close_action == "tray" and self._tray_possible() else "taskbar.")}[mode])
-
-    def toggle_launcher(self) -> None:
-        from . import desktop
-
-        try:
-            if desktop.is_installed():
-                desktop.uninstall()
-                self.say("Sluice was removed from the applications menu.")
-            else:
-                desktop.install()
-                self.say("Sluice is now in the applications menu: search for \u201cSluice\u201d in your launcher.")
-        except OSError as exc:
-            QMessageBox.warning(self, "Could not change the applications menu", str(exc))
-
-    def open_settings_folder(self) -> None:
-        folder = (self.config_file or config_path()).parent
-        folder.mkdir(parents=True, exist_ok=True)
-        QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
 
     # ---------------------------------------------------------------- outside control
     def attach_controls(self, controls) -> None:
@@ -2820,158 +2212,6 @@ class MainWindow(QMainWindow):
 
         threading.Thread(target=work, name="sluice-update-check", daemon=True).start()
 
-    # ----------------------------------------------------------- updating in place
-    def start_update(self, result) -> None:
-        """Download and check the new version (nothing changes yet), then offer to restart into it."""
-        root = selfupdate.install_root()
-        problem = selfupdate.offer_problem(root, result)
-        if problem:
-            QMessageBox.information(self, "Update", problem)
-            return
-        dialog = QProgressDialog(f"Downloading Sluice {result.latest}\u2026", "", 0, 100, self)
-        dialog.setWindowTitle("Updating Sluice")
-        dialog.setCancelButton(None)
-        dialog.setMinimumDuration(0)
-        dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
-        dialog.setValue(0)
-        self._update_progress_dialog = dialog
-        self.say(f"Downloading Sluice {result.latest}\u2026")
-        bridge, stage = self._update_bridge, self._stage_update
-
-        def work() -> None:
-            try:
-                version = stage(result, root, progress=lambda done, total: bridge.progress.emit(done, total))
-                bridge.staged.emit((version, ""))
-            except selfupdate.UpdateError as exc:
-                bridge.staged.emit(("", str(exc)))
-            except Exception as exc:  # anything unexpected is still just "could not update"
-                log.exception("update failed")
-                bridge.staged.emit(("", f"{type(exc).__name__}: {exc}"))
-
-        threading.Thread(target=work, name="sluice-update", daemon=True).start()
-
-    def _update_progress(self, done: int, total: int) -> None:
-        dialog = self._update_progress_dialog
-        if dialog is not None and total > 0:
-            dialog.setValue(min(99, int(done * 100 / total)))
-
-    def _close_progress(self) -> None:
-        if self._update_progress_dialog is not None:
-            self._update_progress_dialog.close()
-            self._update_progress_dialog = None
-
-    def _update_staged(self, outcome) -> None:
-        self._close_progress()
-        version, message = outcome
-        if not version:
-            self.say(f"Could not update: {message.splitlines()[0] if message else 'unknown error'}")
-            QMessageBox.warning(self, "Could not update", message or "Unknown error.")
-            return
-        self.say(f"Sluice {version} is downloaded and checked. It is installed when Sluice restarts or closes.")
-        if self._ask_restart_for_update(version):
-            self.restart_into_update()
-
-    def _ask_restart_for_update(self, version: str) -> bool:
-        ask = QMessageBox(self)
-        ask.setWindowTitle("Update ready")
-        ask.setText(f"Sluice {version} was downloaded and checked.\n\nRestart now to start using it? Your settings are saved "
-                    "first. If you choose later, it is installed the next time you close Sluice.")
-        restart = ask.addButton("Restart now", QMessageBox.ButtonRole.AcceptRole)
-        ask.addButton("Later", QMessageBox.ButtonRole.RejectRole)
-        ask.exec()
-        return ask.clickedButton() is restart
-
-    def restart_into_update(self) -> None:
-        from . import reconnect
-
-        self.shutdown()  # saves the settings, stops the audio
-        selfupdate.apply_staged_quietly()
-        reconnect.restart_self(show_window=True)
-
-    def _refresh_update_menu(self) -> None:
-        previous = selfupdate.previous_version(selfupdate.install_root())
-        self.rollback_action.setEnabled(bool(previous))
-        self.rollback_action.setText(f"Go back to version {previous}\u2026" if previous else "Go back to the previous version\u2026")
-
-    def toggle_auto_update(self) -> None:
-        mixer = self.engine.mixer
-        turn_on = not mixer.auto_update
-        if turn_on:
-            reason = selfupdate.unavailable_reason(selfupdate.install_root())
-            if reason:
-                self.auto_update_action.setChecked(False)
-                QMessageBox.information(self, "Update automatically", reason)
-                return
-            ask = QMessageBox.question(
-                self, "Update automatically",
-                "Sluice will ask GitHub once, shortly after it starts, whether there is a newer version. If there is, it "
-                "downloads it, checks it against its checksum, and installs it the next time you close Sluice. It never "
-                "restarts or changes anything while it is running, and you can go back with Help > Go back to the previous "
-                "version.\n\nTurn this on?")
-            if ask != QMessageBox.StandardButton.Yes:
-                self.auto_update_action.setChecked(False)
-                return
-        mixer.auto_update = turn_on
-        self.auto_update_action.setChecked(turn_on)
-        self.say("Sluice will download new versions by itself and install them when you close it." if turn_on
-                 else "Automatic updates are off. Help > Check for updates still works.")
-
-    def _auto_update_check(self) -> None:
-        """Once, a little after start-up, only if the user turned it on: fetch a newer version and leave it waiting."""
-        if self._auto_update_started or self._closed or self.config_file is None or not self.engine.mixer.auto_update:
-            return
-        root = selfupdate.install_root()
-        if selfupdate.unavailable_reason(root):
-            return
-        self._auto_update_started = True
-        check, stage, bridge = self._update_check, self._stage_update, self._update_bridge
-
-        def work() -> None:
-            try:
-                result = check(__version__)
-                if result.status != "available" or selfupdate.offer_problem(root, result):
-                    return
-                bridge.quiet.emit((stage(result, root), ""))
-            except selfupdate.UpdateError as exc:
-                bridge.quiet.emit(("", str(exc)))
-            except Exception:
-                log.exception("automatic update failed")
-
-        threading.Thread(target=work, name="sluice-auto-update", daemon=True).start()
-
-    def _auto_update_staged(self, outcome) -> None:
-        version, message = outcome
-        if version:
-            self.say(f"Sluice {version} was downloaded and checked. It is installed when you close Sluice.")
-        else:
-            log.info("automatic update did not go ahead: %s", message)
-            self.say("An automatic update could not be installed. Help > Check for updates shows why.")
-
-    def rollback_update(self) -> None:
-        root = selfupdate.install_root()
-        previous = selfupdate.previous_version(root)
-        if not previous:
-            QMessageBox.information(self, "Go back", "There is no earlier version to go back to.")
-            return
-        ask = QMessageBox(self)
-        ask.setWindowTitle("Go back to the previous version")
-        ask.setText(f"Go back to Sluice {previous}?\n\nSluice restarts. Your settings are kept, but a newer version may have "
-                    "saved things an older one does not understand, so a backup of your settings is a good idea first "
-                    "(File > Export settings).")
-        go = ask.addButton("Go back and restart", QMessageBox.ButtonRole.AcceptRole)
-        ask.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
-        ask.exec()
-        if ask.clickedButton() is not go:
-            return
-        self.shutdown()
-        try:
-            selfupdate.rollback(root)
-        except selfupdate.UpdateError as exc:
-            log.warning("rollback failed: %s", exc)
-        from . import reconnect
-
-        reconnect.restart_self(show_window=True)
-
     # -------------------------------------------------------------- what's new
     def show_notes(self, title: str, heading: str, markdown: str, main_label: str = "", main_url: str = "",
                    action=None, action_label: str = "") -> None:
@@ -3039,7 +2279,7 @@ class MainWindow(QMainWindow):
                     self, "Could not save the report",
                     f"The report could not be saved to:\n{path}\n\n{type(exc).__name__}: {exc}\n\n"
                     "Try another folder, or run  sluice --report  in a terminal. Details are in the log "
-                    "(Help > Open folder).")
+                    "(File > Open folder).")
 
     def mark_glitch(self) -> None:
         self.say(self.engine.mark_glitch())

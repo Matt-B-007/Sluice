@@ -92,7 +92,7 @@ def test_demo_mode_never_shows_it(make):
 def test_help_menu_shows_the_notes_of_this_version(make):
     win, _, shown = make(marker=__version__)
     help_menu = next(a.menu() for a in win.menuBar().actions() if a.menu() and a.text().replace("&", "") == "Help")
-    action = next(a for a in help_menu.actions() if a.text().startswith("What's new"))
+    action = next(a for a in help_menu.actions() if a.text().replace("&", "").startswith("What's new"))
     action.trigger()
     assert len(shown) == 1 and shown[0].view.toPlainText().strip() and __version__ in shown[0].windowTitle()
 
