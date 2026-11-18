@@ -96,7 +96,7 @@ class UpdatingMixin:
     def _refresh_update_menu(self) -> None:
         previous = selfupdate.previous_version(selfupdate.install_root())
         self.rollback_action.setEnabled(bool(previous))
-        self.rollback_action.setText(f"Go back to version {previous}\u2026" if previous else "Go back to the previous version\u2026")
+        self.rollback_action.setText(f"&Go back to version {previous}\u2026" if previous else "&Go back to the previous version\u2026")
 
     def toggle_auto_update(self) -> None:
         mixer = self.engine.mixer

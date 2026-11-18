@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.10.4
+A follow-up to 0.10.3: the new logo, finished (and its tray icons to match), a button that no longer gets cut off, and a quieter, clearer bug report.
+- **The logo, finished.** The ring is deep teal and the S is coral, on a **transparent background** (no tile), so it reads on light and dark
+  panels, in the tray and in the applications menu. The S is still the letter from Inter Bold (SIL Open Font License).
+- **The tray icons follow the logo.** While you talk the ring closes in a lighter teal; while your microphone is muted the whole logo fades,
+  the ring turns red, and a bigger red badge with a bar sits in the corner.
+- **The *Mute my microphone* button is no longer cut off.** Its border was 2 pixels taller than the room the layout gave it.
+  A test now checks every button in both layouts and both themes.
+- **Menus: every item has its own Alt-key letter**, so Alt+letter never lands on the wrong item. The menus' wording is otherwise unchanged.
+- **Crash log housekeeping.** Crash traces from sessions older than the last 10 move to `crash-archive.log` (with the Sluice version that
+  wrote them), so a crash that was fixed long ago stops being reported. If only old traces remain, the bug report says so in one line:
+  "No native crash in the last 10 sessions. The last archived trace was written by ... (Sluice 0.9.7)". A new crash still shows in full.
+- **The bug report lists the maths libraries loaded** (OpenBLAS, MKL, OpenMP, ...), which start worker threads of their own and can explain
+  a crowd of threads named "python". It also says how to test them: `OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 sluice`.
+- **The bug report's CPU numbers are fairer.** After Sluice updates itself and restarts, the CPU split counts from the restart (it used to
+  mix the old run in), and the "busy while hidden" warning no longer blames the audio work, which has to run.
+  The Rust engine's number is labelled as numbered apart from Sluice, so it can look older than Sluice itself without being out of date.
+- **The self-check's "effects" line** now says which effects engine is used instead of an error.
+
 ## 0.10.3
 A tidy-up release: a new logo, menus that are organised the way other apps' are, a clearer bug report, and a fix that keeps one rare crash from coming back.
 - **A new logo.** An upright white S inside a teal ring with two gaps, on a dark rounded tile. It replaces the red-noise S in the window,

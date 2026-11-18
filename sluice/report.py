@@ -129,8 +129,20 @@ def session_log(text: str, limit: int = LOG_LINES, previous: int = PREVIOUS_LINE
     return "\n".join(parts)
 
 
-def crash_summary(text: str, modified: Optional[float] = None) -> str:
-    """The native-crash file split into sessions: which session each trace belongs to, and when the file last changed."""
+def archive_note(archive_text: str) -> str:
+    """One line about the archived traces: when the last one was and which version wrote it."""
+    headings = [line for line in archive_text.splitlines() if line.startswith("--- archived trace:")]
+    if not headings:
+        return ""
+    found = re.match(r"--- archived trace: (?:session|command) started (.+?) \(Sluice (.+?)\) ---", headings[-1])
+    if found:
+        return f"The last archived trace was written by the session that started {found.group(1)} (Sluice {found.group(2)}); {len(headings)} in all are in {logs.CRASH_ARCHIVE_NAME}."
+    return f"{len(headings)} older trace(s) are in {logs.CRASH_ARCHIVE_NAME}."
+
+
+def crash_summary(text: str, modified: Optional[float] = None, archive_text: str = "") -> str:
+    """The native-crash file split into sessions: which session each trace belongs to, and when the file last changed.
+    Traces from long-gone sessions live in the archive file and are only mentioned in one line."""
     lines = text.splitlines()
     blocks: list = []   # (header or None, trace lines)
     header: Optional[str] = None
@@ -149,7 +161,10 @@ def crash_summary(text: str, modified: Optional[float] = None) -> str:
     if modified:
         head.append(f"File last written: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(modified))}")
     if not blocks:
-        head.append(f"No native crash recorded ({sessions} session(s) logged in this file).")
+        head.append(f"No native crash in the last {sessions} session(s).")
+        old = archive_note(archive_text)
+        if old:
+            head.append(old)
         return "\n".join(head)
     for header, trace in blocks[-2:]:
         if header is None:
@@ -162,6 +177,9 @@ def crash_summary(text: str, modified: Optional[float] = None) -> str:
         head.extend(trace[:CRASH_BLOCK_LINES])
         if len(trace) > CRASH_BLOCK_LINES:
             head.append(f"... ({len(trace) - CRASH_BLOCK_LINES} more lines)")
+    old = archive_note(archive_text)
+    if old:
+        head.append(f"\n{old}")
     return "\n".join(head)
 
 
@@ -408,8 +426,13 @@ def build_report(log_lines: int = LOG_LINES) -> str:
         modified = logs.crash_path().stat().st_mtime
     except OSError:
         crash_text, modified = "", None
+    try:
+        archive_text = logs.crash_archive_path().read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        archive_text = ""
     parts.append(_section(f"Native crash log ({logs.crash_path()})",
-                          crash_summary(crash_text, modified) if crash_text else "(file not found: no crash has been recorded)"))
+                          crash_summary(crash_text, modified, archive_text) if crash_text
+                          else ("(file not found: no crash has been recorded)" + ("\n" + archive_note(archive_text) if archive_text else ""))))
     return "\n".join(parts)
 
 

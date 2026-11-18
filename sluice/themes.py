@@ -305,7 +305,7 @@ QPushButton#limiter:focus { border-color: $focus; }
 QPushButton#link { padding: 0; border-radius: 8px; background: $surface2; border: 1px solid $border2; }
 QPushButton#link:checked { background: $accent_bg; border-color: $accent; }
 QPushButton#link:focus { border: 1px solid $focus; }
-QPushButton#micmute { padding: 0; border-radius: 8px; background: transparent; border: 2px solid transparent; }
+QPushButton#micmute { padding: 0; border-radius: 8px; background: transparent; border: 2px solid transparent; min-height: 0; min-width: 0; }
 QPushButton#micmute:checked { background: $mute_bg; border-color: transparent; }
 QPushButton#micmute:focus { border-color: $focus; }
 QPushButton#iconbutton:focus { border: 1px solid $focus; }

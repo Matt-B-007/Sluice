@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import math
 from functools import lru_cache
+from pathlib import Path
+from typing import Optional
 
 from PySide6.QtCore import QPointF, QRectF, QSize, Qt
 from PySide6.QtGui import QColor, QIcon, QIconEngine, QPainter, QPainterPath, QPen, QPixmap
@@ -270,54 +272,52 @@ _TRAY_SIZES = (16, 22, 24, 32, 48, 64)
 
 
 @lru_cache(maxsize=32)
-def tray_pixmap(state: str, px: int) -> QPixmap:
-    """The logo for the system tray: plain, lit up while you talk (a teal ring and the gate handle in teal), or with a red badge while
-    your microphone is muted. Drawn at the exact pixel size so it stays sharp in the tray."""
-    from PySide6.QtSvg import QSvgRenderer
-
+def _logo_svg(ring: Optional[str] = None) -> Optional[bytes]:
+    """The bundled logo as SVG text, optionally with the ring in another colour (None if the file is missing)."""
     from .desktop import bundled_icon
+
+    try:
+        text = Path(bundled_icon()).read_text(encoding="utf-8")
+    except OSError:
+        return None
+    return (text.replace(RING_COLOUR, ring) if ring else text).encode("utf-8")
+
+
+RING_COLOUR = "#0d9488"   # the teal of the logo's ring
+TALKING_RING = "#4fb5aa"  # the ring colour about 35% lighter, for the closed ring while you talk
+MUTED_RED = "#ef4444"
+
+
+def tray_pixmap(state: str, px: int) -> QPixmap:
+    """The logo for the system tray, on a transparent background like the logo itself: plain; while you talk the ring closes
+    and gets heavier and lighter; while your microphone is muted the whole logo fades, the ring turns red, and a red badge
+    sits in the corner. Drawn at the exact pixel size so it stays sharp in the tray."""
+    from PySide6.QtSvg import QSvgRenderer
 
     pixmap = QPixmap(px, px)
     pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     k = px / 128.0
-    renderer = QSvgRenderer(str(bundled_icon()))
-    if renderer.isValid():
-        renderer.render(painter, QRectF(0, 0, px, px))
-    else:  # the picture is missing: a plain teal tile is better than nothing
-        painter.setBrush(QColor("#1c2430"))
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawRoundedRect(QRectF(0, 0, px, px), 30 * k, 30 * k)
+    ring = {"muted": MUTED_RED, "talking": TALKING_RING}.get(state)
+    renderer = QSvgRenderer(_logo_svg(ring) or b"")
     if state == "talking":
-        # The ring closes and glows: its two gaps fill in, it gets heavier and brighter, and the tile gets a teal edge.
-        lit = QColor("#5ff5dc")
         painter.setBrush(Qt.BrushStyle.NoBrush)
-        edge = QPen(QColor("#2ee6c5"), max(1.5, 5 * k))
-        painter.setPen(edge)
-        inset = edge.widthF() / 2
-        painter.drawRoundedRect(QRectF(inset, inset, px - 2 * inset, px - 2 * inset), 30 * k - inset, 30 * k - inset)
-        ring = QPen(lit, max(1.5, 9 * k))
-        painter.setPen(ring)
-        painter.drawEllipse(QPointF(64 * k, 64 * k), 38 * k, 38 * k)
-    elif state == "muted":
-        # The ring turns red where it was teal, and a red badge with a white bar sits in the corner the ring leaves free.
-        red = QColor("#ef4444")
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.setPen(QPen(red, max(1.5, 6 * k)))
-        rect = QRectF(26 * k, 26 * k, 76 * k, 76 * k)  # the ring's circle: centre (64, 64), radius 38
-        for start in (207, 27):  # the two arcs of the logo's ring, 144 degrees each, clockwise
-            arc = QPainterPath()
-            arc.arcMoveTo(rect, start)
-            arc.arcTo(rect, start, -144)
-            painter.drawPath(arc)
-        centre, radius = QPointF(100 * k, 100 * k), 24 * k
-        painter.setPen(QPen(QColor("#10131a"), max(1.0, 4 * k)))  # a dark rim so the badge stands out on any tray
-        painter.setBrush(red)
-        painter.drawEllipse(centre, radius, radius)
+        painter.setPen(QPen(QColor(TALKING_RING), max(1.5, 10 * k)))
+        painter.drawEllipse(QPointF(64 * k, 64 * k), 38 * k, 38 * k)   # the two gaps fill in: a closed ring
+    if state == "muted":
+        painter.setOpacity(0.45)
+    if renderer.isValid():
+        renderer.render(painter, QRectF(0, 0, px, px))   # the logo (for "talking" with the ring in the lighter colour)
+    painter.setOpacity(1.0)
+    if state == "muted":
+        centre = QPointF(98 * k, 98 * k)
+        painter.setPen(QPen(QColor("#10131a"), max(1.0, 4 * k)))   # a dark rim so the badge stands out on any tray
+        painter.setBrush(QColor(MUTED_RED))
+        painter.drawEllipse(centre, 30 * k, 30 * k)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor("#ffffff"))
-        painter.drawRoundedRect(QRectF(centre.x() - 12 * k, centre.y() - 3.5 * k, 24 * k, 7 * k), 3.5 * k, 3.5 * k)
+        painter.drawRoundedRect(QRectF(centre.x() - 15 * k, centre.y() - 4.5 * k, 30 * k, 9 * k), 4.5 * k, 4.5 * k)
     painter.end()
     return pixmap
 

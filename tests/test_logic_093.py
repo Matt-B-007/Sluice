@@ -88,7 +88,7 @@ def test_a_trace_before_any_session_line_says_its_time_is_unknown():
 
 def test_a_file_with_only_session_lines_means_no_crash():
     out = report.crash_summary("--- sluice session started 2026-11-09 19:50:10 (pid 7) ---\n--- sluice session started 2026-11-09 20:00:00 (pid 8) ---\n")
-    assert "No native crash recorded (2 session(s)" in out
+    assert "No native crash in the last 2 session(s)" in out
 
 
 def test_only_the_last_two_traces_are_shown_and_long_ones_are_cut():

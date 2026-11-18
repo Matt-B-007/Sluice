@@ -225,10 +225,26 @@ def test_the_tray_states_look_different_and_say_what_they_mean(qapp):
 
     idle, talking, muted = (tray_pixmap(s, 32) for s in ("idle", "talking", "muted"))
     assert idle.toImage() != talking.toImage() and idle.toImage() != muted.toImage() and talking.toImage() != muted.toImage()
-    bright_teal = lambda c: c.alpha() > 200 and c.green() > 220 and c.blue() > 200 and c.red() < 130  # noqa: E731
-    red = lambda c: c.alpha() > 200 and c.red() > 200 and c.green() < 110 and c.blue() < 110  # noqa: E731
-    assert _count(talking, bright_teal) > 3 * max(1, _count(idle, bright_teal))  # the closed, brighter ring
+    light_ring = lambda c: c.alpha() > 200 and abs(c.red() - 0x4f) < 25 and abs(c.green() - 0xb5) < 25 and abs(c.blue() - 0xaa) < 25  # noqa: E731
+    red = lambda c: c.alpha() > 200 and c.red() > 200 and c.green() < 82 and c.blue() < 82  # noqa: E731  (the coral S is not this red)
+    assert _count(talking, light_ring) > 3 * max(1, _count(idle, light_ring))  # the closed, lighter ring
     assert _count(muted, red) > 20 and _count(idle, red) == 0 and _count(talking, red) == 0
+    assert idle.toImage().pixelColor(0, 0).alpha() == 0 and muted.toImage().pixelColor(0, 0).alpha() == 0  # no tile behind the logo
+    solid = lambda c: c.alpha() > 200  # noqa: E731
+    assert _count(muted, solid) < _count(idle, solid) + 150  # the logo itself is faded; only the badge is solid
+
+
+def test_the_logo_is_transparent_with_the_teal_ring_and_coral_s(qapp):
+    from pathlib import Path
+
+    from PySide6.QtGui import QImage
+
+    data = Path(__import__("sluice").__file__).parent / "data"
+    svg = (data / "sluice.svg").read_text()
+    assert "<rect" not in svg and "#0d9488" in svg and "#f0603f" in svg
+    for size in (16, 128, 512):
+        image = QImage(str(data / "png" / f"sluice-{size}.png"))
+        assert image.pixelColor(0, 0).alpha() == 0  # transparent corner
 
 
 def test_every_logo_size_exists_and_matches_the_svg(qapp):
@@ -238,7 +254,7 @@ def test_every_logo_size_exists_and_matches_the_svg(qapp):
 
     data = Path(__import__("sluice").__file__).parent / "data"
     svg = (data / "sluice.svg").read_text()
-    assert "<title>Sluice</title>" in svg and "#2ee6c5" in svg and "Inter Bold" in svg
+    assert "<title>Sluice</title>" in svg and "#0d9488" in svg and "Inter Bold" in svg
     for size in (16, 24, 32, 48, 64, 128, 256, 512):
         image = QImage(str(data / "png" / f"sluice-{size}.png"))
         assert (image.width(), image.height()) == (size, size)
@@ -288,3 +304,151 @@ def test_the_audio_thread_is_found_by_the_graph_that_runs_on_it():
     worker.start()
     worker.join()
     assert graph.audio_thread_id == ids[0] != threading.get_native_id()
+
+
+def test_cpu_used_before_a_restart_in_the_same_process_is_not_counted():
+    """Sluice restarts itself in the same process after an update, and the system keeps counting CPU (and the main thread) across that:
+    the split of a run must start from zero, as the 0.10.3 report did not (it showed 29 minutes for a 19 minute run)."""
+    import time as _t
+
+    from sluice import efficiency
+
+    end = _t.process_time() + 0.4
+    while _t.process_time() < end:  # CPU the "program before the restart" used
+        pass
+    tracker = efficiency.Tracker()
+    data = tracker.snapshot()
+    assert sum(data["cpu_split"].values()) < 0.25, data["cpu_split"]
+    window = [g for g in data["thread_groups"] if g["name"].startswith("window")][0]
+    assert window["cpu_seconds"] < 0.25
+    assert data["process_seconds"] < 5  # this run, not the age of the process
+
+
+def test_the_hidden_window_flag_does_not_blame_the_audio_work():
+    """The effects on a microphone run the same with the window hidden. In the 0.10.3 report 1.8 of the 2.4 percent of a core measured
+    while hidden was the audio callback, and the 'should be close to idle' note blamed the program for it."""
+    from sluice import efficiency
+
+    def data(audio):
+        return {"seconds": 960.0, "cpu_seconds": 23.0, "by_state": {"tray": {"seconds": 960.0, "cpu_seconds": 23.0, "meter_updates": 4800,
+                                                                          "audio_cpu_seconds": audio}}}
+
+    assert not [n for n in efficiency.flags(data(17.5)) if "hidden" in n]  # 2.4% of a core, 1.8% of it audio
+    flagged = [n for n in efficiency.flags(data(2.0)) if "hidden" in n]  # the rest alone is over the limit
+    assert flagged and "not counting the audio work" in flagged[0]
+    text = efficiency.format_section({**data(17.5), "process_seconds": 960.0, "rss_mb": 100.0, "threads": 10})
+    assert "audio callback 1.82%, the rest 0.57%" in text
+
+
+def test_every_menu_item_has_its_own_alt_key_letter(qapp, tmp_path):
+    """Two items with the same underlined letter make the Alt key cycle instead of choosing: 0.10.3 had four such menus."""
+    import re
+
+    from sluice import themes
+    from sluice.audio_io import NullIO
+    from sluice.backend import MockSystem
+    from sluice.engine import Engine
+    from sluice.linker import NullLinker
+    from sluice.model import Mixer
+    from sluice.ui import MainWindow
+
+    mixer = Mixer.demo()
+    mixer.recording_mix = True  # the third mix adds a "Mute Recording" item
+    engine = Engine(mixer, MockSystem(), NullIO(realtime=False), NullLinker())
+    engine.start()
+    win = MainWindow(engine, config_file=tmp_path / "config.json")
+    problems = []
+
+    def check(menu, path):
+        letters = {}
+        for action in menu.actions():
+            if action.isSeparator() or not action.text():
+                continue
+            found = re.search(r"&(.)", action.text())
+            name = action.text().replace("&", "")
+            if not found:
+                if not path.endswith(("Running in the background", "Audio buffer")):  # lists of choices: reached by arrow keys
+                    problems.append(f"{path} > {name}: no Alt-key letter")
+            else:
+                letters.setdefault(found.group(1).lower(), []).append(name)
+            if action.menu() is not None and name not in ("Theme", "Restore earlier settings"):  # those two are filled in when opened
+                check(action.menu(), f"{path} > {name}")
+        problems.extend(f"{path}: {key.upper()} is used by {names}" for key, names in letters.items() if len(names) > 1)
+
+    try:
+        for top in win.menuBar().actions():
+            if top.menu().title() == "":
+                continue
+            check(top.menu(), top.text().replace("&", ""))
+        assert not problems, problems
+    finally:
+        win.shutdown()
+        themes.set_current(themes.DARK)
+
+
+# ------------------------------------------------------------------ crash log rotation and maths libraries (0.10.4)
+def _crash_file(tmp_path, monkeypatch, sessions, trace_in=()):
+    """A crash.log with ``sessions`` session headers; sessions listed in ``trace_in`` (0 = oldest) have a trace."""
+    from sluice import logs
+
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+    (tmp_path / "sluice").mkdir(exist_ok=True)
+    lines = []
+    for i in range(sessions):
+        lines.append(f"--- sluice session started 2026-11-{i + 1:02d} 10:00:00 (pid {100 + i}, Sluice 0.10.{i % 3}) ---")
+        if i in trace_in:
+            lines += ["Fatal Python error: Aborted", f"Thread 0x{i:04x} (most recent call first):", "  File x.py, line 1 in f"]
+    logs.crash_path().write_text("\n".join(lines) + "\n")
+    return logs
+
+
+def test_old_crash_traces_move_to_the_archive_with_their_version(tmp_path, monkeypatch):
+    logs = _crash_file(tmp_path, monkeypatch, 15, trace_in=(1, 3, 14))
+    assert logs.rotate_crash_log(10) == 2   # the traces of sessions 1 and 3 are older than the last 10
+    kept = logs.crash_path().read_text()
+    assert kept.count("--- sluice session started") == 10 and "Thread 0x000e" in kept and "Thread 0x0001" not in kept
+    archive = logs.crash_archive_path().read_text()
+    assert "Thread 0x0001" in archive and "Thread 0x0003" in archive
+    assert "(Sluice 0.10.1)" in archive and "(Sluice 0.10.0)" in archive and "started 2026-11-02" in archive
+    assert logs.rotate_crash_log(10) == 0   # nothing more to move the second time
+
+
+def test_the_report_shows_one_calm_line_when_only_old_traces_remain(tmp_path, monkeypatch):
+    from sluice import report
+
+    logs = _crash_file(tmp_path, monkeypatch, 15, trace_in=(1, 3))
+    logs.rotate_crash_log(10)
+    text = report.crash_summary(logs.crash_path().read_text(), None, logs.crash_archive_path().read_text())
+    assert "No native crash in the last 10 session(s)." in text
+    assert "started 2026-11-04" in text and "Sluice 0.10.0" in text and "crash-archive.log" in text
+    assert "Fatal Python error" not in text   # the old trace itself is not in the report
+
+
+def test_a_new_crash_still_shows_in_full(tmp_path, monkeypatch):
+    from sluice import report
+
+    logs = _crash_file(tmp_path, monkeypatch, 15, trace_in=(1, 14))
+    logs.rotate_crash_log(10)
+    text = report.crash_summary(logs.crash_path().read_text(), None, logs.crash_archive_path().read_text())
+    assert "Fatal Python error: Aborted" in text and "Thread 0x000e" in text and "No native crash" not in text
+    assert "crash-archive.log" in text   # and the archive is still mentioned
+
+
+def test_the_crash_file_is_shortened_in_place_so_a_running_writer_keeps_working(tmp_path, monkeypatch):
+    logs = _crash_file(tmp_path, monkeypatch, 15, trace_in=(1,))
+    inode = logs.crash_path().stat().st_ino
+    logs.rotate_crash_log(10)
+    assert logs.crash_path().stat().st_ino == inode
+
+
+def test_loaded_maths_libraries_are_named_in_the_report():
+    from sluice import efficiency
+
+    maps = ("7f00 r-xp 0 00:00 0 /usr/lib/libopenblas.so.0\n7f01 r-xp 0 00:00 0 /usr/lib/libgomp.so.1\n"
+            "7f02 r--p 0 00:00 0 /usr/lib/libc.so.6\n7f03 r--p 0 00:00 0\n")
+    found = efficiency.math_libraries(maps)
+    assert any("OpenBLAS" in f and "libopenblas.so.0" in f for f in found) and any("OpenMP" in f for f in found)
+    assert len(found) == 2 and efficiency.math_libraries("") == []
+    text = efficiency.format_section({"seconds": 100.0, "math_libraries": found, "processor_threads": 32})
+    assert "Maths libraries loaded" in text and "32 processor threads" in text and "OPENBLAS_NUM_THREADS=1" in text
+    assert "none found" in efficiency.format_section({"seconds": 100.0, "math_libraries": []})

@@ -15,11 +15,16 @@ An open-source virtual audio mixer for Linux (PipeWire). Put your mic, games, mu
 > and use the Sluice support forum. Please do not post the `sluice --report` file there: it contains device and app
 > names, so offer it in a private ticket instead.
 
-## What's new in 0.10.3
+## What's new in 0.10.4
 
-A new logo (an upright S in a teal ring), menus put in order (Theme under *View*, Open folder under *File*, and the update items together
-under *Settings*), a bug report that shows where the CPU goes and names the threads, and a fix that keeps a rare PulseAudio crash from
-coming back. 0.10.2 and 0.10.1 are below.
+The finished logo (a deep teal ring and a coral S on a transparent background) with tray icons to match, a *Mute my microphone* button that is
+no longer cut off, an Alt-key letter of its own for every menu item, and a quieter bug report (old crash traces move to an archive, the
+maths libraries in use are listed, and the CPU numbers are fairer after an update). 0.10.3 and earlier are below.
+
+**Added in 0.10.3:**
+
+A new logo, menus put in order (Theme under *View*, Open folder under *File*, and the update items together under *Settings*), a bug report
+that shows where the CPU goes and names the threads, and a fix that keeps a rare PulseAudio crash from coming back.
 
 **Added in 0.10.2:**
 
@@ -230,9 +235,9 @@ minimizing* the window hides it there, and a click on the icon shows or hides th
 brings the window back. *File > Quit* (Ctrl+Q) always quits. If your desktop has no system tray (some GNOME setups need an
 extension for it), the menu says so and Sluice minimizes to the taskbar instead, so the window can never get lost. The tray was tested with a simulated tray only, not on a real KDE or GNOME desktop.
 
-**The tray icon shows what is going on.** It is the Sluice logo; while you talk the gate handle and the edge light up teal
-(it follows your microphone after its effects, so a closed Noise Gate stays dark), and while your microphone is muted it has
-a red badge. A right-click offers *Show/Hide Sluice*, *Mute my microphone*, *Mute Listen*, *Mute Broadcast*, *Hear
+**The tray icon shows what is going on.** It is the Sluice logo; while you talk its ring closes in a lighter teal
+(it follows your microphone after its effects, so a closed Noise Gate stays dark), and while your microphone is muted the logo fades, its ring turns red and a
+red badge appears. A right-click offers *Show/Hide Sluice*, *Mute my microphone*, *Mute Listen*, *Mute Broadcast*, *Hear
 Broadcast* and *Quit*; the tick marks always match the real state.
 
 **The first time you close the window** (and only if your desktop has a system tray and you have not chosen yet) Sluice asks

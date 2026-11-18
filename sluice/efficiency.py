@@ -94,10 +94,11 @@ def _group_name(name: str) -> str:
     return name
 
 
-def thread_table(audio_thread: Optional[int] = None) -> list:
+def thread_table(audio_thread: Optional[int] = None, main_thread_before: float = 0.0) -> list:
     """[(group name, thread count, cpu seconds, is the window's thread, is the audio thread)] for every thread of this process, biggest
     CPU first. Python threads are named by their ``threading`` name, the rest by the name the system gives them (the libraries that start
-    them, such as OpenBLAS or Qt, name their own). The CPU of a thread that has already ended is not in here: see ``cpu_split``."""
+    them, such as OpenBLAS or Qt, name their own). The CPU of a thread that has already ended is not in here: see ``cpu_split``.
+    ``main_thread_before`` is what the window's thread had used before this run began (it carries over a restart in the same process)."""
     names = {}
     try:
         for t in threading.enumerate():
@@ -128,8 +129,23 @@ def thread_table(audio_thread: Optional[int] = None) -> list:
             label = _group_name(names.get(tid) or comm)
         entry = groups.setdefault(label, [0, 0.0, gui, audio])
         entry[0] += 1
-        entry[1] += cpu
+        entry[1] += max(0.0, cpu - main_thread_before) if gui else cpu
     return sorted(((n, c, cpu, g, a) for n, (c, cpu, g, a) in groups.items()), key=lambda r: (-r[2], r[0]))
+
+
+def _main_thread_cpu() -> float:
+    """CPU seconds of the window's (main) thread so far; it is the one thread that survives Sluice restarting itself."""
+    return _thread_cpu(os.getpid())
+
+
+def _thread_cpu(tid: int) -> float:
+    """CPU seconds one thread of this process has used so far (0 when it is gone)."""
+    try:
+        raw = Path(f"/proc/self/task/{tid}/stat").read_text(encoding="utf-8")
+        rest = raw[raw.rindex(")") + 2:].split()
+        return (int(rest[11]) + int(rest[12])) / _CLOCK_TICKS
+    except (OSError, ValueError, IndexError):
+        return 0.0
 
 
 def _process_age() -> Optional[float]:
@@ -142,7 +158,7 @@ def _process_age() -> Optional[float]:
 
 
 def cpu_split(table: list, helper_cpu: float, total_cpu: Optional[float] = None) -> dict:
-    """Where Sluice's CPU went since the process started: the window, the audio callback, every other thread, helper programs, and what
+    """Where Sluice's CPU went during this run: the window, the audio callback, every other thread, helper programs, and what
     threads that have already ended used (the difference to the process total)."""
     t = os.times()
     own = (t.user + t.system) if total_cpu is None else total_cpu
@@ -165,10 +181,19 @@ class Tracker:
         self.helper_cpu_start = _helper_cpu_seconds()
         with _helpers_lock:
             self.helpers_start = (_helpers["launches"], _helpers["seconds"])
+        # Sluice restarts itself in the same process after an update (the process id and its start time stay), and the system keeps counting
+        # CPU across that. These starting values leave out everything the program before the restart used.
+        times = os.times()
+        self.base_total_cpu = times.user + times.system
+        self.base_helper_cpu = times.children_user + times.children_system
+        self.base_main_cpu = _main_thread_cpu()
         self.state = "open"
         self.seconds = {s: 0.0 for s in STATES}
         self.cpu = {s: 0.0 for s in STATES}
         self.ticks = {s: 0 for s in STATES}  # meter updates
+        self.audio_cpu = {s: 0.0 for s in STATES}  # of the CPU above, what the audio callback thread used (the work being asked for)
+        self.audio_cpu_last = 0.0
+        self.audio_read_at = 0.0
         self.rss_baseline: Optional[float] = None
         self.last_written = 0.0
         self.engine = None
@@ -178,15 +203,21 @@ class Tracker:
         """The window was shown, hidden or minimized: time and CPU up to now belong to the old state."""
         if state not in STATES or state == self.state:
             return
-        self.sample(now)
+        self.sample(now, state_changed=True)  # reads the audio thread's CPU too, so it is counted under the state it was used in
         self.state = state
 
-    def sample(self, now: Optional[float] = None) -> None:
+    def sample(self, now: Optional[float] = None, state_changed: bool = False) -> None:
         now = time.monotonic() if now is None else now
         cpu = _cpu_seconds()
         self.seconds[self.state] += max(0.0, now - self.last)
         self.cpu[self.state] += max(0.0, cpu - self.cpu_last)
         self.last, self.cpu_last = now, cpu
+        tid = getattr(getattr(self.engine, "graph", None), "audio_thread_id", None)
+        if tid and (now - self.audio_read_at >= 1.0 or state_changed):
+            self.audio_read_at = now
+            used = _thread_cpu(tid)
+            self.audio_cpu[self.state] += max(0.0, used - self.audio_cpu_last)
+            self.audio_cpu_last = used
         if self.rss_baseline is None and now - self.started >= BASELINE_SECONDS:
             self.rss_baseline = _status("VmRSS")
 
@@ -203,7 +234,8 @@ class Tracker:
             "taken": time.time(),
             "seconds": round(total, 1),
             "state": self.state,
-            "by_state": {s: {"seconds": round(self.seconds[s], 1), "cpu_seconds": round(self.cpu[s], 2), "meter_updates": self.ticks[s]}
+            "by_state": {s: {"seconds": round(self.seconds[s], 1), "cpu_seconds": round(self.cpu[s], 2), "meter_updates": self.ticks[s],
+                             "audio_cpu_seconds": round(self.audio_cpu[s], 2)}
                          for s in STATES},
             "cpu_seconds": round(sum(self.cpu.values()), 2),
             "rss_mb": _mb(_status("VmRSS")),
@@ -212,12 +244,15 @@ class Tracker:
             "threads": _status("Threads"),
             "helper_cpu_seconds": round(max(0.0, _helper_cpu_seconds() - self.helper_cpu_start), 3),
         }
-        table = thread_table(getattr(getattr(engine, "graph", None), "audio_thread_id", None))
+        table = thread_table(getattr(getattr(engine, "graph", None), "audio_thread_id", None), main_thread_before=self.base_main_cpu)
         data["thread_groups"] = [{"name": n, "count": c, "cpu_seconds": round(cpu, 2)} for n, c, cpu, _g, _a in table[:25]]
         data["thread_groups_more"] = max(0, len(table) - 25)
+        data["math_libraries"] = math_libraries()
+        data["processor_threads"] = os.cpu_count()
         t = os.times()
-        data["cpu_split"] = cpu_split(table, t.children_user + t.children_system, t.user + t.system)
-        data["process_seconds"] = round(_process_age() or 0.0, 1)
+        data["cpu_split"] = cpu_split(table, t.children_user + t.children_system - self.base_helper_cpu,
+                                      t.user + t.system - self.base_total_cpu)
+        data["process_seconds"] = round(max(0.0, time.monotonic() - self.started), 1)
         try:
             from . import backend
 
@@ -279,7 +314,7 @@ def _engine_facts(engine) -> dict:
         "live_voice_display": bool(getattr(engine, "tap_open", False)),
         "buffer_frames": int(getattr(engine.io, "blocksize", 0) or 0),
         "sample_rate": int(getattr(engine.io, "sample_rate", 0) or 0),
-        "dsp": f"{dsp.MIX_BACKEND}" + (f" (sluice_dsp {spectral.RUST_VERSION})" if spectral.RUST_VERSION else ""),
+        "dsp": f"{dsp.MIX_BACKEND}" + (f" (Rust engine version {spectral.RUST_VERSION}, numbered apart from Sluice)" if spectral.RUST_VERSION else ""),
         "audio_client": type(engine.io).__name__,
     }
 
@@ -315,8 +350,13 @@ def flags(data: dict) -> list:
     if cpu.get("open") is not None and seconds("open") >= MIN_SECONDS and cpu["open"] > FLAG_CPU_OPEN:
         notes.append(f"{cpu['open']:.1f}% of a core while the window was open: more than expected.")
     for state in ("tray", "background"):
-        if cpu.get(state) is not None and seconds(state) >= MIN_SECONDS and cpu[state] > FLAG_CPU_HIDDEN:
-            notes.append(f"{cpu[state]:.1f}% of a core while the window was hidden ({state}): it should be close to idle.")
+        # The audio work (the effects on your microphone, the mixing) is what Sluice is there to do: it runs the same with the window
+        # hidden. Only the rest, which is what hiding the window should have removed, is held against the program.
+        rest = _percent(max(0.0, by_state.get(state, {}).get("cpu_seconds", 0.0) - by_state.get(state, {}).get("audio_cpu_seconds", 0.0)),
+                        by_state.get(state, {}).get("seconds", 0.0))
+        if rest is not None and seconds(state) >= MIN_SECONDS and rest > FLAG_CPU_HIDDEN:
+            notes.append(f"{rest:.1f}% of a core while the window was hidden ({state}), not counting the audio work: "
+                         "it should be close to idle.")
         ticks = by_state.get(state, {}).get("meter_updates", 0)
         if seconds(state) >= MIN_SECONDS and ticks / seconds(state) > FLAG_WAKEUPS_HIDDEN:
             notes.append(f"{ticks / seconds(state):.0f} meter updates a second while the window was hidden: nobody could see them.")
@@ -368,6 +408,29 @@ def _duration(seconds: float) -> str:
     return f"{seconds / 3600:.1f} h"
 
 
+_MATH_LIBRARIES = (("OpenBLAS", re.compile(r"libopenblas|libscipy_openblas")), ("Intel MKL", re.compile(r"libmkl_")),
+                   ("BLIS", re.compile(r"libblis")), ("ATLAS", re.compile(r"libatlas")),
+                   ("OpenMP (GNU)", re.compile(r"libgomp")), ("OpenMP (LLVM)", re.compile(r"libomp|libiomp")),
+                   ("FFTW", re.compile(r"libfftw3")))
+
+
+def math_libraries(maps_text: Optional[str] = None) -> list:
+    """The maths libraries loaded into this process, by name. They start worker threads of their own (OpenBLAS starts one
+    per processor thread), which explains a crowd of threads named ``python``. Reads /proc/self/maps unless given text."""
+    if maps_text is None:
+        try:
+            maps_text = Path("/proc/self/maps").read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return []
+    paths = {line.split(None, 5)[5].strip() for line in maps_text.splitlines() if len(line.split(None, 5)) == 6}
+    found = []
+    for name, pattern in _MATH_LIBRARIES:
+        files = sorted({os.path.basename(p) for p in paths if pattern.search(os.path.basename(p))})
+        if files:
+            found.append(f"{name} ({', '.join(files)})")
+    return found
+
+
 def format_section(data: Optional[dict], source: str = "") -> str:
     """The report's section as text."""
     if not data:
@@ -384,8 +447,10 @@ def format_section(data: Optional[dict], source: str = "") -> str:
             continue
         value = cpu.get(state)
         rate = values.get("meter_updates", 0) / values["seconds"]
+        audio = _percent(values.get("audio_cpu_seconds", 0.0), values["seconds"])
+        part = f"   (audio callback {audio:.2f}%, the rest {max(0.0, (value or 0.0) - audio):.2f}%)" if audio is not None and value is not None else ""
         lines.append(f"  {names[state]:<20} {_duration(values['seconds']):>8}   "
-                     f"{'-' if value is None else format(value, '.2f') + '%':>8}   {rate:.1f} meter updates/s")
+                     f"{'-' if value is None else format(value, '.2f') + '%':>8}   {rate:.1f} meter updates/s{part}")
     if cpu.get("all") is not None:
         lines.append(f"  {'all together':<20} {_duration(data.get('seconds', 0.0)):>8}   {cpu['all']:.2f}%")
         if "helper_launches" in data:
@@ -407,7 +472,7 @@ def format_section(data: Optional[dict], source: str = "") -> str:
         age = data.get("process_seconds") or data.get("seconds", 0.0)
         total = sum(split.values()) or 0.0
         lines.append("")
-        lines.append(f"Where the CPU went (since the process started, {_duration(age)}; a percent of ONE core)")
+        lines.append(f"Where the CPU went (since this run of Sluice started, {_duration(age)}; a percent of ONE core)")
         names = (("window", "window and engine timers (main thread)"), ("audio", "audio callback"),
                  ("other_threads", "all other threads"), ("ended_threads", "threads that have ended"),
                  ("helpers", "helper programs (pw-link)"))
@@ -424,6 +489,12 @@ def format_section(data: Optional[dict], source: str = "") -> str:
             lines.append(f"  {g['count']:>3} x {g['name']:<46} {g['cpu_seconds']:7.1f} s")
         if data.get("thread_groups_more"):
             lines.append(f"  ... and {data['thread_groups_more']} more groups")
+    if "math_libraries" in data:
+        libs = data["math_libraries"]
+        lines.append("")
+        lines.append(f"Maths libraries loaded (they start worker threads of their own; this computer has {data.get('processor_threads') or '?'} processor threads)")
+        lines.append("  " + ("; ".join(libs) if libs else "none found") +
+                     ("\n  To test whether they cost anything, start Sluice with: OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 sluice" if libs else ""))
     recent = data.get("pulse_recent")
     if recent:
         lines.append("")

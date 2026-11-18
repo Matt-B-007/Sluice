@@ -51,7 +51,7 @@ class MenusMixin:
         # Mixer: what you do while mixing.
         mixer_menu = bar.addMenu("&Mixer")
         self._action(mixer_menu, "&Add channel\u2026", self.add_channel, "Ctrl+N")
-        self._action(mixer_menu, "&Refresh devices and apps", self.refresh_now, "F5")
+        self._action(mixer_menu, "Re&fresh devices and apps", self.refresh_now, "F5")
         mixer_menu.addSeparator()
         self.recording_action = self._action(mixer_menu, "&Recording mix (a third mix)", self.toggle_recording_mix, checkable=True)
         self._action(mixer_menu, "Recording &devices for OBS", self.show_own_devices)
@@ -59,9 +59,13 @@ class MenusMixin:
         self.mic_action = self._action(mixer_menu, "Mute my &microphone", self.toggle_mic_mute, "Ctrl+M", checkable=True)
         self.hear_action = self._action(mixer_menu, "&Hear Broadcast", self.toggle_hear_broadcast, "Ctrl+B", checkable=True)
         self.mute_actions = {}
+        used = {"a", "f", "r", "d", "m", "h"}  # the Alt-key letters the items above and below take
         for mix in self.engine.mixer.mixes:
             shortcut = {MONITOR: "Ctrl+Shift+L", STREAM: "Ctrl+Shift+B"}.get(mix.id, "")
-            self.mute_actions[mix.id] = self._action(mixer_menu, f"&Mute {mix.label}", partial(self.toggle_mix_mute, mix.id),
+            letter = next((c for c in mix.label if c.isalnum() and c.lower() not in used), "")  # first letter of the name nobody has yet
+            used.add(letter.lower())
+            text = f"Mute {mix.label.replace(letter, '&' + letter, 1)}" if letter else f"Mute {mix.label}"
+            self.mute_actions[mix.id] = self._action(mixer_menu, text, partial(self.toggle_mix_mute, mix.id),
                                                      shortcut, checkable=True)
         mixer_menu.aboutToShow.connect(self._refresh_mixer_menu)
 
@@ -81,13 +85,13 @@ class MenusMixin:
         self.theme_menu.aboutToShow.connect(self._fill_theme_menu)
         view_menu.addSeparator()
         self.fullscreen_action = self._action(view_menu, "&Full screen", self.toggle_fullscreen, "F11", checkable=True)
-        self._action(view_menu, "&Reset window size", self.reset_window_size)
+        self._action(view_menu, "Reset &window size", self.reset_window_size)
         view_menu.aboutToShow.connect(lambda: self.fullscreen_action.setChecked(self.isFullScreen()))
 
         # Settings: everything that is chosen once and then left alone, in four groups.
         self.settings_menu = settings_menu = bar.addMenu("&Settings")
         settings_menu.addSection("Startup")
-        background = settings_menu.addMenu("Running in the &background")
+        background = settings_menu.addMenu("&Running in the background")
         background.addSection("When I log in")
         group = QActionGroup(self)
         self.autostart_actions = {}
@@ -127,9 +131,9 @@ class MenusMixin:
         self.auto_update_action = self._action(settings_menu, "&Update automatically when a new version is found",
                                                self.toggle_auto_update, checkable=True)
         self._action(settings_menu, "&Check for updates\u2026", self.check_for_updates)
-        self.rollback_action = self._action(settings_menu, "Go &back to the previous version\u2026", self.rollback_update)
+        self.rollback_action = self._action(settings_menu, "&Go back to the previous version\u2026", self.rollback_update)
         settings_menu.addSeparator()
-        self._action(settings_menu, "&Reset all settings to the defaults\u2026", self.reset_settings)
+        self._action(settings_menu, "Reset all &settings to the defaults\u2026", self.reset_settings)
         settings_menu.aboutToShow.connect(self._refresh_settings_menu)
 
         # Help: how to use it, and where to go when something is wrong.

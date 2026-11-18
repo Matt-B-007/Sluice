@@ -97,14 +97,18 @@ class Toolbox:
         return cls  # the Rust classes take the same keyword names as pedalboard's
 
 
-def toolbox(pb):
-    native = None
-    if pb is not None and spectral.BACKEND == "rust" and not os.environ.get("SLUICE_NO_RUST_EFFECTS"):
+def _native_module():
+    """The Rust module that runs the built-in effects, or None when they run in pedalboard (Python)."""
+    if spectral.BACKEND == "rust" and not os.environ.get("SLUICE_NO_RUST_EFFECTS"):
         import sluice_dsp
 
         if hasattr(sluice_dsp, "Run"):
-            native = sluice_dsp
-    return Toolbox(pb, native)
+            return sluice_dsp
+    return None
+
+
+def toolbox(pb):
+    return Toolbox(pb, _native_module() if pb is not None else None)
 
 
 def is_native(item) -> bool:
@@ -664,4 +668,4 @@ def vst3_plugin_names(path: str) -> list:
 
 def native_backend() -> str:
     """"rust" when the built-in effects run in Rust, else "python" (pedalboard's own)."""
-    return "rust" if toolbox(object())._native is not None else "python"
+    return "rust" if _native_module() is not None else "python"

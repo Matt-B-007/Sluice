@@ -3,7 +3,8 @@
 
 * ``~/.local/state/sluice/sluice.log``  rotating log (512 KB, 3 old copies kept)
 * ``~/.local/state/sluice/crash.log``  Python traceback if sluice itself crashes natively
-  (for example inside a misbehaving VST3 plugin), written by ``faulthandler``
+  (for example inside a misbehaving VST3 plugin), written by ``faulthandler``; traces older than 10 sessions move
+  to ``crash-archive.log``
 
 Normal runs log at INFO; ``sluice --debug`` adds DEBUG (every link and command).
 Nothing from the audio thread is ever logged: that could cause dropouts.
@@ -23,6 +24,9 @@ from typing import Optional
 
 LOG_NAME = "sluice.log"
 CRASH_NAME = "crash.log"
+CRASH_ARCHIVE_NAME = "crash-archive.log"
+CRASH_KEEP_SESSIONS = 10   # traces from sessions older than this move to the archive
+CRASH_HEADERS = ("--- sluice session started", "--- sluice command started")
 RUNNING_NAME = "running"   # exists while a session is alive; its modified time is the last sign of life
 HEARTBEAT_SECONDS = 5.0
 MAX_BYTES = 512 * 1024
@@ -53,6 +57,72 @@ def short_path(path) -> str:
 
 def crash_path() -> Path:
     return state_dir() / CRASH_NAME
+
+
+def crash_archive_path() -> Path:
+    return state_dir() / CRASH_ARCHIVE_NAME
+
+
+def rotate_crash_log(keep: int = CRASH_KEEP_SESSIONS) -> int:
+    """Move the traces of sessions older than the last ``keep`` from crash.log to crash-archive.log. Returns how many
+    traces moved. Each archived trace gets a heading with the date and the Sluice version that wrote it, so the bug
+    report can show one calm line instead of an old crash that has long since been fixed.
+
+    The file is shortened in place (not replaced), so a process that still has it open keeps writing to the same file."""
+    path = crash_path()
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return 0
+    blocks: list = []   # [header or None, trace lines]
+    for line in lines:
+        if line.startswith(CRASH_HEADERS):
+            blocks.append([line, []])
+        elif line.strip():
+            if not blocks:
+                blocks.append([None, []])
+            blocks[-1][1].append(line)
+    headers = [b for b in blocks if b[0] is not None]
+    if len(headers) <= keep:
+        return 0
+    cutoff = len(headers) - keep   # how many session headers are too old
+    old: list = []
+    seen = 0
+    while blocks and (blocks[0][0] is None or seen < cutoff):
+        block = blocks.pop(0)
+        if block[0] is not None:
+            seen += 1
+        old.append(block)
+    moved = [b for b in old if b[1]]   # sessions with nothing recorded need no archive entry
+    try:
+        if moved:
+            with open(crash_archive_path(), "a", encoding="utf-8") as archive:
+                for header, trace in moved:
+                    archive.write(archive_heading(header) + "\n")
+                    archive.write("\n".join(trace) + "\n")
+        kept = []
+        for header, trace in blocks:
+            kept.append(header)
+            kept.extend(trace)
+        with open(path, "r+", encoding="utf-8") as handle:
+            handle.seek(0)
+            handle.write("\n".join(kept) + ("\n" if kept else ""))
+            handle.truncate()
+    except OSError:
+        return 0
+    return len(moved)
+
+
+def archive_heading(header: Optional[str]) -> str:
+    """The line that introduces an archived trace: ``--- archived trace: session started DATE (Sluice VERSION) ---``."""
+    import re
+
+    if header is None:
+        return "--- archived trace: time unknown (Sluice version unknown) ---"
+    kind = "command" if header.startswith(CRASH_HEADERS[1]) else "session"
+    started = header.replace(f"--- sluice {kind} started", "").split("(pid")[0].strip() or "time unknown"
+    found = re.search(r"Sluice ([\w.+-]+)\)", header)
+    return f"--- archived trace: {kind} started {started} (Sluice {found.group(1) if found else 'version unknown'}) ---"
 
 
 def running_path() -> Path:
@@ -227,9 +297,13 @@ def _enable_faulthandler(session: bool = True) -> None:
     try:
         if _fault_file is not None:
             _fault_file.close()
+        if session:
+            rotate_crash_log()   # only when a window starts: no other Sluice is running then
+        from . import __version__
+
         _fault_file = open(crash_path(), "a", encoding="utf-8")
         kind = "session" if session else "command"
-        _fault_file.write(f"--- sluice {kind} started {time.strftime('%Y-%m-%d %H:%M:%S')} (pid {os.getpid()}) ---\n")
+        _fault_file.write(f"--- sluice {kind} started {time.strftime('%Y-%m-%d %H:%M:%S')} (pid {os.getpid()}, Sluice {__version__}) ---\n")
         _fault_file.flush()
         faulthandler.enable(file=_fault_file, all_threads=True)
     except OSError:

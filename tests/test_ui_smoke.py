@@ -570,7 +570,7 @@ def test_add_channel_refresh_and_fullscreen_actions(ui, monkeypatch):
     monkeypatch.setattr(QInputDialog, "getText", staticmethod(lambda *a, **k: ("Extra", True)))
     next(a for a in _menu(win, "Mixer").actions() if a.text().startswith("&Add channel")).trigger()
     assert len(engine.mixer.channels) == before + 1 and len(win.strips) == before + 1
-    next(a for a in _menu(win, "Mixer").actions() if a.text().startswith("&Refresh")).trigger()
+    next(a for a in _menu(win, "Mixer").actions() if a.text().replace("&", "").startswith("Refresh")).trigger()
     assert "refreshed" in win.status_label.text()
     win.toggle_fullscreen()
     win.toggle_fullscreen()

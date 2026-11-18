@@ -421,7 +421,7 @@ def test_the_crash_log_says_when_each_session_started(tmp_path, monkeypatch):
         header = logs.crash_path().read_text().splitlines()[0]
     finally:
         logs.shutdown()
-    assert re.fullmatch(r"--- sluice session started \d{4}-\d\d-\d\d \d\d:\d\d:\d\d \(pid \d+\) ---", header), header
+    assert re.fullmatch(r"--- sluice session started \d{4}-\d\d-\d\d \d\d:\d\d:\d\d \(pid \d+, Sluice [\w.]+\) ---", header), header
 
 
 def test_a_third_mix_adds_no_surprises_to_the_status_text():

@@ -128,7 +128,7 @@ def _engine() -> tuple:
         parts["audio client"] = f"python ({type(exc).__name__}: {exc})"  # the Rust module is missing or broken: say why
     text = ", ".join(f"{k}: {v}" for k, v in parts.items())
     if spectral.RUST_VERSION:
-        text += f" (sluice_dsp {spectral.RUST_VERSION})"
+        text += f" (Rust engine version {spectral.RUST_VERSION}: numbered apart from Sluice, so it can be older)"
     elif spectral.RUST_ERROR:
         text += f" (the Rust build could not be used: {spectral.RUST_ERROR})"
     elif not os.environ.get("SLUICE_NO_RUST"):
