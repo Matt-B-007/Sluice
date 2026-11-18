@@ -452,3 +452,25 @@ def test_loaded_maths_libraries_are_named_in_the_report():
     text = efficiency.format_section({"seconds": 100.0, "math_libraries": found, "processor_threads": 32})
     assert "Maths libraries loaded" in text and "32 processor threads" in text and "OPENBLAS_NUM_THREADS=1" in text
     assert "none found" in efficiency.format_section({"seconds": 100.0, "math_libraries": []})
+
+
+def test_cpu_used_before_a_restart_is_not_counted_whichever_thread_the_program_runs_in():
+    """The window's thread is the main thread in the app, but the baseline must not depend on that (a test runner may use another)."""
+    import threading
+    import time as _t
+
+    from sluice import efficiency
+
+    result = {}
+
+    def work():
+        end = _t.process_time() + 0.4   # note: process time, so this counts whichever thread burns it
+        t0 = _t.thread_time()
+        while _t.thread_time() - t0 < 0.4 and _t.process_time() < end + 5:
+            pass
+        result["split"] = efficiency.Tracker().snapshot()["cpu_split"]
+
+    thread = threading.Thread(target=work)
+    thread.start()
+    thread.join()
+    assert sum(result["split"].values()) < 0.25, result["split"]

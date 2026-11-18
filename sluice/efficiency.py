@@ -94,11 +94,13 @@ def _group_name(name: str) -> str:
     return name
 
 
-def thread_table(audio_thread: Optional[int] = None, main_thread_before: float = 0.0) -> list:
+def thread_table(audio_thread: Optional[int] = None, main_thread_before: float = 0.0, before: Optional[dict] = None) -> list:
     """[(group name, thread count, cpu seconds, is the window's thread, is the audio thread)] for every thread of this process, biggest
     CPU first. Python threads are named by their ``threading`` name, the rest by the name the system gives them (the libraries that start
     them, such as OpenBLAS or Qt, name their own). The CPU of a thread that has already ended is not in here: see ``cpu_split``.
-    ``main_thread_before`` is what the window's thread had used before this run began (it carries over a restart in the same process)."""
+    ``main_thread_before`` is what the window's thread had used before this run began (it carries over a restart in the same process).
+    ``before`` is the same for any thread, by thread id: what each had used when this run began."""
+    before = before or {}
     names = {}
     try:
         for t in threading.enumerate():
@@ -129,13 +131,21 @@ def thread_table(audio_thread: Optional[int] = None, main_thread_before: float =
             label = _group_name(names.get(tid) or comm)
         entry = groups.setdefault(label, [0, 0.0, gui, audio])
         entry[0] += 1
-        entry[1] += max(0.0, cpu - main_thread_before) if gui else cpu
+        entry[1] += max(0.0, cpu - max(main_thread_before if gui else 0.0, before.get(tid, 0.0)))
     return sorted(((n, c, cpu, g, a) for n, (c, cpu, g, a) in groups.items()), key=lambda r: (-r[2], r[0]))
 
 
 def _main_thread_cpu() -> float:
     """CPU seconds of the window's (main) thread so far; it is the one thread that survives Sluice restarting itself."""
     return _thread_cpu(os.getpid())
+
+
+def _all_thread_cpu() -> dict:
+    """{thread id: CPU seconds so far} for every thread of this process."""
+    try:
+        return {int(x): _thread_cpu(int(x)) for x in os.listdir("/proc/self/task")}
+    except (OSError, ValueError):
+        return {}
 
 
 def _thread_cpu(tid: int) -> float:
@@ -187,6 +197,7 @@ class Tracker:
         self.base_total_cpu = times.user + times.system
         self.base_helper_cpu = times.children_user + times.children_system
         self.base_main_cpu = _main_thread_cpu()
+        self.base_thread_cpu = _all_thread_cpu()   # every thread alive now: whatever it used so far is not this run's
         self.state = "open"
         self.seconds = {s: 0.0 for s in STATES}
         self.cpu = {s: 0.0 for s in STATES}
@@ -244,7 +255,8 @@ class Tracker:
             "threads": _status("Threads"),
             "helper_cpu_seconds": round(max(0.0, _helper_cpu_seconds() - self.helper_cpu_start), 3),
         }
-        table = thread_table(getattr(getattr(engine, "graph", None), "audio_thread_id", None), main_thread_before=self.base_main_cpu)
+        table = thread_table(getattr(getattr(engine, "graph", None), "audio_thread_id", None), main_thread_before=self.base_main_cpu,
+                             before=self.base_thread_cpu)
         data["thread_groups"] = [{"name": n, "count": c, "cpu_seconds": round(cpu, 2)} for n, c, cpu, _g, _a in table[:25]]
         data["thread_groups_more"] = max(0, len(table) - 25)
         data["math_libraries"] = math_libraries()
