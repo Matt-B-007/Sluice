@@ -15,10 +15,20 @@ An open-source virtual audio mixer for Linux (PipeWire). Put your mic, games, mu
 > and use the Sluice support forum. Please do not post the `sluice --report` file there: it contains device and app
 > names, so offer it in a private ticket instead.
 
-## What's new in 0.10.5
+## What's new in 0.11.1
+
+A third look under **View > Look**: **Nexus**, a neon dark look with a pulsing ring for every channel, waveform faders, a **Free** layout of nodes you drag
+anywhere, and **View > Reduce effects** for slow computers. 0.11.0 and earlier are below.
+
+**Added in 0.11.0:**
+
+Two looks to choose from under **View > Look**: **Calm** (today's look) and **Original** (Sluice as it was in 0.9.7: menu bar, strips with a colour bar,
+text buttons, the old faders and meters), both with every current feature.
+
+**Added in 0.10.5:**
 
 Scroll the mouse wheel over a level number to change it (one notch is 1 dB, **Shift** for 0.1 dB), a larger tray icon, and logo files with the
-empty margin trimmed off. 0.10.4 and earlier are below.
+empty margin trimmed off.
 
 **Added in 0.10.4:**
 

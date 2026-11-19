@@ -420,16 +420,71 @@ def mix_colors(colors: dict) -> dict:
     return out
 
 
-@lru_cache(maxsize=8)
-def _style_for(items: tuple) -> str:
+LOOKS = {"calm": "Calm", "original": "Original", "nexus": "Nexus"}  # the Look setting: shapes, sizes and painting, apart from colour
+DEFAULT_LOOK = "calm"
+
+
+_look = DEFAULT_LOOK
+
+
+def set_look(look) -> None:
+    """Remember the look in use, for the widgets that draw or lay themselves out differently from one look to another."""
+    global _look
+    _look = valid_look(look)
+
+
+def current_look() -> str:
+    return _look
+
+
+_reduce = False
+
+
+def set_reduce_effects(on: bool) -> None:
+    """Nexus's "reduce effects": the rings stop shimmering and the faders show no waveform. Remembered here for the widgets that draw."""
+    global _reduce
+    _reduce = bool(on)
+
+
+def reduce_effects() -> bool:
+    return _reduce
+
+
+def look_colors(theme: "Theme", look: str) -> dict:
+    """The colours to show for a theme in a look. The Original look shows the built-in themes as they were in 0.9.7;
+    imported themes, and every other look, show the theme's own colours."""
+    if valid_look(look) == "nexus" and theme.id == "dark":  # Nexus has its own Dark; the other themes keep their colours
+        from .look_nexus import NEXUS_DARK
+        return complete({**theme.colors, **NEXUS_DARK}, given=NEXUS_DARK.keys())
+    if valid_look(look) == "original" and theme.id in BUILT_IN:
+        from .look_original import ORIGINAL_PALETTES
+        old = ORIGINAL_PALETTES.get(theme.id)
+        if old is not None:
+            return complete({**theme.colors, **old}, given=old.keys())
+    return theme.colors
+
+
+def valid_look(look) -> str:
+    """A saved look id that exists, or the default (an id from a newer or older Sluice never breaks the window)."""
+    return look if isinstance(look, str) and look in LOOKS else DEFAULT_LOOK
+
+
+@lru_cache(maxsize=16)
+def _style_for(items: tuple, look: str = DEFAULT_LOOK) -> str:
     values = dict(items)
     values.update(mix_colors(values))
+    if look == "original":
+        from .look_original import ORIGINAL_STYLE
+        return ORIGINAL_STYLE.substitute(values)
+    if look == "nexus":  # the Calm sheet with Nexus's rules after it: the later rule wins where both name the same thing
+        from .look_nexus import NEXUS_STYLE_EXTRA
+        return STYLE_TEMPLATE.substitute(values) + NEXUS_STYLE_EXTRA.substitute(values)
     return STYLE_TEMPLATE.substitute(values)
 
 
-def build_style(colors: dict) -> str:
-    """The window's style sheet for a complete colour set (cached: switching back to a theme costs nothing)."""
-    return _style_for(tuple(sorted(colors.items())))
+def build_style(colors: dict, look: str = DEFAULT_LOOK) -> str:
+    """The window's style sheet for a complete colour set in a look (cached: switching back costs nothing)."""
+    return _style_for(tuple(sorted(colors.items())), valid_look(look))
 
 
 # ----------------------------------------------------------------------------- the theme in use

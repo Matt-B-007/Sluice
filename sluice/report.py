@@ -9,6 +9,7 @@ app names and plugin paths remain, so it is still worth a look before sharing.
 from __future__ import annotations
 
 import os
+import json
 import platform
 import re
 import subprocess
@@ -364,6 +365,21 @@ def _section(title: str, body: str) -> str:
     return f"\n===== {title} =====\n{body.rstrip()}\n"
 
 
+def look_summary() -> str:
+    """One line on what is on screen: the look, the layout actually shown (Free exists only in Nexus) and whether effects are reduced."""
+    from . import themes
+    try:
+        saved = json.loads(config_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        saved = {}
+    look = themes.current_look()
+    chosen = saved.get("layout", "columns") if isinstance(saved, dict) else "columns"
+    chosen = chosen if chosen in ("columns", "rows", "free") else "columns"
+    shown = "columns" if chosen == "free" and look != "nexus" else chosen
+    note = f" (saved as {chosen})" if shown != chosen else ""
+    return f"Look: {look}. Layout shown: {shown}{note}. Effects reduced: {'yes' if themes.reduce_effects() else 'no'}.\n"
+
+
 def build_report(log_lines: int = LOG_LINES) -> str:
     from .diagnose import report as diagnose_report
 
@@ -376,6 +392,7 @@ def build_report(log_lines: int = LOG_LINES) -> str:
         "Your user name, computer name, home folder, USB serial numbers and Bluetooth addresses are replaced.\n"
         "It still contains device names, app names and plugin file paths. Look it over before sharing it.\n"
         f"Created: {time.strftime('%Y-%m-%d %H:%M:%S %Z')} by Sluice {__version__}\n"
+        + look_summary()
         + efficiency.summary_line(efficiency_data)
     ]
     parts.append(_section("sluice", f"version {__version__}\nPython {platform.python_version()}\n{platform.platform()}"))

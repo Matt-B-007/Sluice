@@ -60,13 +60,48 @@ class ThemesMixin:
         if theme_id is not None:
             self.engine.mixer.theme = theme_id
         theme = self.current_theme()
-        themes.set_current(theme.colors)
-        self.setStyleSheet(themes.build_style(theme.colors))
+        themes.set_look(self.engine.mixer.look)
+        themes.set_reduce_effects(self.engine.mixer.reduce_effects)
+        colors = themes.look_colors(theme, self.engine.mixer.look)
+        themes.set_current(colors)
+        self.setStyleSheet(themes.build_style(colors, self.engine.mixer.look))
         app = QGuiApplication.instance()
         if app is not None:
-            app.setPalette(_palette_for(theme.colors))
+            app.setPalette(_palette_for(colors))
         self.refresh_theme_widgets()
         return theme
+
+    def _fill_look_menu(self) -> None:
+        menu = self.look_menu
+        menu.clear()
+        group = QActionGroup(menu)
+        for look_id, text in themes.LOOKS.items():
+            action = menu.addAction(text)
+            action.setCheckable(True)
+            action.setActionGroup(group)
+            action.setChecked(themes.valid_look(self.engine.mixer.look) == look_id)
+            action.triggered.connect(lambda _c=False, look_id=look_id: self.choose_look(look_id))
+        menu.setToolTipsVisible(True)
+
+    def choose_look(self, look_id: str) -> None:
+        """Change the shapes and sizes of the window (the colours stay as chosen under View > Theme)."""
+        look_id = themes.valid_look(look_id)
+        if look_id == self.engine.mixer.look:
+            return
+        self.engine.mixer.look = look_id
+        self.apply_theme()
+        if hasattr(self, "_restructure_for_look"):
+            self._restructure_for_look()
+        self.say(f"Look: {themes.LOOKS[look_id]}.")
+
+    def set_reduce_effects(self, on: bool) -> None:
+        """Nexus: no shimmer on the rings and no waveform on the faders."""
+        self.engine.mixer.reduce_effects = bool(on)
+        themes.set_reduce_effects(on)
+        for strip in self.strips:
+            for fader in strip.faders.values():
+                fader._update_reveal()
+        self.say("Effects reduced: the rings stop shimmering and the faders show no waveform." if on else "Effects back on.")
 
     def _on_system_scheme_changed(self, *_args) -> None:
         if self.engine.mixer.theme == themes.SYSTEM and not self._closed:

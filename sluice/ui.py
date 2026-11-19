@@ -5,12 +5,13 @@ from __future__ import annotations
 from functools import partial
 import json
 import logging
+import math
 from pathlib import Path
 import threading
 import time
 from typing import Optional
 
-from PySide6.QtCore import QEasingCurve, QEvent, QPropertyAnimation, QRectF, QSize, Qt, QTimer, QUrl, Signal
+from PySide6.QtCore import QEasingCurve, QEvent, QPoint, QPointF, QPropertyAnimation, QRectF, QSize, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import (QAction, QColor, QDesktopServices, QFontMetrics, QGuiApplication, QIcon, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap)
 from PySide6.QtWidgets import (
     QAbstractSlider,
@@ -55,6 +56,12 @@ log = logging.getLogger("sluice.ui")
 __all__ = ["AUTO_UPDATE_DELAY_MS", "AUTOSAVE_MS", "CLOSE_HINT", "DEFAULT_SIZE", "DISCORD_URL", "ISSUES_URL", "PROJECT_URL", "TALKING_HOLD",
            "TALKING_LEVEL", "THEMES_URL", "TRAY_WATCH_MS", "_palette_for"]
 NONE_DATA = "__none__"  # combo item data for "no device" (Qt dislikes None)
+ORIGINAL_CHANNEL_WIDTH = 180        # the Original look: a channel strip with two mixes, as in 0.9.7
+ORIGINAL_CHANNEL_WIDTH_THREE = 232  # ...and with the third mix
+ORIGINAL_MIX_WIDTH = 132
+ORIGINAL_SOURCES_HEIGHT = 84
+MIC_ROW = 26                 # the Original look's mic button row
+ADD_MIX_WIDTH = 84           # the Original look's "+ Recording mix" strip
 SOURCES_HEIGHT = 80  # the list of a channel's devices and apps: always this tall, so every card is the same height
 COLUMN_WIDTH = 80            # one mix's column on a channel card: the fader, its meter, the level and the mute button
 CHANNEL_WIDTH = 2 * COLUMN_WIDTH + 32     # a channel card with two mixes (Listen and Broadcast)
@@ -64,7 +71,7 @@ FIRST_RUN_WIDTH = 560
 ROW_NAME_WIDTH = 176         # the Rows layout: the name and what is on the channel
 ROW_TOOLS_WIDTH = 176        # ...the Effects and Link buttons
 ROW_CELL_MIN = 280           # ...and the least width of one mix's slider, level and mute button
-LAYOUTS = ("columns", "rows")
+LAYOUTS = ("columns", "rows", "free")
 EMPTY_HINTS = {"mic": "Your microphone goes here.", "browser": "Chrome, Firefox and other browsers.",
                "game": "Games and anything loud.", "chat": "Discord and voice chat.", "music": "Spotify, VLC and players.",
                "system": "Notification sounds and everything else."}
@@ -75,7 +82,19 @@ MIX_NAMES = {MONITOR: "Listen: what you hear", STREAM: "Broadcast: what your aud
 
 
 def channel_width(mix_count: int) -> int:
+    if themes.current_look() == "original":
+        return ORIGINAL_CHANNEL_WIDTH if mix_count <= 2 else ORIGINAL_CHANNEL_WIDTH_THREE
     return CHANNEL_WIDTH if mix_count <= 2 else CHANNEL_WIDTH_THREE
+
+
+def _is_nexus(rows: bool = False) -> bool:
+    """True in the Nexus look (the Columns layout; the Rows layout keeps its own shape until Nexus has one)."""
+    return themes.current_look() == "nexus" and not rows
+
+
+def _is_original(rows: bool = False) -> bool:
+    """True in the Original look (the Columns layout only: the Rows layout did not exist in 0.9.7)."""
+    return themes.current_look() == "original" and not rows
 
 STYLE = themes.build_style(themes.DARK)  # the default look; MainWindow.apply_theme() sets the chosen one
 
@@ -137,25 +156,26 @@ class LevelMeter(QWidget):
     def __init__(self, parent: Optional[QWidget] = None, horizontal: bool = False, thickness: int = 8) -> None:
         super().__init__(parent)
         self.horizontal = horizontal
+        self.original = _is_original() and not horizontal  # the 0.9.7 meter: square, segmented, a 12-pixel column
         if horizontal:
             self.setFixedHeight(thickness)
             self.setMinimumWidth(48)
             self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         else:
-            self.setFixedWidth(thickness)
-            self.setMinimumHeight(96)
+            self.setFixedWidth(12 if self.original else thickness)
+            self.setMinimumHeight(140 if self.original else 96)
             self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
         self._level = 0.0
         self._peak = 0.0
         self._peak_age = 0
         self._lit: Optional[QPixmap] = None  # the full-length coloured bar, drawn once per size and theme
         self._painted = None  # (bar length, peak line) as last drawn: nothing is repainted unless this changes
-        self._well = QColor(themes.color("meter_bg"))
+        self._well = QColor(themes.color("well" if self.original else "meter_bg"))
         self._peak_color = QColor(themes.color("strong"))
 
     def refresh_theme(self) -> None:
         """Pick up the colours of the theme in use (the track behind the bar, the peak line)."""
-        self._well = QColor(themes.color("meter_bg"))
+        self._well = QColor(themes.color("well" if self.original else "meter_bg"))
         self._peak_color = QColor(themes.color("strong"))
         self._lit = None
         self._painted = None
@@ -186,7 +206,17 @@ class LevelMeter(QWidget):
             gradient.setColorAt(0.60, QColor(green))
             gradient.setColorAt(0.80, QColor(yellow))
             gradient.setColorAt(1.00, QColor(red))
+            if self.original:  # 0.9.7: a deeper green, and thin lines in the colour of the well make the segments
+                gradient = QLinearGradient(0, height, 0, 0)
+                gradient.setColorAt(0.00, QColor("#1c9a58"))
+                gradient.setColorAt(0.68, QColor("#3ddc84"))
+                gradient.setColorAt(0.84, QColor("#f5c542"))
+                gradient.setColorAt(1.00, QColor("#ef5258"))
             p.fillRect(QRectF(0, 0, width, height), gradient)
+            if self.original:
+                p.setPen(self._well)
+                for y in range(0, height, 3):
+                    p.drawLine(0, y, width, y)
             p.end()
             self._lit = pixmap
         return self._lit
@@ -203,7 +233,26 @@ class LevelMeter(QWidget):
         if self._shown() != self._painted:  # a silent, settled meter costs nothing
             self.update()
 
+    def _paint_original(self) -> None:
+        p = QPainter(self)
+        rect = self.rect()
+        p.fillRect(rect, self._well)
+        height = rect.height()
+        fill, peak = self._shown()
+        ratio = self.devicePixelRatioF()
+        if fill > 0:
+            top = height - fill + 1
+            p.drawPixmap(0, top, self._lit_pixmap(), 0, int(top * ratio), int(rect.width() * ratio), int(fill * ratio))
+        if peak >= 0:
+            p.setPen(self._peak_color)
+            p.drawLine(rect.left(), rect.bottom() - peak, rect.right(), rect.bottom() - peak)
+        p.end()
+        self._painted = (fill, peak)
+
     def paintEvent(self, _event) -> None:
+        if self.original:
+            self._paint_original()
+            return
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         rect = QRectF(self.rect())
@@ -244,19 +293,23 @@ class Fader(QAbstractSlider):
     def __init__(self, horizontal: bool = False, thumb: Optional[tuple] = None) -> None:
         super().__init__()
         self.horizontal = horizontal
+        self.original = _is_original() and not horizontal  # the 0.9.7 fader: a grey groove, a dark green fill, a squarish handle
+        self.nexus = _is_nexus() and not horizontal  # the Nexus fader: reach for it and it shows the sound it carries
+        self._reveal = False
+        self._history = [0.0] * 32 if self.nexus else []  # about a second of level, kept only while the waveform is showing
         self.setOrientation(Qt.Orientation.Horizontal if horizontal else Qt.Orientation.Vertical)
         self.setRange(0, FADER_STEPS)
         self.setValue(round(db_to_fader_position(0.0) * FADER_STEPS))
         self.setSingleStep(8)
         self.setPageStep(60)
-        self.thumb = thumb or ((16, 24) if horizontal else (32, 16))  # (width, height) of the handle
+        self.thumb = thumb or ((16, 24) if horizontal else ((28, 22) if self.original else (32, 16)))  # (width, height) of the handle
         if horizontal:
             self.setMinimumWidth(96)
             self.setFixedHeight(self.thumb[1] + 4)
             self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         else:
-            self.setMinimumHeight(96)
-            self.setFixedWidth(self.thumb[0] + 4)
+            self.setMinimumHeight(140 if self.original else 96)
+            self.setFixedWidth(34 if self.original else self.thumb[0] + 4)
             self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setToolTip("Double-click to reset to 0 dB")
@@ -266,6 +319,40 @@ class Fader(QAbstractSlider):
     def set_fill(self, color: str) -> None:
         self.fill_color = color
         self.update()
+
+    def _wants_wave(self) -> bool:
+        return self.nexus and not themes.reduce_effects() and (self.underMouse() or self.hasFocus() or self.isSliderDown())
+
+    def _update_reveal(self) -> None:
+        wanted = self._wants_wave()
+        if wanted != self._reveal:
+            self._reveal = wanted
+            if wanted:
+                self._history = [0.0] * len(self._history)  # start from silence: only what happens while you look is shown
+
+    def feed(self, linear: float) -> None:
+        """One level reading, from the window's meter timer. Only called while the waveform is showing."""
+        self._history.pop(0)
+        self._history.append(level_fraction(linear))
+        self.update()
+
+    def _paint_wave(self, p: QPainter, track_rect: QRectF) -> None:
+        """The sound behind the track, as bars of the last second: newest at the top, wider when louder. One stroke, no allocation per bar."""
+        count = len(self._history)
+        top, height = 6.0, self.height() - 12.0
+        mid = track_rect.center().x()
+        reach = self.width() / 2.0 - 2.0
+        path = QPainterPath()
+        for i, level in enumerate(self._history):
+            if level < 0.02:
+                continue
+            y = top + height * (1.0 - i / (count - 1.0))
+            path.moveTo(mid - reach * level, y)
+            path.lineTo(mid + reach * level, y)
+        color = QColor(self.fill_color)
+        color.setAlpha(170)
+        p.setPen(QPen(color, 2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        p.drawPath(path)
 
     def refresh_theme(self) -> None:
         self.update()
@@ -301,6 +388,7 @@ class Fader(QAbstractSlider):
         if event.button() == Qt.MouseButton.LeftButton:
             self.setFocus(Qt.FocusReason.MouseFocusReason)
             self.setSliderDown(True)
+            self._update_reveal()
             self.setValue(self._value_at(event.position()))
             event.accept()
         else:
@@ -314,6 +402,7 @@ class Fader(QAbstractSlider):
     def mouseReleaseEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton and self.isSliderDown():
             self.setSliderDown(False)
+            self._update_reveal()
             event.accept()
         else:
             super().mouseReleaseEvent(event)
@@ -332,7 +421,7 @@ class Fader(QAbstractSlider):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         centre = float(round(self._centre()))  # whole pixels: a handle on a half pixel is blurry
         tw, th = self.thumb
-        track = self.TRACK
+        track = 10 if self.original else self.TRACK
         if self.horizontal:
             y = (self.height() - track) / 2.0
             track_rect = QRectF(0, y, self.width(), track)
@@ -344,14 +433,17 @@ class Fader(QAbstractSlider):
             fill_rect = QRectF(x, centre, track, self.height() - centre)
             thumb_rect = QRectF((self.width() - tw) / 2.0, centre - th / 2.0, tw, th)
         p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(QColor(themes.color("track")))
-        p.drawRoundedRect(track_rect, track / 2.0, track / 2.0)
-        p.setBrush(QColor(self.fill_color))
-        p.drawRoundedRect(fill_rect, track / 2.0, track / 2.0)
-        radius = min(tw, th) / 2.0
-        shadow = QColor(0, 0, 0, 70)
-        p.setBrush(shadow)
-        p.drawRoundedRect(thumb_rect.translated(0, 1.5), radius, radius)
+        groove = 3.0 if self.original else track / 2.0
+        p.setBrush(QColor(themes.color("well" if self.original else "track")))
+        p.drawRoundedRect(track_rect, groove, groove)
+        p.setBrush(QColor(themes.color("fill") if self.original else self.fill_color))
+        p.drawRoundedRect(fill_rect, groove, groove)
+        if self.nexus and self._reveal:
+            self._paint_wave(p, track_rect)
+        radius = 4.0 if self.original else min(tw, th) / 2.0
+        if not self.original:
+            p.setBrush(QColor(0, 0, 0, 70))
+            p.drawRoundedRect(thumb_rect.translated(0, 1.5), radius, radius)
         p.setBrush(QColor(themes.color("handle_hover" if self.underMouse() else "handle")))
         p.setPen(QPen(QColor(themes.color("handle_edge")), 1))
         p.drawRoundedRect(thumb_rect, radius, radius)
@@ -362,18 +454,22 @@ class Fader(QAbstractSlider):
         p.end()
 
     def enterEvent(self, event) -> None:
+        self._update_reveal()
         self.update()
         super().enterEvent(event)
 
     def leaveEvent(self, event) -> None:
+        self._update_reveal()
         self.update()
         super().leaveEvent(event)
 
     def focusInEvent(self, event) -> None:
+        self._update_reveal()
         self.update()
         super().focusInEvent(event)
 
     def focusOutEvent(self, event) -> None:
+        self._update_reveal()
         self.update()
         super().focusOutEvent(event)
 
@@ -487,6 +583,103 @@ class SourcePicture(QWidget):
 MIX_ICONS = {MONITOR: "headphones", STREAM: "broadcast", RECORDING: "mic"}
 
 
+class NexusRing(QWidget):
+    """The Nexus look's meter: a ring of short bars around a picture. The bars stand up with the sound and fall back; the picture is the
+    app's or game's own icon (the first one on the channel), dimmed while it is silent.
+
+    Kept light on purpose: one number per channel, the bars drawn as one stroke from a table of angles worked out once, the level
+    rounded to 16 steps so a steady sound is not redrawn, the shimmer moving every third tick, and nothing at all redrawn while it is
+    silent and settled."""
+
+    BARS = 36
+    SIZE = 84
+    STEPS = 16
+    _ANGLES = tuple((math.cos(2 * math.pi * i / 36 - math.pi / 2), math.sin(2 * math.pi * i / 36 - math.pi / 2)) for i in range(36))
+
+    def __init__(self, color: str, picture) -> None:
+        super().__init__()
+        self.color, self._picture_for, self._pix = color, picture, None
+        self._level, self._step, self._phase, self._tick = 0.0, 0, 0, 0
+        self.linked, self.muted, self._badge = False, False, None
+        self.setFixedSize(self.SIZE, self.SIZE)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+
+    def refresh_source(self) -> None:
+        self._pix = None
+        self.update()
+
+    def refresh_theme(self) -> None:
+        self._pix = self._badge = None
+        self.update()
+
+    def set_state(self, linked: bool, muted: bool) -> None:
+        """What to show beside the sound: a chain badge when this channel's levels are linked, MUTED when every mix of it is muted."""
+        if (linked, muted) != (self.linked, self.muted):
+            self.linked, self.muted = linked, muted
+            self.update()
+
+    def push(self, linear: float) -> None:
+        if self.muted:
+            linear = 0.0
+        frac = level_fraction(linear)
+        self._level = max(frac, self._level - 0.03)
+        step = int(self._level * self.STEPS + 0.5) if self._level > 0.03 else 0
+        moved = step != self._step
+        if step and not themes.reduce_effects():
+            self._tick += 1
+            if self._tick % 3 == 0:
+                self._phase += 1
+                moved = True
+        if moved:
+            self._step = step
+            self.update()
+
+    def paintEvent(self, _event) -> None:
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        c = self.SIZE / 2.0
+        alive = self._step > 0
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.setPen(QPen(QColor(themes.color("border2")), 1))
+        p.drawEllipse(QPointF(c, c), 25.0, 25.0)
+        strength = self._step / self.STEPS
+        path = QPainterPath()
+        for i, (cos, sin) in enumerate(self._ANGLES):
+            length = 2.0 + (14.0 * strength * (0.55 + 0.45 * abs(math.sin(i * 1.3 + self._phase * 1.05))) if alive else 0.0)
+            path.moveTo(c + cos * 28, c + sin * 28)
+            path.lineTo(c + cos * (28 + length), c + sin * (28 + length))
+        pen_color = QColor(self.color) if alive else QColor(themes.color("text_off"))
+        if not alive:
+            pen_color.setAlpha(120)
+        p.setPen(QPen(pen_color, 3, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        p.drawPath(path)
+        if self._pix is None:
+            self._pix = self._picture_for(self.devicePixelRatioF())
+        p.setOpacity(1.0 if alive and not self.muted else 0.45)
+        p.drawPixmap(QPointF(c - 18, c - 18), self._pix)
+        p.setOpacity(1.0)
+        if self.linked:
+            if self._badge is None:
+                ratio = self.devicePixelRatioF()
+                self._badge = icons.render("link", themes.color("accent"), round(14 * ratio))
+                self._badge.setDevicePixelRatio(ratio)
+            p.setBrush(QColor(themes.color("accent_bg")))
+            p.setPen(QPen(QColor(themes.color("accent")), 1))
+            p.drawEllipse(QPointF(14, 14), 10.0, 10.0)
+            p.drawPixmap(QPointF(7, 7), self._badge)
+        if self.muted:
+            p.setBrush(QColor(themes.color("mute_bg")))
+            p.setPen(QPen(QColor(themes.color("mute")), 1))
+            p.drawRoundedRect(QRectF(c - 21, self.SIZE - 14, 42, 13), 6.5, 6.5)
+            font = p.font()
+            font.setPixelSize(9)
+            font.setBold(True)
+            p.setFont(font)
+            p.setPen(QColor(themes.color("mute_fg")))
+            p.drawText(QRectF(c - 21, self.SIZE - 14, 42, 13), int(Qt.AlignmentFlag.AlignCenter), "MUTED")
+        p.end()
+
+
 class MixHeading(QWidget):
     """A column heading of the Rows layout: an icon and "LISTEN · you hear", in the colour of that mix."""
 
@@ -518,21 +711,24 @@ class Chip(QFrame):
 
     def __init__(self, text: str, tooltip: str, on_remove, picture: Optional[SourcePicture] = None) -> None:
         super().__init__()
-        self.setObjectName("sourcechip")
-        self.setFixedHeight(32)
+        original = _is_original()
+        self.setObjectName("chip" if original else "sourcechip")
+        if not original:
+            self.setFixedHeight(32)
         row = QHBoxLayout(self)
-        row.setContentsMargins(8, 0, 4, 0)
-        row.setSpacing(8)
+        row.setContentsMargins(*((6, 1, 2, 1) if original else (8, 0, 4, 0)))
+        row.setSpacing(2 if original else 8)
         self.picture = picture
         if picture is not None:
             row.addWidget(picture)
-        self.label = QLabel(elide(text, 88 if picture is not None else 120, self))
+        self.label = QLabel(elide(text, 118 if original else (88 if picture is not None else 120), self))
         self.label.setObjectName("chiptext")
         self.label.setToolTip(tooltip or text)
         close = QToolButton()
         close.setObjectName("remove")
         close.setText("×")
-        close.setFixedSize(24, 24)
+        if not original:
+            close.setFixedSize(24, 24)
         close.setToolTip("Remove")
         close.setAccessibleName(f"Remove {text}")
         close.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -633,6 +829,9 @@ class ChannelStrip(QWidget):
         super().__init__()
         self.setObjectName("channelstrip")
         self.rows = rows
+        self.original = _is_original(rows)  # the Original look: the strip as it was in 0.9.7 (text buttons, a colour bar on top)
+        self.nexus = _is_nexus(rows)        # the Nexus look: a ring meter with the app's picture above the name
+        self.ring = None
         mixes = len(engine.mixer.mixes)
         self.channel, self.engine, self.window = channel, engine, window
         self.compact = mixes > 2  # three fader columns share the strip
@@ -653,12 +852,17 @@ class ChannelStrip(QWidget):
         if rows:
             self.layout_root.setContentsMargins(24, 8, 24, 8)
             self.layout_root.setSpacing(16)
+        elif self.original:
+            self.layout_root.setContentsMargins(8, 8, 8, 8)
+            self.layout_root.setSpacing(6)
         else:
             self.layout_root.setContentsMargins(16, 16, 16, 16)
             self.layout_root.setSpacing(16)
 
         self.title = QLabel(channel.label)
-        self.title.setObjectName("name")
+        self.title.setObjectName("title" if self.original else "name")
+        if self.original:
+            self.title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.title.setToolTip(self._title_tip())
         self.title.mouseDoubleClickEvent = lambda _e: self.rename()
         self.dot = QLabel()
@@ -666,26 +870,43 @@ class ChannelStrip(QWidget):
         self.dot.setStyleSheet(f"background: {channel.color}; border-radius: 6px;")
 
         # A channel with a microphone gets the mute button for every microphone, right on the card.
-        self.mic_button = _icon_button("mic", "", 32, checkable=True, compact=True)
-        self.mic_button.setObjectName("micmute")
+        if self.original:
+            self.mic_button = QPushButton()
+            self.mic_button.setObjectName("micmute")
+            self.mic_button.setCheckable(True)
+            self.mic_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        else:
+            self.mic_button = _icon_button("mic", "", 32, checkable=True, compact=True)
+            self.mic_button.setObjectName("micmute")
         self.mic_button.clicked.connect(lambda _checked=False: self.window.toggle_mic_mute())
 
-        self.menu_button = _icon_button("more", "Channel options", 32, compact=True)
-        self.menu_button.setObjectName("plain")
+        if self.original:
+            self.menu_button = QToolButton()
+            self.menu_button.setObjectName("menu")
+            self.menu_button.setText("\u22ee")
+            self.menu_button.setToolTip("Channel options")
+            self.menu_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        else:
+            self.menu_button = _icon_button("more", "Channel options", 32, compact=True)
+            self.menu_button.setObjectName("plain")
 
         self.fx_button = QPushButton()
-        self.fx_button.setProperty("compact", True)
-        self.fx_button.setFixedHeight(32)
+        if not self.original:
+            self.fx_button.setProperty("compact", True)
+            self.fx_button.setFixedHeight(32)
         self.fx_button.setToolTip("Open this channel's effects")
         self.fx_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.fx_button.clicked.connect(self.open_effects)
 
-        self.link = _icon_button("link", "Link levels: moving one fader moves the other", 32, checkable=True, compact=True)
-        self.link.setObjectName("link")
+        if self.original:
+            self.link = _toggle("LINK", "link", "Link levels: moving one fader moves the other")
+        else:
+            self.link = _icon_button("link", "Link levels: moving one fader moves the other", 32, checkable=True, compact=True)
+            self.link.setObjectName("link")
         self.link.toggled.connect(self._on_link)
 
-        self.add_button = QPushButton("+ Add app or device" if not rows else "")
-        self.add_button.setObjectName("addchip")
+        self.add_button = QPushButton(("+ Add device or app" if self.original else "+ Add app or device") if not rows else "")
+        self.add_button.setObjectName("add" if self.original else "addchip")
         self.add_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.add_button.setToolTip("Add an app, a game or a device to this channel")
         self.add_button.setAccessibleName(f"Add app or device to {channel.label}")
@@ -698,6 +919,8 @@ class ChannelStrip(QWidget):
 
         if rows:
             self._build_rows()
+        elif self.original:
+            self._build_columns_original()
         else:
             self._build_columns()
         self.refresh_sources()
@@ -741,6 +964,10 @@ class ChannelStrip(QWidget):
         self.head.setFixedHeight(32)
         head.setContentsMargins(0, 0, 0, 0)
         self.head.setLayout(head)
+        if self.nexus:
+            self.ring = NexusRing(self.channel.color, self._ring_picture)
+            self.dot.hide()
+            layout.addWidget(self.ring, 0, Qt.AlignmentFlag.AlignHCenter)
         layout.addWidget(self.head)
         self.empty_hint = _label(EMPTY_HINTS.get(self.channel.id, "Add the apps for this channel."), "hint", center=False)
         self.empty_hint.setWordWrap(True)
@@ -839,6 +1066,97 @@ class ChannelStrip(QWidget):
         self.filler.hide()
         layout.addWidget(self.filler, 1)
 
+    def _build_columns_original(self) -> None:
+        """The channel strip of 0.9.7: a bar in the channel's colour, the name with its menu, SOURCES, a dashed add button, then
+        Effects, LINK and one fader column for each mix. It keeps the same parts as the Calm card, so everything still works."""
+        layout = self.layout_root
+        accent = QFrame()
+        accent.setObjectName("accent")
+        accent.setFixedHeight(4)
+        accent.setStyleSheet(f"background: {self.channel.color};")
+        layout.addWidget(accent)
+        head = QHBoxLayout()
+        head.setContentsMargins(0, 0, 0, 0)
+        head.addSpacing(18)
+        head.addWidget(self.title, 1)
+        head.addWidget(self.menu_button)
+        self.head = QWidget()
+        self.head.setLayout(head)
+        layout.addWidget(self.head)
+        self.mic_row = _slot(self.mic_button, MIC_ROW)
+        layout.addWidget(self.mic_row)
+        self.empty_hint = _label(EMPTY_HINTS.get(self.channel.id, "Add the apps for this channel."), "hint", center=False)
+        self.empty_hint.setWordWrap(True)
+        self.empty_hint.hide()
+        layout.addWidget(self.empty_hint)
+        self.sources_tag = _label("SOURCES", "tag")
+        layout.addWidget(self.sources_tag)
+        self.sources_box = QWidget()
+        self.sources_box.setObjectName("sources")
+        self.sources_layout = QVBoxLayout(self.sources_box)
+        self.sources_layout.setContentsMargins(0, 0, 0, 0)
+        self.sources_layout.setSpacing(3)
+        self.sources_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.sources_scroll = scroll
+        scroll.setWidget(self.sources_box)
+        scroll.setStyleSheet("QScrollArea { background: transparent; }")
+        self.sources_box.setStyleSheet("QWidget#sources { background: transparent; }")
+        layout.addWidget(scroll)
+        layout.addWidget(self.add_button)
+        tools = QVBoxLayout()
+        tools.setContentsMargins(0, 0, 0, 0)
+        tools.setSpacing(6)
+        tools.addWidget(self.fx_button)
+        tools.addWidget(self.link)
+        self.tools = QWidget()
+        self.tools.setLayout(tools)
+        layout.addWidget(self.tools)
+
+        mixes = self.engine.mixer.mixes
+        width = (channel_width(len(mixes)) - 16 - 6 * (len(mixes) - 1)) // len(mixes)  # one fader column for each mix
+        self.tags = []
+        tag_row, faders, reads, mutes = QHBoxLayout(), QHBoxLayout(), QHBoxLayout(), QHBoxLayout()
+        for box in (tag_row, faders, reads, mutes):
+            box.setSpacing(6)
+            box.setContentsMargins(0, 0, 0, 0)
+        for mix in mixes:
+            tag = _label(MIX_TAGS.get(mix.id, mix.label.upper()), "tag")
+            tag.setToolTip(MIX_NAMES.get(mix.id, mix.label))
+            tag.setFixedWidth(width)
+            tag.setProperty("mix", mix.id)
+            tag_row.addWidget(tag)
+            self.tags.append(tag)
+            fader, meter = self._make_controls(mix, horizontal=False)
+            column = QWidget()
+            column.setFixedWidth(width)
+            inner = QHBoxLayout(column)
+            inner.setContentsMargins(0, 0, 0, 0)
+            inner.setSpacing(2)
+            inner.addStretch(1)
+            inner.addWidget(fader)
+            inner.addWidget(meter)
+            inner.addStretch(1)
+            faders.addWidget(column)
+            self.readouts[mix.id].setFixedWidth(width)
+            reads.addWidget(self.readouts[mix.id])
+            self.mutes[mix.id].setFixedWidth(width)
+            mutes.addWidget(self.mutes[mix.id])
+        for attr, box in (("tag_row", tag_row), ("faders_box", faders), ("read_row", reads), ("mute_row", mutes)):
+            widget = QWidget()
+            widget.setLayout(box)
+            setattr(self, attr, widget)
+        layout.addWidget(self.tag_row)
+        layout.addWidget(self.faders_box, 1)
+        layout.addWidget(self.read_row)
+        layout.addWidget(self.mute_row)
+        self.filler = QWidget()
+        self.filler.hide()
+        layout.addWidget(self.filler, 1)
+
     def _build_rows(self) -> None:
         layout = self.layout_root
         layout.setContentsMargins(24, 8, 24, 8)
@@ -912,7 +1230,7 @@ class ChannelStrip(QWidget):
         readout.wheel_steps = True
         readout.wheeled.connect(partial(self._wheel_level, mix.id))
         readout.entered.connect(partial(self._typed_level, mix.id))
-        mute = QPushButton()
+        mute = QPushButton("M" if self.original else "")
         mute.setObjectName("mute")
         mute.setCheckable(True)
         mute.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -923,13 +1241,26 @@ class ChannelStrip(QWidget):
         self.readouts[mix.id], self.mutes[mix.id] = readout, mute
         return fader, meter
 
+    def _ring_picture(self, ratio: float) -> QPixmap:
+        """The picture in the middle of the ring: the first app on the channel, a microphone for a device, or the channel's letter."""
+        channel, engine = self.channel, self.engine
+        if channel.apps:
+            app = channel.apps[0]
+            return icons.app_pixmap(engine.app_icon(app), engine.app_label(app), 36, ratio, app)
+        if channel.devices:
+            pixmap = icons.render("mic", themes.color("text2"), round(36 * ratio))
+            pixmap.setDevicePixelRatio(ratio)
+            return pixmap
+        return icons.app_pixmap("", channel.label, 36, ratio, channel.id)
+
     # ------------------------------------------------------------------ theme
     def refresh_theme(self) -> None:
         """Icons and the few colours set in code, from the theme in use."""
         text2, muted = themes.color("text2"), themes.color("text_dim")
-        self.fx_button.setIcon(icons.icon("sliders", text2, 18))
-        self.link.setIcon(icons.icon("link", themes.color("accent_text") if self.link.isChecked() else muted, 18))
-        self.menu_button.setIcon(icons.icon("more", muted, 20))
+        if not self.original:  # the Original look has text on its buttons, no icons
+            self.fx_button.setIcon(icons.icon("sliders", text2, 18))
+            self.link.setIcon(icons.icon("link", themes.color("accent_text") if self.link.isChecked() else muted, 18))
+            self.menu_button.setIcon(icons.icon("more", muted, 20))
         if self.rows:
             self.add_button.setIcon(icons.icon("plus", muted, 18))
         for mix in self.engine.mixer.mixes:
@@ -941,8 +1272,9 @@ class ChannelStrip(QWidget):
         if button is None:
             return
         muted = button.isChecked()
-        button.setIcon(icons.icon("speaker_off" if muted else "speaker", themes.color("mute_fg" if muted else "text"), 20))
-        button.setIconSize(QSize(20, 20))
+        if not self.original:
+            button.setIcon(icons.icon("speaker_off" if muted else "speaker", themes.color("mute_fg" if muted else "text"), 20))
+            button.setIconSize(QSize(20, 20))
         button.setToolTip(mute_tip(mix, muted))
 
     # ------------------------------------------------------------------ sources
@@ -971,19 +1303,30 @@ class ChannelStrip(QWidget):
                     widget.hide()          # hidden at once: the old chips must not show for the moment before they are deleted
                     widget.deleteLater()
             if not self.channel.devices and not self.channel.apps:
-                nothing = QLabel("Nothing here yet")
-                nothing.setObjectName("hint")
+                if self.original:
+                    nothing = _label("Nothing yet.\nAdd a mic, or an app\nthat should play here.", "hint")
+                else:
+                    nothing = QLabel("Nothing here yet")
+                    nothing.setObjectName("hint")
                 self.sources_layout.addWidget(nothing)
             for device in self.channel.devices:
                 text, tip = self._device_text(device)
-                self.sources_layout.addWidget(Chip(text, tip + "\nInput device", partial(self._remove_device, device),
-                                                   SourcePicture(text, device=True)))
+                if self.original:
+                    self.sources_layout.addWidget(Chip("\U0001f3a4 " + text, tip + "\nInput device", partial(self._remove_device, device)))
+                else:
+                    self.sources_layout.addWidget(Chip(text, tip + "\nInput device", partial(self._remove_device, device),
+                                                       SourcePicture(text, device=True)))
             for app in self.channel.apps:
                 label = self.engine.app_label(app)
-                self.sources_layout.addWidget(Chip(label, f"{label}\nApp: {app}", partial(self._remove_app, app),
-                                                   SourcePicture(label, self.engine.app_icon(app), app)))
+                if self.original:
+                    self.sources_layout.addWidget(Chip("\u25b6 " + label, f"{label}\nApp: {app}", partial(self._remove_app, app)))
+                else:
+                    self.sources_layout.addWidget(Chip(label, f"{label}\nApp: {app}", partial(self._remove_app, app),
+                                                       SourcePicture(label, self.engine.app_icon(app), app)))
         self._update_fx_button()
         self.show_mic_state()
+        if self.ring is not None:
+            self.ring.refresh_source()
 
     def _sources_summary(self) -> str:
         names = [self._device_text(d)[0] for d in self.channel.devices] + [self.engine.app_label(a) for a in self.channel.apps]
@@ -991,8 +1334,19 @@ class ChannelStrip(QWidget):
 
     def show_mic_state(self) -> None:
         has_mic = bool(self.channel.devices)
-        self.mic_button.setVisible(has_mic)
         muted = self.engine.mic_muted
+        if self.original:
+            self.mic_row.setVisible(has_mic)
+            self.sources_scroll.setFixedHeight(ORIGINAL_SOURCES_HEIGHT - MIC_ROW - 6 if has_mic else ORIGINAL_SOURCES_HEIGHT)
+            self.mic_button.blockSignals(True)
+            self.mic_button.setChecked(muted)
+            self.mic_button.blockSignals(False)
+            self.mic_button.setText("MIC MUTED" if muted else "Mic live")
+            self.mic_button.setToolTip("Microphones are muted. Click to unmute every microphone (Ctrl+M)." if muted else
+                                       "Mute or unmute every microphone, including the Sluice (Mic) device other apps listen to (Ctrl+M).")
+            self.mic_button.setAccessibleName("Unmute microphones" if muted else "Mute microphones")
+            return
+        self.mic_button.setVisible(has_mic)
         self.mic_button.blockSignals(True)
         self.mic_button.setChecked(muted)
         self.mic_button.blockSignals(False)
@@ -1098,7 +1452,10 @@ class ChannelStrip(QWidget):
     def _update_fx_button(self) -> None:
         active = [e for e in self.channel.effects if not e.bypass]
         count = len(self.channel.effects)
-        self.fx_button.setText("Effects" if count == 0 else (f"{count} effect" if count == 1 else f"{count} effects") if len(active) == count else f"{len(active)} of {count} on")
+        if self.original:
+            self.fx_button.setText("Effects" if count == 0 else f"Effects ({len(active)}/{count} on)")
+        else:
+            self.fx_button.setText("Effects" if count == 0 else (f"{count} effect" if count == 1 else f"{count} effects") if len(active) == count else f"{len(active)} of {count} on")
         self.fx_button.setToolTip("Open this channel's effects" if count == 0 else
                                   f"Open this channel's effects: {len(active)} of {count} are on")
 
@@ -1127,7 +1484,8 @@ class ChannelStrip(QWidget):
 
     def _on_link(self, on: bool) -> None:
         self.engine.set_linked(self.channel.id, on)
-        self.link.setIcon(icons.icon("link", themes.color("accent_text") if on else themes.color("text_dim"), 18))
+        if not self.original:
+            self.link.setIcon(icons.icon("link", themes.color("accent_text") if on else themes.color("text_dim"), 18))
         self.sync_from_model()
 
     def sync_from_model(self) -> None:
@@ -1136,7 +1494,8 @@ class ChannelStrip(QWidget):
         for widget in widgets:
             widget.blockSignals(True)
         self.link.setChecked(channel.linked)
-        self.link.setIcon(icons.icon("link", themes.color("accent_text") if channel.linked else themes.color("text_dim"), 18))
+        if not self.original:
+            self.link.setIcon(icons.icon("link", themes.color("accent_text") if channel.linked else themes.color("text_dim"), 18))
         for mix_id, fader in self.faders.items():
             db = channel.levels.get(mix_id, 0.0)
             fader.setGain(round(db * 10))
@@ -1147,6 +1506,12 @@ class ChannelStrip(QWidget):
         for mix in self.engine.mixer.mixes:
             self._show_mute(mix)
         self.show_mic_state()
+        if self.ring is not None:
+            mixes = self.engine.mixer.mixes
+            self.ring.set_state(channel.linked, bool(mixes) and all(channel.mutes.get(m.id) for m in mixes))
+        node = getattr(self, "node", None)
+        if node is not None:
+            node.refresh()
 
 
 # ------------------------------------------------------------------------ mixes
@@ -1161,13 +1526,25 @@ class MixStrip(QFrame):
         super().__init__()
         self.setObjectName("mix")
         self.rows = rows
+        self.original = _is_original(rows)
+        self.ring = None
         if not rows:
-            self.setFixedWidth(MIX_WIDTH)
+            self.setFixedWidth(ORIGINAL_MIX_WIDTH if self.original else MIX_WIDTH)
         self.mix, self.engine = mix, engine
+        if self.original:
+            self._build_original(mix, on_remove)
+            return
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(16 if not rows else 8)
+        if _is_nexus(rows):  # a ring with the mix's letter in it, in the mix's colour
+            mixc = themes.mix_colors(themes._current)
+            color = mixc.get({MONITOR: "listen", STREAM: "broadcast"}.get(mix.id, ""), themes.color("accent"))
+            if mix.id == RECORDING:
+                color = themes.color("mute")
+            self.ring = NexusRing(color, lambda ratio, mix=mix, color=color: icons.app_pixmap("", mix.label, 36, ratio, mix.id))
+            layout.addWidget(self.ring, 0, Qt.AlignmentFlag.AlignHCenter)
 
         head = QHBoxLayout()
         head.setSpacing(8)
@@ -1294,14 +1671,102 @@ class MixStrip(QFrame):
         self.sync_from_model()
         self.refresh_theme()
 
+    def _build_original(self, mix: Mix, on_remove) -> None:
+        """The master card of 0.9.7: FOR YOU, the name, a hint, the device, the fader and meter, the level, M and LIM. The same parts
+        as the Calm card, so everything still works (the optional Recording mix has its own strip beside the cards)."""
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(6)
+        layout.addWidget(_label(MIX_EYEBROWS.get(mix.id, "MIX"), "tag"))
+        title = _label(mix.label, "title")
+        self.menu_button = None
+        if on_remove is None:
+            layout.addWidget(title)
+        else:
+            head = QHBoxLayout()
+            head.setSpacing(0)
+            head.addWidget(title, 1)
+            self.menu_button = QToolButton()
+            self.menu_button.setObjectName("menu")
+            self.menu_button.setText("\u22ee")
+            self.menu_button.setToolTip("Options for this mix")
+            self.menu_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+            menu = QMenu(self.menu_button)
+            menu.addAction("Remove the Recording mix\u2026", on_remove)
+            self.menu_button.setMenu(menu)
+            head.addWidget(self.menu_button)
+            layout.addLayout(head)
+        self.combo = None
+        self.device_button = None
+        if mix.kind == MONITOR:
+            layout.addWidget(_label("You hear this", "hint"))
+            self.combo = DeviceCombo("")
+            self.combo.setFixedHeight(30)
+            self.combo.setToolTip("Where you hear the mix")
+            self.combo.setAccessibleName("Listen output device")
+            self.combo.activated.connect(self._on_device)
+            layout.addWidget(_slot(self.combo, 30))
+        else:
+            layout.addWidget(_label("Audience hears this" if mix.id == STREAM else "Recorder hears this", "hint"))
+            self.device_button = QPushButton(f"Record from\n\u201c{mix.source_description}\u201d")
+            self.device_button.setObjectName("hintbutton")
+            self.device_button.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.device_button.setToolTip(f"The device your streaming or recording app should pick: \u201c{mix.source_description}\u201d. "
+                                          "Click to copy the name.")
+            self.device_button.clicked.connect(self._copy_device_name)
+            layout.addWidget(_slot(self.device_button, 30))
+        self.fader, self.meter = Fader(), LevelMeter()
+        self.fader.setAccessibleName(f"{mix.label} level")
+        self.fader.gainChanged.connect(self._on_gain)
+        self.meter.setAccessibleName(f"{mix.label} meter")
+        row = QHBoxLayout()
+        row.setSpacing(2)
+        row.addStretch(1)
+        row.addWidget(self.fader)
+        row.addWidget(self.meter)
+        row.addStretch(1)
+        layout.addLayout(row, 1)
+        self.hear = None
+        self.add_button = None
+        if mix.kind == MONITOR:
+            self.hear = _toggle("Hear Broadcast", "link",
+                                "Check what your audience hears: your output plays the Broadcast mix instead of the Listen mix. "
+                                "Turn it off to go back. It always starts off.")
+            self.hear.toggled.connect(self._on_hear)
+            layout.addWidget(self.hear)
+        self.readout = ReadoutEdit(None)
+        self.readout.setAccessibleName(f"{mix.label} level in decibels")
+        self.readout.setToolTip("Scroll over the number to change the level (hold Shift for fine steps), or click and type a level in dB (for example -6) and press Enter")
+        self.readout.wheel_steps = True
+        self.readout.wheeled.connect(self._wheel_gain)
+        self.readout.entered.connect(self._typed_gain)
+        layout.addWidget(self.readout)
+        buttons = QHBoxLayout()
+        buttons.setSpacing(4)
+        self.mute = _toggle("M", "mute")
+        self.limiter = _toggle("LIM", "limiter", "Limiter: stops peaks from clipping")
+        self.mute.setAccessibleName(f"Mute {mix.label}")
+        self.mute.toggled.connect(lambda on: self.engine.set_master_mute(self.mix.id, on))
+        self.mute.toggled.connect(lambda _on: self._show_toggles())
+        self.limiter.toggled.connect(lambda on: self.engine.set_limiter(self.mix.id, on))
+        buttons.addWidget(self.mute)
+        buttons.addWidget(self.limiter)
+        layout.addLayout(buttons)
+        self.sync_from_model()
+        self.refresh_theme()
+
     def refresh_theme(self) -> None:
         self.fader.set_fill(themes.color("accent"))
-        if self.menu_button is not None:
+        if self.menu_button is not None and not self.original:
             self.menu_button.setIcon(icons.icon("more", themes.color("text_dim"), 20))
         self._show_toggles()
 
     def _show_toggles(self) -> None:
         muted = self.mute.isChecked()
+        if self.original:
+            self.mute.setToolTip(f"Muted: nobody hears {MIX_MUTE_TIPS.get(self.mix.id, 'this mix')}. Click to unmute." if muted
+                                 else "Mute this whole mix")
+            return
         self.mute.setIcon(icons.icon("speaker_off" if muted else "speaker", themes.color("mute_fg" if muted else "text"), 20))
         self.mute.setIconSize(QSize(20, 20))
         what = MIX_MUTE_TIPS.get(self.mix.id, f"the {self.mix.label} mix")
@@ -1323,6 +1788,9 @@ class MixStrip(QFrame):
             widget.blockSignals(False)
         self.readout.setText(format_db(self.mix.gain_db))
         self._show_toggles()
+        node = getattr(self, "node", None)
+        if node is not None:
+            node.refresh()
 
     def populate_devices(self) -> None:
         if self.combo:
@@ -1400,6 +1868,270 @@ class AppsBar(QPushButton):
                 action.setChecked(owner is not None and owner.id == channel.id)
             sub.addSeparator()
             sub.addAction("Play directly (not in the mixer)", partial(self._assign, stream.assign_key, None))
+
+    def _assign(self, key: str, channel_id: Optional[str]) -> None:
+        self.engine.assign_app(key, channel_id)
+        self.window.refresh_sources()
+        if channel_id is None:
+            self.window.say(f"{self.engine.app_label(key)} is no longer in the mixer: it plays straight to your normal output.")
+
+
+class NexusNode(QFrame):
+    """A channel or a mix in the Free layout: its ring, its name and its levels. Drag it anywhere; click it (or press Enter) to open its
+    full card beside it; click empty space or press Escape to close the card. Light: one small widget per channel; the card it opens is
+    the same card the other layouts show, and is not drawn while it is closed."""
+
+    WIDTH, HEIGHT = 150, 150
+
+    def __init__(self, canvas: "FreeCanvas", key: str, title: str, color: str, picture, card: QWidget, strip) -> None:
+        super().__init__()
+        self.setObjectName("nexusnode")
+        self.canvas, self.key, self.card, self.strip = canvas, key, card, strip
+        self.setFixedSize(self.WIDTH, self.HEIGHT)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setAccessibleName(f"{title}: press Enter to open its controls")
+        self.ring = NexusRing(color, picture)
+        self.name = QLabel(title)
+        self.name.setObjectName("name")
+        self.name.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.chips = QLabel("")
+        self.chips.setObjectName("nodechips")
+        self.chips.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.chips.setTextFormat(Qt.TextFormat.RichText)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(6, 6, 6, 6)
+        layout.setSpacing(2)
+        layout.addWidget(self.ring, 0, Qt.AlignmentFlag.AlignHCenter)
+        layout.addWidget(self.name)
+        layout.addWidget(self.chips)
+        self._press = None
+        self._dragging = False
+        self.is_open = False
+        self.refresh()
+
+    def set_open(self, on: bool) -> None:
+        self.is_open = on
+        self.setProperty("open", on)
+        self.style().unpolish(self)
+        self.style().polish(self)
+
+    def refresh(self) -> None:
+        """The level of each mix as a small chip, red and struck through when that mix is muted; the ring shows linked and muted."""
+        colors = {MONITOR: themes.mix_colors(themes._current).get("listen", "#22e5ff"),
+                  STREAM: themes.mix_colors(themes._current).get("broadcast", "#ffb020"), RECORDING: themes.color("mute")}
+        strip = self.strip
+        if hasattr(strip, "channel"):
+            channel, mixes = strip.channel, strip.engine.mixer.mixes
+            parts = []
+            for mix in mixes:
+                letter = MIX_TAGS.get(mix.id, mix.label.upper())[0]
+                tint = colors.get(mix.id, themes.color("text2"))
+                if channel.mutes.get(mix.id):
+                    parts.append(f'<span style="color:{tint}">{letter}</span> <span style="color:{themes.color("mute_fg")}"><s>off</s></span>')
+                else:
+                    parts.append(f'<span style="color:{tint}">{letter}</span> {format_db(channel.levels.get(mix.id, 0.0)).replace(" dB", "")}')
+            self.chips.setText("&nbsp;&nbsp;".join(parts))
+            self.ring.set_state(channel.linked, bool(mixes) and all(channel.mutes.get(m.id) for m in mixes))
+        else:
+            mix = strip.mix
+            state = f'<span style="color:{themes.color("mute_fg")}"><s>muted</s></span>' if mix.mute else format_db(mix.gain_db)
+            self.chips.setText(state + ("&nbsp;&nbsp;LIM" if mix.limiter else ""))
+            self.ring.set_state(False, mix.mute)
+
+    # -- drag and click
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._press = (event.globalPosition().toPoint(), self.pos())
+            self._dragging = False
+            self.setFocus(Qt.FocusReason.MouseFocusReason)
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:
+        if self._press is None:
+            return
+        start, origin = self._press
+        delta = event.globalPosition().toPoint() - start
+        if not self._dragging and delta.manhattanLength() < 5:
+            return
+        self._dragging = True
+        self.move(self.canvas.clamped(origin + delta, self))
+        if self.is_open:
+            self.canvas.place_card(self)
+        event.accept()
+
+    def mouseReleaseEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton and self._press is not None:
+            if self._dragging:
+                self.canvas.remember(self)
+            else:
+                self.canvas.toggle(self)
+            self._press = None
+            self._dragging = False
+            event.accept()
+        else:
+            super().mouseReleaseEvent(event)
+
+    def keyPressEvent(self, event) -> None:
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
+            self.canvas.toggle(self)
+        elif event.key() == Qt.Key.Key_Escape:
+            self.canvas.close_card()
+        else:
+            super().keyPressEvent(event)
+
+
+class FreeCanvas(QWidget):
+    """The Free layout: nodes you place anywhere, remembered between runs. The cards live here too, hidden until a node opens one."""
+
+    COLUMNS, STEP_X, STEP_Y, TOP, MIX_X = 4, 170, 176, 64, 760
+
+    def __init__(self, window: "MainWindow") -> None:
+        super().__init__()
+        self.setObjectName("freecanvas")
+        self.window_ = window
+        self.nodes: dict = {}
+        self.open_node: Optional[NexusNode] = None
+        self.setMinimumSize(980, 760)
+        self.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
+        self.add_button = QPushButton("+  Add channel", self)
+        self.add_button.setObjectName("addchip")
+        self.add_button.setFixedSize(150, 36)
+        self.add_button.move(24, 12)
+        self.add_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.add_button.setToolTip("Add a channel for another app or group of apps")
+        self.add_button.clicked.connect(window.add_channel)
+        self.tidy_button = QPushButton("Tidy up", self)
+        self.tidy_button.setObjectName("quiet")
+        self.tidy_button.setFixedHeight(36)
+        self.tidy_button.move(186, 12)
+        self.tidy_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.tidy_button.setToolTip("Put every node back in its grid place")
+        self.tidy_button.clicked.connect(self.tidy)
+
+    def default_position(self, index: int, mix: bool) -> QPoint:
+        if mix:
+            return QPoint(self.MIX_X, self.TOP + index * self.STEP_Y)
+        return QPoint(24 + (index % self.COLUMNS) * self.STEP_X, self.TOP + (index // self.COLUMNS) * self.STEP_Y)
+
+    def add_node(self, node: NexusNode, index: int, mix: bool) -> None:
+        node.setParent(self)
+        saved = self.window_.engine.mixer.free_positions.get(node.key)
+        node.move(self.clamped(QPoint(*saved) if saved else self.default_position(index, mix), node))
+        node.card.setParent(self)
+        node.card.hide()
+        self.nodes[node.key] = node
+        node.show()
+
+    def clamped(self, point: QPoint, node: QWidget) -> QPoint:
+        return QPoint(max(0, min(point.x(), max(0, self.width() - node.width()))), max(0, min(point.y(), max(0, self.height() - node.height()))))
+
+    def remember(self, node: NexusNode) -> None:
+        self.window_.engine.mixer.free_positions[node.key] = [node.x(), node.y()]
+
+    def tidy(self) -> None:
+        self.window_.engine.mixer.free_positions.clear()
+        self.close_card()
+        channels = mixes = 0
+        for node in self.nodes.values():
+            is_mix = not hasattr(node.strip, "channel")
+            node.move(self.default_position(mixes if is_mix else channels, is_mix))
+            mixes, channels = (mixes + 1, channels) if is_mix else (mixes, channels + 1)
+        self.window_.say("Every node is back in its place.")
+
+    def place_card(self, node: NexusNode) -> None:
+        card = node.card
+        card.resize(card.width(), card.sizeHint().height())
+        right = node.x() + node.width() + 8
+        x = right if right + card.width() <= self.width() else max(0, node.x() - 8 - card.width())
+        y = max(0, min(node.y(), max(0, self.height() - card.height())))
+        card.move(x, y)
+        card.raise_()
+
+    def toggle(self, node: NexusNode) -> None:
+        was = self.open_node is node
+        self.close_card()
+        if not was:
+            self.open_node = node
+            node.set_open(True)
+            node.card.show()
+            self.place_card(node)
+
+    def close_card(self) -> None:
+        node = self.open_node
+        if node is not None:
+            node.card.hide()
+            node.set_open(False)
+            self.open_node = None
+
+    def clear_channels(self) -> None:
+        self.close_card()
+        for key in [k for k, n in self.nodes.items() if hasattr(n.strip, "channel")]:
+            node = self.nodes.pop(key)
+            node.card.hide()
+            node.card.deleteLater()
+            node.hide()
+            node.deleteLater()
+
+    def mousePressEvent(self, event) -> None:
+        self.close_card()
+        self.setFocus(Qt.FocusReason.MouseFocusReason)
+        super().mousePressEvent(event)
+
+    def keyPressEvent(self, event) -> None:
+        if event.key() == Qt.Key.Key_Escape:
+            self.close_card()
+        else:
+            super().keyPressEvent(event)
+
+
+class OriginalAppsBar(QFrame):
+    """The Original look's "Playing now" strip: a chip for each app making sound, on the channel it plays into, as in 0.9.7. Click a
+    chip to choose the channel. It does what the Calm look's "Playing now" button does."""
+
+    def __init__(self, engine: Engine, window: "MainWindow") -> None:
+        super().__init__()
+        self.setObjectName("apps")
+        self.engine, self.window = engine, window
+        self.row = QHBoxLayout(self)
+        self.row.setContentsMargins(10, 6, 10, 6)
+        self.row.setSpacing(6)
+        self.refresh()
+
+    def refresh(self) -> None:
+        while self.row.count():
+            item = self.row.takeAt(0)
+            if item.widget():
+                item.widget().hide()
+                item.widget().deleteLater()
+        self.row.addWidget(_label("Playing now:", "tag", center=False))
+        seen = set()
+        for stream in self.engine.streams:
+            if stream.key in seen:
+                continue
+            seen.add(stream.key)
+            self.row.addWidget(self._chip(stream))
+        if not seen:
+            self.row.addWidget(_label("No app is playing sound. Start something and it shows up here.", "hint", center=False))
+        self.row.addStretch(1)
+
+    def _chip(self, stream) -> QPushButton:
+        owner = self.engine.channel_for_stream(stream)
+        button = QPushButton(f"{stream.name}  \u203a  {owner.label}" if owner else stream.name)
+        button.setObjectName("appassigned" if owner else "app")
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.setToolTip("Click to choose which channel this app plays into")
+        menu = QMenu(button)
+        for channel in self.engine.mixer.channels:
+            action = menu.addAction(channel.label, partial(self._assign, stream.assign_key, channel.id))
+            action.setCheckable(True)
+            action.setChecked(owner is not None and owner.id == channel.id)
+        menu.addSeparator()
+        menu.addAction("Play directly (not in the mixer)", partial(self._assign, stream.assign_key, None))
+        button.setMenu(menu)
+        return button
 
     def _assign(self, key: str, channel_id: Optional[str]) -> None:
         self.engine.assign_app(key, channel_id)
@@ -1555,13 +2287,17 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         outer = QVBoxLayout(root)
         outer.setContentsMargins(24, 24, 24, 8)
         outer.setSpacing(24)
-        outer.addWidget(self._build_top_bar())
+        self._outer = outer
+        self.top_bar = self._build_top_bar()
+        outer.addWidget(self.top_bar)
 
         self.content = QWidget()
         self.content_layout = QVBoxLayout(self.content)
         self.content_layout.setContentsMargins(0, 0, 0, 0)
         self.content_layout.setSpacing(0)
         outer.addWidget(self.content, 1)
+        self.orig_apps_bar = OriginalAppsBar(engine, self)  # the Original look's "Playing now" strip under the cards
+        outer.addWidget(self.orig_apps_bar)
         self.apps_bar = AppsBar(engine, self)
         self.apps_bar.setFixedHeight(40)
         self.apps_button_holder.addWidget(self.apps_bar)
@@ -1569,7 +2305,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         self.mix_strips: list = []
         self.add_mix_button: Optional[QPushButton] = None
         self.first_run: Optional[FirstRun] = None
-        self.layout_mode = engine.mixer.layout if engine.mixer.layout in LAYOUTS else "columns"
+        self.layout_mode = self._effective_layout(engine.mixer.layout)
         self._build_content()
 
         self.status_label = QLabel(notice or "Ready")
@@ -1589,6 +2325,20 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         self.raw_mic_button.clicked.connect(self.show_raw_mic)
         self.raw_mic_button.hide()
         self.statusBar().addPermanentWidget(self.raw_mic_button)
+        # the Original look keeps what the top bar shows (health, version, demo) in the status bar, as 0.9.7 did
+        demo = "Demo" in engine.io.label
+        self.orig_perf = QLabel("")
+        self.orig_perf.setObjectName("status")
+        self.orig_version = QLabel(f"v{__version__}")
+        self.orig_version.setObjectName("status")
+        self.orig_version.setToolTip("The Sluice version you are running. Please include it in bug reports.")
+        self.orig_demo = QLabel("Demo mode (no audio is touched)")
+        self.orig_demo.setObjectName("demo")
+        self.orig_demo.setVisible(False)
+        self._orig_demo_wanted = demo
+        for widget in (self.orig_perf, self.orig_version, self.orig_demo):
+            self.statusBar().addPermanentWidget(widget)
+        self._apply_chrome()
         self.repopulate_devices()
         self._show_layout_choice()
         self.refresh_theme_widgets()
@@ -1645,7 +2395,8 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         segments.setSpacing(4)
         self.layout_buttons = {}
         for key, text, tip in (("columns", "Columns", "A card for each channel, faders standing up"),
-                               ("rows", "Rows", "A line for each channel, sliders lying down")):
+                               ("rows", "Rows", "A line for each channel, sliders lying down"),
+                               ("free", "Free", "Nodes you place anywhere; click one to open its controls")):
             button = QPushButton(text)
             button.setObjectName("segment")
             button.setCheckable(True)
@@ -1706,6 +2457,89 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         total, _ours = self.engine.dropout_counts()
         color = themes.color("live_fg") if total == 0 else themes.color("warn")
         self.perf_dot.setStyleSheet(f"background: {color}; border-radius: 4px;")
+        if hasattr(self, "orig_perf"):
+            self.orig_perf.setText(text)
+            self.orig_perf.setToolTip(tip)
+
+    def _apply_chrome(self) -> None:
+        """Show the window frame of the look in use: the Calm look has the top bar and keeps the menus behind its buttons; the
+        Original look has the menu bar across the top, the "Playing now" strip under the cards, and its details in the status bar."""
+        original = themes.current_look() == "original"
+        self.top_bar.setVisible(not original)
+        self.menuBar().setVisible(original)
+        self.orig_apps_bar.setVisible(original)
+        for widget in (self.orig_perf, self.orig_version):
+            widget.setVisible(original)
+        self.orig_demo.setVisible(original and self._orig_demo_wanted)
+        margins, spacing = ((12, 12, 12, 6), 8) if original else ((24, 24, 24, 8), 24)
+        self._outer.setContentsMargins(*margins)
+        self._outer.setSpacing(spacing)
+
+    def _restructure_for_look(self) -> None:
+        """A different look has different parts, not only different colours: rebuild the cards in it."""
+        self._apply_chrome()
+        self.layout_mode = self._effective_layout(self.engine.mixer.layout)
+        self._build_content()
+        self._show_layout_choice()
+        self._refresh_apps()
+        self._show_perf()
+
+    def _refresh_apps(self) -> None:
+        self.apps_bar.refresh()
+        self.orig_apps_bar.refresh()
+
+    def _effective_layout(self, mode: str) -> str:
+        """The layout actually shown: Free belongs to the Nexus look, so any other look shows Columns (the saved choice is kept)."""
+        if mode == "free":
+            return "free" if themes.current_look() == "nexus" else "columns"
+        return mode if mode in LAYOUTS else "columns"
+
+    def _build_free(self) -> None:
+        """The Free layout (Nexus): the cards exist as in the other layouts, hidden, and a node for each opens one."""
+        engine = self.engine
+        self.mix_strips = [
+            MixStrip(m, engine, self.toggle_recording_mix if m.id == RECORDING else None,
+                     self.toggle_recording_mix if m.id == STREAM and not engine.mixer.has_recording_mix else None, rows=False)
+            for m in engine.mixer.mixes]
+        self.add_mix_button = next((s.add_button for s in self.mix_strips if s.add_button is not None), None)
+        for strip in self.mix_strips:
+            if strip.combo:
+                strip.combo.about_to_show.connect(self._on_popup)
+        self.canvas = FreeCanvas(self)
+        self.channels_widget = self.canvas
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setWidget(self.canvas)
+        self.channel_scroll = scroll
+        self.content_layout.addWidget(scroll)
+        colors = themes.mix_colors(themes._current)
+        for index, strip in enumerate(self.mix_strips):
+            mix = strip.mix
+            color = {MONITOR: colors["listen"], STREAM: colors["broadcast"]}.get(mix.id, themes.color("mute"))
+            node = NexusNode(self.canvas, mix.id, mix.label, color,
+                             lambda ratio, mix=mix: icons.app_pixmap("", mix.label, 36, ratio, mix.id), strip, strip)
+            strip.node = node
+            if strip.ring is not None:
+                strip.ring.hide()
+            self.canvas.add_node(node, index, True)
+        self.channels_row = None
+        self.rebuild_channels()
+        self.repopulate_devices()
+        self.refresh_theme_widgets()
+
+    def _rebuild_free(self) -> None:
+        self.canvas.clear_channels()
+        self.first_run = None
+        self.strips = [ChannelStrip(c, self.engine, self, rows=False) for c in self.engine.mixer.channels]
+        for index, strip in enumerate(self.strips):
+            node = NexusNode(self.canvas, strip.channel.id, strip.channel.label, strip.channel.color, strip._ring_picture, strip, strip)
+            strip.node = node
+            if strip.ring is not None:
+                strip.ring.hide()  # the node beside the card already shows it
+            self.canvas.add_node(node, index, False)
+            strip.refresh_sources()
+        self.refresh_theme_widgets()
 
     def _build_content(self) -> None:
         """The channels and the two master cards, in the chosen layout. Rebuilt when the layout is switched."""
@@ -1714,12 +2548,27 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
             if item.widget():
                 item.widget().hide()
                 item.widget().deleteLater()
+        if self.layout_mode == "free":
+            self._build_free()
+            return
         rows = self.layout_mode == "rows"
+        original = _is_original(rows)
         self.mix_strips = [
             MixStrip(m, self.engine, self.toggle_recording_mix if m.id == RECORDING else None,
-                     self.toggle_recording_mix if m.id == STREAM and not self.engine.mixer.has_recording_mix else None, rows=rows)
+                     self.toggle_recording_mix if m.id == STREAM and not self.engine.mixer.has_recording_mix and not original else None,
+                     rows=rows)
             for m in self.engine.mixer.mixes]
         self.add_mix_button = next((s.add_button for s in self.mix_strips if s.add_button is not None), None)
+        if original and not self.engine.mixer.has_recording_mix:  # 0.9.7: the third mix is one click away in a strip of its own
+            self.add_mix_button = QPushButton("+\nAdd a\nRecording\nmix")
+            self.add_mix_button.setObjectName("addmix")
+            self.add_mix_button.setFixedWidth(ADD_MIX_WIDTH)
+            self.add_mix_button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
+            self.add_mix_button.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.add_mix_button.setToolTip("Add a third mix, \u201cRecording\u201d: a second virtual microphone with its own faders "
+                                           "and mutes, so a recorder can get a different blend from the one your audience hears. "
+                                           "Sluice restarts to add it.")
+            self.add_mix_button.clicked.connect(self.toggle_recording_mix)
         for strip in self.mix_strips:
             if strip.combo:
                 strip.combo.about_to_show.connect(self._on_popup)
@@ -1727,7 +2576,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         self.channels_widget.setObjectName("channels")
         page = QHBoxLayout()
         page.setContentsMargins(0, 0, 0, 0)
-        page.setSpacing(24)
+        page.setSpacing(8 if original else 24)
         if rows:
             self.channels_row = QVBoxLayout(self.channels_widget)
             self.channels_row.setContentsMargins(0, 0, 8, 0)
@@ -1736,7 +2585,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         else:
             self.channels_row = QHBoxLayout(self.channels_widget)
             self.channels_row.setContentsMargins(0, 0, 0, 16)  # air between the cards and the scroll bar
-            self.channels_row.setSpacing(16)
+            self.channels_row.setSpacing(8 if original else 16)
             scroll = SmoothScrollArea()
             scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setWidgetResizable(True)
@@ -1760,10 +2609,16 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
             page.addWidget(holder)
         else:
             page.addWidget(scroll, 1)
+            if original:
+                divider = QFrame()
+                divider.setObjectName("divider")
+                page.addWidget(divider)
             masters = QHBoxLayout()
-            masters.setSpacing(16)
+            masters.setSpacing(8 if original else 16)
             for strip in self.mix_strips:
                 masters.addWidget(strip)
+            if original and self.add_mix_button is not None:
+                masters.addWidget(self.add_mix_button)
             holder = QWidget()
             holder.setLayout(masters)
             masters.setContentsMargins(0, 0, 0, 16)
@@ -1805,8 +2660,9 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         if mode not in LAYOUTS:
             return
         self.engine.mixer.layout = mode
-        if mode != self.layout_mode:
-            self.layout_mode = mode
+        effective = self._effective_layout(mode)
+        if effective != self.layout_mode:
+            self.layout_mode = effective
             self._build_content()
         self._show_layout_choice()
 
@@ -1817,6 +2673,13 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
             button.blockSignals(False)
         for key, action in self.layout_actions.items():
             action.setChecked(key == self.layout_mode)
+        nexus = themes.current_look() == "nexus"  # Free belongs to Nexus
+        if "free" in self.layout_buttons:
+            self.layout_buttons["free"].setVisible(nexus)
+        if "free" in self.layout_actions:
+            self.layout_actions["free"].setVisible(nexus)
+        if hasattr(self, "tidy_action"):
+            self.tidy_action.setEnabled(self.layout_mode == "free")
 
     # ------------------------------------------------------------------ first run
     def _needs_first_run(self) -> bool:
@@ -1832,7 +2695,8 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
             self.first_run.deleteLater()
             self.first_run = None
         for strip in self.strips:
-            strip.set_empty(wanted and not strip.channel.apps and strip.channel.id != "mic" and not strip.rows)
+            strip.set_empty(wanted and not strip.channel.apps and strip.channel.id != "mic" and not strip.rows
+                            and self.layout_mode != "free")
         if wanted and self.first_run is None and self.layout_mode == "columns":
             self.first_run = FirstRun(self)
             self.channels_row.insertWidget(0, self.first_run)
@@ -2041,6 +2905,10 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
 
     # ---------------------------------------------------------------- channels
     def rebuild_channels(self) -> None:
+        if self.layout_mode == "free":
+            self._rebuild_free()
+            self._update_first_run()
+            return
         rows = self.layout_mode == "rows"
         while self.channels_row.count():
             item = self.channels_row.takeAt(0)
@@ -2055,6 +2923,8 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
             self.channels_row.addWidget(strip, 1 if rows else 0)
         add = QPushButton("+  Add channel")
         add.setObjectName("addchannel")
+        if _is_original(rows):  # 0.9.7 had no such button: a channel is added from Mixer > Add channel
+            add.hide()
         add.setCursor(Qt.CursorShape.PointingHandCursor)
         add.setToolTip("Add a channel for another app or group of apps")
         add.clicked.connect(self.add_channel)
@@ -2079,12 +2949,12 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
     def remove_channel(self, channel_id: str) -> None:
         self.engine.remove_channel(channel_id)
         self.rebuild_channels()
-        self.apps_bar.refresh()
+        self._refresh_apps()
 
     def refresh_sources(self) -> None:
         for strip in self.strips:
             strip.refresh_sources()
-        self.apps_bar.refresh()
+        self._refresh_apps()
         self._update_first_run()
 
     # ----------------------------------------------------------------- devices
@@ -2100,10 +2970,29 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
     def _update_meters(self) -> None:
         levels = self.engine.levels()
         for strip in self.strips:
+            loudest = 0.0
             for mix_id, meter in strip.meters.items():
-                meter.push(levels.get(f"ch:{strip.channel.id}:{mix_id}", 0.0))
+                level = levels.get(f"ch:{strip.channel.id}:{mix_id}", 0.0)
+                meter.push(level)
+                loudest = max(loudest, level)
+                fader = strip.faders[mix_id]
+                if fader._reveal:  # the waveform is only fed while someone is looking at it
+                    fader.feed(level)
+            if strip.ring is not None:
+                strip.ring.push(loudest)
+            node = getattr(strip, "node", None)
+            if node is not None:
+                node.ring.push(loudest)
         for strip in self.mix_strips:
-            strip.meter.push(levels.get(f"mix:{strip.mix.id}", 0.0))
+            level = levels.get(f"mix:{strip.mix.id}", 0.0)
+            strip.meter.push(level)
+            if strip.fader._reveal:
+                strip.fader.feed(level)
+            if strip.ring is not None:
+                strip.ring.push(level)
+            node = getattr(strip, "node", None)
+            if node is not None:
+                node.ring.push(level)
         self.tracker.meter_tick()
         self._refresh_tray_icon()
 

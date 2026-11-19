@@ -74,7 +74,8 @@ class MenusMixin:
         view_menu.addSection("Layout")
         self.layout_actions = {}
         layout_group = QActionGroup(self)
-        for key, text in (("columns", "&Columns (a card for each channel)"), ("rows", "&Rows (a line for each channel)")):
+        for key, text in (("columns", "&Columns (a card for each channel)"), ("rows", "&Rows (a line for each channel)"),
+                          ("free", "Fr&ee (nodes you place anywhere)")):
             action = view_menu.addAction(text)
             action.setCheckable(True)
             action.setActionGroup(layout_group)
@@ -83,10 +84,16 @@ class MenusMixin:
         view_menu.addSeparator()
         self.theme_menu = view_menu.addMenu("&Theme")
         self.theme_menu.aboutToShow.connect(self._fill_theme_menu)
+        self.look_menu = view_menu.addMenu("&Look")
+        self.look_menu.aboutToShow.connect(self._fill_look_menu)
+        self.tidy_action = self._action(view_menu, "T&idy up the free layout", lambda: self.canvas.tidy() if self.layout_mode == "free" else None)
+        self.reduce_action = self._action(view_menu, "Re&duce effects (Nexus)", lambda: self.set_reduce_effects(self.reduce_action.isChecked()),
+                                          checkable=True)
+        self.reduce_action.setToolTip("For slow or busy computers: the Nexus rings stop shimmering and the faders show no waveform")
         view_menu.addSeparator()
         self.fullscreen_action = self._action(view_menu, "&Full screen", self.toggle_fullscreen, "F11", checkable=True)
         self._action(view_menu, "Reset &window size", self.reset_window_size)
-        view_menu.aboutToShow.connect(lambda: self.fullscreen_action.setChecked(self.isFullScreen()))
+        view_menu.aboutToShow.connect(lambda: (self.fullscreen_action.setChecked(self.isFullScreen()), self.reduce_action.setChecked(self.engine.mixer.reduce_effects)))
 
         # Settings: everything that is chosen once and then left alone, in four groups.
         self.settings_menu = settings_menu = bar.addMenu("&Settings")

@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.11.1
+A third look, **Nexus**: a neon dark look where every channel is a ring that pulses with its sound.
+- **View > Look > Nexus.** Each channel and mix is a ring of bars around the app's icon, in the channel's colour. A chain badge on the ring shows
+  a linked channel and a red *MUTED* tag shows a muted one. Nexus has its own deep-blue dark colours; other themes keep their colours.
+- **Waveform faders.** Point at a fader (or focus it, or drag it) and the recent level of that channel draws behind the slider. It is drawn
+  only while shown.
+- **Free layout** (View > Layout > Free, Nexus only). Every channel and mix is a node you drag anywhere; Sluice remembers where. Click a node
+  (or press Enter) to open its full card beside it, and click empty space or press Escape to close it. Each node shows the level of each mix, and
+  muted mixes are struck through. *Tidy up* puts the nodes back in a grid. Other looks show Columns; your Free choice is kept.
+- **View > Reduce effects.** For slow computers: the rings stop shimmering and the faders show no waveform.
+- **Bug report** now starts with one line saying the look, the layout actually shown and whether effects are reduced.
+- **Light on the computer.** The rings are drawn in a single stroke at 16 steps and redraw nothing while quiet; the waveform is only recorded while shown.
+  Memory use is the same as Calm; processor use while moving is about 10% of one core for the whole window, 7% for Calm.
+
+## 0.11.0
+Two looks to choose from: **Calm** (the look you have now) and **Original** (Sluice as it looked in 0.9.7, with everything Sluice can do today).
+- **View > Look.** Pick **Calm** or **Original**; the window changes at once and Sluice remembers your choice. Your colour theme
+  (View > Theme) works in both.
+- **Original is the 0.9.7 window, not just its colours.** The menu bar runs across the top, each channel is a strip with a bar in its colour,
+  and the buttons say what they do (*Mic live*, *Effects (2/3 on)*, *LINK*, *M*, *LIM*). The faders and level meters are drawn as they were,
+  the Listen and Broadcast cards and the *+ Add a Recording mix* strip are back, *Playing now* is a row of app chips under the cards, and the
+  version, dropout count and Demo mode sit in the status bar again. Dark, Light, High contrast, Retro Purple, Midnight Blue, Amber Console
+  and Paper show the colours they had in 0.9.7 in this look; themes you imported keep their own colours.
+- **Nothing is lost in Original.** Effects and their live view, apps and games, the wheel over level numbers, the tray, the first-run screen,
+  keyboard control and every menu work the same as in Calm. One thing differs by design: 0.9.7 had no Rows layout and no *+ Add channel*
+  button, so Rows keeps today's shape (in the old colours) and a channel is added from *Mixer > Add channel*. Columns and Rows are
+  switched under *View > Layout* in this look, since it has no top bar.
+- A look that Sluice does not know (for example from a newer version) is ignored and Calm is shown.
+
 ## 0.10.5
 A small follow-up to 0.10.4: a bigger tray icon, a logo with no empty margin around it, and the mouse wheel on the level numbers.
 - **Scroll over a level number to change it.** Put the mouse on a channel's Listen, Broadcast or Record number (or the master number) and

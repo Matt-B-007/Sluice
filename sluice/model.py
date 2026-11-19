@@ -224,7 +224,10 @@ class Mixer:
         self.hints_seen: list = []  # one-time tips already shown (they are only ever shown once)
         self.buffer_frames = DEFAULT_BUFFER  # used the next time Sluice starts
         self.auto_update = False  # download new releases in the background and install them when Sluice closes (off by default)
-        self.layout = "columns"  # how the channels are laid out: "columns" (a card each) or "rows" (a line each)
+        self.layout = "columns"  # how the channels are laid out: "columns" (a card each), "rows" (a line each) or "free" (Nexus: nodes you place)
+        self.reduce_effects = False  # Nexus: no shimmer on the rings and no waveform on the faders (for slow or busy machines)
+        self.free_positions: dict = {}  # the Free layout: where each node sits, {channel or mix id: [x, y]}
+        self.look = "calm"  # the shapes and sizes of the window ("calm", "original" or "nexus"), apart from the colour theme
         self.theme = "dark"  # a theme id: dark, light, contrast, purple, system, or custom:<name> (an imported file)
         self.close_action = DEFAULT_CLOSE  # "quit", "minimize" (keep running in the taskbar) or "tray" (keep running in the system tray)
 
@@ -381,7 +384,10 @@ class Mixer:
             "close_action": self.close_action,
             "auto_update": self.auto_update,
             "theme": self.theme,
+            "look": self.look,
             "layout": self.layout,
+            "reduce_effects": self.reduce_effects,
+            "free_positions": {k: [int(v[0]), int(v[1])] for k, v in self.free_positions.items()},
             "channels": [
                 {
                     "id": c.id,
@@ -432,8 +438,18 @@ class Mixer:
         theme = data.get("theme")
         if isinstance(theme, str) and 0 < len(theme) <= 80:
             mixer.theme = theme  # an id that no longer exists simply shows the default theme
-        if data.get("layout") in ("columns", "rows"):
+        look = data.get("look")
+        if isinstance(look, str) and look in ("calm", "original", "nexus"):
+            mixer.look = look
+        if data.get("layout") in ("columns", "rows", "free"):
             mixer.layout = data["layout"]
+        mixer.reduce_effects = data.get("reduce_effects") is True
+        positions = data.get("free_positions")
+        if isinstance(positions, dict):
+            for key, pair in list(positions.items())[:60]:
+                if (isinstance(key, str) and 0 < len(key) <= 60 and isinstance(pair, list) and len(pair) == 2
+                        and all(isinstance(n, int) and not isinstance(n, bool) and -2000 <= n <= 20000 for n in pair)):
+                    mixer.free_positions[key] = [pair[0], pair[1]]
         seen_hints = data.get("hints_seen")
         if isinstance(seen_hints, list):
             mixer.hints_seen = [h for h in seen_hints if isinstance(h, str)][:50]
