@@ -38,6 +38,8 @@ class ReadoutEdit(QLineEdit):
     text again from the real value, so a bad entry just snaps back."""
 
     entered = Signal(object)
+    wheeled = Signal(float)  # notches turned over the box (up is positive); emitted only when ``wheel_steps`` is on
+    wheel_steps = False
 
     def __init__(self, width: Optional[int] = 78) -> None:
         super().__init__()
@@ -48,6 +50,19 @@ class ReadoutEdit(QLineEdit):
         self.setToolTip("Click and type a value, then press Enter")
         self.editingFinished.connect(self._finished)
         self.returnPressed.connect(self.clearFocus)
+
+    def wheelEvent(self, event) -> None:
+        """Hovering over a level and turning the wheel nudges it, like the fader beside it. Shift makes the steps fine."""
+        if not self.wheel_steps or not self.isEnabled():
+            super().wheelEvent(event)
+            return
+        delta = event.angleDelta().y() or event.angleDelta().x()  # some systems turn Shift+wheel into a sideways scroll
+        if delta:
+            notches = delta / 120.0
+            if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+                notches /= 10.0
+            self.wheeled.emit(notches)
+        event.accept()
 
     def _finished(self) -> None:
         if self.isModified() or self.hasFocus():

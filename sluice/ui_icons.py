@@ -288,36 +288,46 @@ TALKING_RING = "#4fb5aa"  # the ring colour about 35% lighter, for the closed ri
 MUTED_RED = "#ef4444"
 
 
+TRAY_CROP = (20.5, 87.0)   # the logo file is cropped to the part that has ink: from 20.5, 87 units wide (the same as its viewBox)
+
+
 def tray_pixmap(state: str, px: int) -> QPixmap:
     """The logo for the system tray, on a transparent background like the logo itself: plain; while you talk the ring closes
     and gets heavier and lighter; while your microphone is muted the whole logo fades, the ring turns red, and a red badge
-    sits in the corner. Drawn at the exact pixel size so it stays sharp in the tray."""
+    sits in the corner. The picture is cropped to the logo so it fills the tray slot like the other icons there, and drawn
+    at the exact pixel size so it stays sharp."""
     from PySide6.QtSvg import QSvgRenderer
 
     pixmap = QPixmap(px, px)
     pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    k = px / 128.0
+    origin, size = TRAY_CROP
+    k = px / size
+    painter.scale(k, k)
+    painter.translate(-origin, -origin)   # from here on everything is drawn in the logo's own 128-unit picture
     ring = {"muted": MUTED_RED, "talking": TALKING_RING}.get(state)
     renderer = QSvgRenderer(_logo_svg(ring) or b"")
     if state == "talking":
         painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.setPen(QPen(QColor(TALKING_RING), max(1.5, 10 * k)))
-        painter.drawEllipse(QPointF(64 * k, 64 * k), 38 * k, 38 * k)   # the two gaps fill in: a closed ring
+        painter.setPen(QPen(QColor(TALKING_RING), max(1.5 / k, 10.0)))
+        painter.drawEllipse(QPointF(64, 64), 38, 38)   # the two gaps fill in: a closed ring
     if state == "muted":
         painter.setOpacity(0.45)
     if renderer.isValid():
-        renderer.render(painter, QRectF(0, 0, px, px))   # the logo (for "talking" with the ring in the lighter colour)
+        renderer.render(painter, QRectF(origin, origin, size, size))   # the logo (for "talking" with the ring in the lighter colour)
     painter.setOpacity(1.0)
     if state == "muted":
-        centre = QPointF(98 * k, 98 * k)
-        painter.setPen(QPen(QColor("#10131a"), max(1.0, 4 * k)))   # a dark rim so the badge stands out on any tray
+        end = origin + size
+        radius = 0.234 * size   # the badge keeps its share of the icon
+        centre = QPointF(end - radius - 1.0, end - radius - 1.0)
+        painter.setPen(QPen(QColor("#10131a"), max(1.0 / k, 3.0)))   # a dark rim so the badge stands out on any tray
         painter.setBrush(QColor(MUTED_RED))
-        painter.drawEllipse(centre, 30 * k, 30 * k)
+        painter.drawEllipse(centre, radius, radius)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor("#ffffff"))
-        painter.drawRoundedRect(QRectF(centre.x() - 15 * k, centre.y() - 4.5 * k, 30 * k, 9 * k), 4.5 * k, 4.5 * k)
+        bar_w, bar_h = radius * 1.0, radius * 0.3
+        painter.drawRoundedRect(QRectF(centre.x() - bar_w / 2, centre.y() - bar_h / 2, bar_w, bar_h), bar_h / 2, bar_h / 2)
     painter.end()
     return pixmap
 

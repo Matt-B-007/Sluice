@@ -15,11 +15,16 @@ An open-source virtual audio mixer for Linux (PipeWire). Put your mic, games, mu
 > and use the Sluice support forum. Please do not post the `sluice --report` file there: it contains device and app
 > names, so offer it in a private ticket instead.
 
-## What's new in 0.10.4
+## What's new in 0.10.5
+
+Scroll the mouse wheel over a level number to change it (one notch is 1 dB, **Shift** for 0.1 dB), a larger tray icon, and logo files with the
+empty margin trimmed off. 0.10.4 and earlier are below.
+
+**Added in 0.10.4:**
 
 The finished logo (a deep teal ring and a coral S on a transparent background) with tray icons to match, a *Mute my microphone* button that is
 no longer cut off, an Alt-key letter of its own for every menu item, and a quieter bug report (old crash traces move to an archive, the
-maths libraries in use are listed, and the CPU numbers are fairer after an update). 0.10.3 and earlier are below.
+maths libraries in use are listed, and the CPU numbers are fairer after an update).
 
 **Added in 0.10.3:**
 

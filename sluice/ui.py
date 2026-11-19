@@ -908,7 +908,9 @@ class ChannelStrip(QWidget):
         readout = ReadoutEdit(None)
         readout.setProperty("compact", self.compact)
         readout.setAccessibleName(f"{self.channel.label}, {mix.label} level in decibels")
-        readout.setToolTip("Click and type a level in dB (for example -12), then press Enter")
+        readout.setToolTip("Scroll over the number to change the level (hold Shift for fine steps), or click and type a level in dB (for example -12) and press Enter")
+        readout.wheel_steps = True
+        readout.wheeled.connect(partial(self._wheel_level, mix.id))
         readout.entered.connect(partial(self._typed_level, mix.id))
         mute = QPushButton()
         mute.setObjectName("mute")
@@ -1110,6 +1112,10 @@ class ChannelStrip(QWidget):
             self.engine.set_level(self.channel.id, mix_id, max(MIN_DB, min(MAX_DB, number)))
         self.sync_from_model()  # shows the real value again, also when what was typed was not a number
 
+    def _wheel_level(self, mix_id: str, notches: float) -> None:
+        fader = self.faders[mix_id]
+        fader.setGain(max(int(MIN_DB * 10), min(int(MAX_DB * 10), fader.gain() + int(round(notches * 10)))))
+
     def _on_mute(self, mix_id: str, on: bool) -> None:
         self.engine.set_mute(self.channel.id, mix_id, on)
 
@@ -1178,7 +1184,9 @@ class MixStrip(QFrame):
         self.readout = ReadoutEdit(None)
         self.readout.setProperty("big", True)
         self.readout.setAccessibleName(f"{mix.label} level in decibels")
-        self.readout.setToolTip("Click and type a level in dB (for example -6), then press Enter")
+        self.readout.setToolTip("Scroll over the number to change the level (hold Shift for fine steps), or click and type a level in dB (for example -6) and press Enter")
+        self.readout.wheel_steps = True
+        self.readout.wheeled.connect(self._wheel_gain)
         self.readout.entered.connect(self._typed_gain)
         if on_remove is not None:  # the optional third mix can be taken away again from its own card
             menu_button = _icon_button("more", "Options for this mix", 32, compact=True)
@@ -1337,6 +1345,9 @@ class MixStrip(QFrame):
         if number is not None and number == number:
             self.engine.set_master(self.mix.id, max(MIN_DB, min(MAX_DB, number)))
         self.sync_from_model()
+
+    def _wheel_gain(self, notches: float) -> None:
+        self.fader.setGain(max(int(MIN_DB * 10), min(int(MAX_DB * 10), self.fader.gain() + int(round(notches * 10)))))
 
     def _on_gain(self, value: int) -> None:
         db = value / 10.0

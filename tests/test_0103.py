@@ -474,3 +474,69 @@ def test_cpu_used_before_a_restart_is_not_counted_whichever_thread_the_program_r
     thread.start()
     thread.join()
     assert sum(result["split"].values()) < 0.25, result["split"]
+
+
+# ------------------------------------------------------------------ the wheel over a level number
+def _wheel(widget, delta, modifiers=None):
+    from PySide6.QtCore import QPoint, QPointF, Qt
+    from PySide6.QtGui import QWheelEvent
+    from PySide6.QtWidgets import QApplication
+
+    mods = modifiers or Qt.KeyboardModifier.NoModifier
+    event = QWheelEvent(QPointF(5, 5), widget.mapToGlobal(QPointF(5, 5)), QPoint(0, 0), QPoint(0, delta), Qt.MouseButton.NoButton,
+                        mods, Qt.ScrollPhase.NoScrollPhase, False)
+    QApplication.sendEvent(widget, event)
+    return event
+
+
+def test_wheel_over_a_channel_level_number_moves_that_level(window):
+    strip = window.strips[0]
+    mix_id = next(iter(strip.readouts))
+    readout, fader = strip.readouts[mix_id], strip.faders[mix_id]
+    start = fader.gain()
+    event = _wheel(readout, 120)  # one notch up
+    assert event.isAccepted()
+    assert fader.gain() == start + 10  # 1 dB
+    _wheel(readout, -240)  # two notches down
+    assert fader.gain() == start - 10
+    from sluice.ui import format_db
+
+    assert readout.text() == format_db((start - 10) / 10)  # the number shows the new level
+    assert window.engine.mixer.channel(strip.channel.id).levels[mix_id] == pytest.approx((start - 10) / 10, abs=0.11)  # and the audio follows
+
+
+def test_shift_wheel_makes_fine_steps_and_the_ends_hold(window):
+    from PySide6.QtCore import Qt
+
+    strip = window.strips[0]
+    mix_id = next(iter(strip.readouts))
+    readout, fader = strip.readouts[mix_id], strip.faders[mix_id]
+    fader.setGain(0)
+    _wheel(readout, 120, Qt.KeyboardModifier.ShiftModifier)
+    assert fader.gain() == 1  # 0.1 dB
+    for _ in range(80):
+        _wheel(readout, 120)
+    from sluice.model import MAX_DB, MIN_DB
+
+    assert fader.gain() == int(MAX_DB * 10)
+    for _ in range(400):
+        _wheel(readout, -120)
+    assert fader.gain() == int(MIN_DB * 10)
+
+
+def test_wheel_over_the_master_level_number_moves_the_master(window):
+    strip = window.mix_strips[0]
+    strip.fader.setGain(0)
+    _wheel(strip.readout, 120)
+    assert strip.fader.gain() == 10
+
+
+def test_other_readouts_still_ignore_the_wheel(qapp):
+    from sluice.ui_widgets import ReadoutEdit
+
+    box = ReadoutEdit()
+    box.show()
+    seen = []
+    box.wheeled.connect(seen.append)
+    _wheel(box, 120)
+    assert seen == []

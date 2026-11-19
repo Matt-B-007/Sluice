@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.10.5
+A small follow-up to 0.10.4: a bigger tray icon, a logo with no empty margin around it, and the mouse wheel on the level numbers.
+- **Scroll over a level number to change it.** Put the mouse on a channel's Listen, Broadcast or Record number (or the master number) and
+  turn the wheel: one notch is 1 dB, and holding **Shift** makes it 0.1 dB for fine steps. The level stops at the ends (+12 and -60 dB),
+  and a linked channel moves all its levels together, as the faders do. Typing a number still works. The other number boxes ignore
+  the wheel, so scrolling a list past them never changes a setting by accident. The tooltips say so.
+- **A larger tray icon.** The logo now fills the tray icon, so it is easier to see in a small panel.
+- **The logo files are trimmed to the logo.** The picture used to carry an empty margin, which made the icon look small in the tray, in
+  the applications menu and in file managers. The margin is gone from the SVG and every PNG size.
+
 ## 0.10.4
 A follow-up to 0.10.3: the new logo, finished (and its tray icons to match), a button that no longer gets cut off, and a quieter, clearer bug report.
 - **The logo, finished.** The ring is deep teal and the S is coral, on a **transparent background** (no tile), so it reads on light and dark
