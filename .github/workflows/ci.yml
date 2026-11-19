@@ -67,7 +67,17 @@ jobs:
       - name: Audio tools for the JACK test (a failure here only skips that test)
         continue-on-error: true
         timeout-minutes: 6
-        run: sudo apt-get -o Acquire::Retries=0 -o Acquire::http::Timeout=8 install -y jackd2 libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3 libpulse0 libxcb-cursor0
+        run: |
+          # The runner's package lists can be stale or its default mirror unreachable, so: refresh and install, then try a public mirror.
+          pkgs="jackd2 libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3 libpulse0 libxcb-cursor0"
+          opts="-o Acquire::Retries=2 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15"
+          if sudo apt-get $opts update && sudo apt-get $opts install -y --no-install-recommends $pkgs; then
+            echo "Installed."
+          else
+            echo "Default mirror failed; trying mirrors.edge.kernel.org"
+            sudo sed -i 's#mirror+file:/etc/apt/apt-mirrors.txt#http://mirrors.edge.kernel.org/ubuntu/#g; s#http://azure.archive.ubuntu.com/ubuntu/\?#http://mirrors.edge.kernel.org/ubuntu/#g; s#https\?://\(security\|archive\)\.ubuntu\.com/ubuntu/\?#http://mirrors.edge.kernel.org/ubuntu/#g' /etc/apt/sources.list /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list 2>/dev/null || true
+            sudo apt-get $opts update && sudo apt-get $opts install -y --no-install-recommends $pkgs
+          fi
       - run: pip install -e ".[dev]" maturin
       - name: Build the Rust engine
         run: cd rust/sluice_dsp && maturin build --release -o ../../dist && pip install ../../dist/sluice_dsp-*.whl

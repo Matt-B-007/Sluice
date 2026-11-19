@@ -11,7 +11,10 @@ import pytest
 rust = pytest.importorskip("sluice_dsp")
 if not hasattr(rust, "JackEngine"):
     pytest.skip("older sluice_dsp build", allow_module_level=True)
-jack = pytest.importorskip("jack")
+try:
+    import jack  # noqa: F401
+except (ImportError, OSError):  # no JACK library on this machine (OSError), or no module
+    pytest.skip("libjack is not available", allow_module_level=True)
 if shutil.which("jackd") is None:
     pytest.skip("jackd is not installed", allow_module_level=True)
 

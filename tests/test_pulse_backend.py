@@ -4,7 +4,10 @@ from types import SimpleNamespace
 
 import pytest
 
-pulsectl = pytest.importorskip("pulsectl")
+try:
+    import pulsectl  # noqa: F401
+except (ImportError, OSError):  # the module, or libpulse itself, is missing on this machine
+    pytest.skip("pulsectl or libpulse is not available", allow_module_level=True)
 
 from sluice.backend import INVALID_INDEX, PulseSystem  # noqa: E402
 
