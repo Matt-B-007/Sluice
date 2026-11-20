@@ -102,10 +102,13 @@ def test_steam_games_are_matched_by_game_id_and_assigned_by_it():
 
 
 def test_steam_id_is_read_from_the_programs_environment():
-    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"],
+    code = "import sys, time; print('up', flush=True); time.sleep(30)"
+    child = subprocess.Popen([sys.executable, "-c", code], stdout=subprocess.PIPE,
                              env={**os.environ, "SteamGameId": "220", "SteamAppId": "0"})
-    other = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"], env={"PATH": os.environ["PATH"]})
+    other = subprocess.Popen([sys.executable, "-c", code], stdout=subprocess.PIPE, env={"PATH": os.environ["PATH"]})
     try:
+        child.stdout.readline()  # wait until both are really running: /proc/<pid>/environ is not the new program's before that
+        other.stdout.readline()
         assert steam_id_of_process(child.pid) == "steam:220"
         assert steam_id_of_process(other.pid) is None
         assert steam_id_of_process(2 ** 22 + 12345) is None
@@ -113,3 +116,7 @@ def test_steam_id_is_read_from_the_programs_environment():
     finally:
         child.kill()
         other.kill()
+        child.stdout.close()
+        other.stdout.close()
+        child.wait()
+        other.wait()
