@@ -4,7 +4,7 @@ scroll bar, a top bar wider than the window, or anything outside it. Used by the
 import itertools
 
 from PySide6.QtCore import QRect
-from PySide6.QtWidgets import QAbstractButton, QAbstractSlider, QLabel, QScrollArea, QWidget
+from PySide6.QtWidgets import QAbstractButton, QAbstractSlider, QLabel, QWidget
 
 
 def _region(win, widget) -> QRect:

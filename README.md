@@ -15,7 +15,17 @@ An open-source virtual audio mixer for Linux (PipeWire). Put your mic, games, mu
 > and use the Sluice support forum. Please do not post the `sluice --report` file there: it contains device and app
 > names, so offer it in a private ticket instead.
 
-## What's new in 0.11.3
+## What's new in 0.11.4
+
+The **Tile** look is now a set of raised keys sitting in a tray, in a light version (white keys) and a dark one (graphite keys): each channel is a
+key with a groove for each mix that is both its fader and its meter, a handle you drag, and buttons that look pushed in while they are on. Fold a key
+out for its effects and apps; drag it by its name to move it. The Listen and Broadcast cards, the Rows layout, the compact list and the desktop
+widgets match it, and **View > Tile colours** switches the key colours off for any theme. Every look draws its meters for about half the processor
+time, long channel names end in "…" instead of being cut off, and the Rows layout has room for the Recording mix.
+
+![The Tile look, dark](docs/screenshot-tile.png)
+
+**Added in 0.11.3:**
 
 The window now fits any size (cards wrap, Listen and Broadcast move to the side or the bottom, and a compact list takes over when it is small), there is a
 fourth look, **Tile**, and **View > Desktop widgets** puts a microphone mute button, a volume dial or a channel list on the desktop. The audio engine no longer

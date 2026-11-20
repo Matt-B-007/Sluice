@@ -246,6 +246,7 @@ class Mixer:
         self.auto_update = False  # download new releases in the background and install them when Sluice closes (off by default)
         self.layout = "columns"  # how the channels are laid out: "columns" (a card each), "rows" (a line each) or "free" (Nexus: nodes you place)
         self.nexus_colors = True  # Nexus: its neon colours on the dark themes (off: each theme keeps its own colours)
+        self.tile_colors = True  # Tile: its own light and dark key colours on the built-in themes (off: each theme keeps its own)
         self.reduce_effects = False  # Nexus: no shimmer on the rings and no waveform on the faders (for slow or busy machines)
         self.desktop_widgets: list = []  # widgets left on the desktop: [{kind, mix, channel, x, y}], see ui_desktop
         self.free_positions: dict = {}  # the Free layout: where each node sits, {channel or mix id: [x, y]}
@@ -409,6 +410,7 @@ class Mixer:
             "look": self.look,
             "layout": self.layout,
             "nexus_colors": self.nexus_colors,
+            "tile_colors": self.tile_colors,
             "reduce_effects": self.reduce_effects,
             "desktop_widgets": [dict(w) for w in self.desktop_widgets],
             "free_positions": {k: [int(v[0]), int(v[1])] for k, v in self.free_positions.items()},
@@ -468,6 +470,7 @@ class Mixer:
         if data.get("layout") in ("columns", "rows", "free"):
             mixer.layout = data["layout"]
         mixer.nexus_colors = data.get("nexus_colors") is not False
+        mixer.tile_colors = data.get("tile_colors") is not False
         mixer.reduce_effects = data.get("reduce_effects") is True
         widgets = data.get("desktop_widgets")
         if isinstance(widgets, list):

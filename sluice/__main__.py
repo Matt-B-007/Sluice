@@ -85,6 +85,16 @@ def _acquire_lock():
         return True
 
 
+def _release_lock(lock) -> None:
+    """Let go of a lock from ``_acquire_lock`` (closing the file releases it). True (no fcntl) and None need nothing."""
+    close = getattr(lock, "close", None)
+    if close is not None:
+        try:
+            close()
+        except OSError:
+            pass
+
+
 def _lock_holder() -> tuple:
     """(process number, version) of the running Sluice, from the lock file; None for what is not known."""
     try:
@@ -114,18 +124,21 @@ def _cleanup() -> int:
         print("sluice is running. Close it first (it removes its own devices when it quits).", file=sys.stderr)
         return 1
     try:
-        from .backend import PulseSystem
+        try:
+            from .backend import PulseSystem
 
-        system = PulseSystem(purge=False)
-    except Exception as exc:
-        print(f"sluice: could not connect to PipeWire/PulseAudio: {exc}", file=sys.stderr)
-        return 1
-    try:
-        removed = system.purge_stale(legacy=True)
+            system = PulseSystem(purge=False)
+        except Exception as exc:
+            print(f"sluice: could not connect to PipeWire/PulseAudio: {exc}", file=sys.stderr)
+            return 1
+        try:
+            removed = system.purge_stale(legacy=True)
+        finally:
+            system.cleanup()
+        print(f"Removed {removed} leftover sluice device(s)." if removed else "Nothing to clean up.")
+        return 0
     finally:
-        system.cleanup()
-    print(f"Removed {removed} leftover sluice device(s)." if removed else "Nothing to clean up.")
-    return 0
+        _release_lock(lock)
 
 
 def _report(target: str) -> int:
@@ -148,7 +161,8 @@ def _rollback() -> int:
     if not previous:
         print("There is no earlier version to go back to.", file=sys.stderr)
         return 1
-    if _acquire_lock() is None:
+    lock = _acquire_lock()  # held until the files are back: a Sluice started meanwhile would run half-replaced files
+    if lock is None:
         print("sluice is running. Close it first, then go back.", file=sys.stderr)
         return 1
     try:
@@ -156,6 +170,8 @@ def _rollback() -> int:
     except selfupdate.UpdateError as exc:
         print(f"sluice: {exc}", file=sys.stderr)
         return 1
+    finally:
+        _release_lock(lock)
     print(f"Went back to Sluice {previous}. Your settings were not changed.")
     return 0
 
@@ -167,9 +183,12 @@ def _uninstall(args) -> int:
     if lock is None:
         print("sluice is running. Close it first (Help > Uninstall Sluice closes it for you).", file=sys.stderr)
         return 1
-    return uninstall.run(keep_settings=args.keep_settings, assume_yes=args.yes, dry_run=args.dry_run,
-                         cleanup_devices=_cleanup_devices, list_devices=_list_devices,
-                         clear_caches=args.clear_caches, remove_git=args.remove_git_folder)
+    try:
+        return uninstall.run(keep_settings=args.keep_settings, assume_yes=args.yes, dry_run=args.dry_run,
+                             cleanup_devices=_cleanup_devices, list_devices=_list_devices,
+                             clear_caches=args.clear_caches, remove_git=args.remove_git_folder)
+    finally:
+        _release_lock(lock)
 
 
 def _list_devices() -> list:

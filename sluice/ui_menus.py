@@ -94,6 +94,11 @@ class MenusMixin:
         self.reduce_action = self._action(view_menu, "Re&duce effects", lambda: self.set_reduce_effects(self.reduce_action.isChecked()),
                                           checkable=True)
         self.reduce_action.setToolTip("For slow or busy computers: the Nexus rings stop shimmering and the faders show no waveform or glow")
+        self.tile_section = view_menu.addSection("Tile")
+        self.tile_colors_action = self._action(view_menu, "Tile colo&urs on built-in themes",
+                                               lambda: self.set_tile_colors(self.tile_colors_action.isChecked()), checkable=True)
+        self.tile_colors_action.setToolTip("White keys on Light and Paper, graphite keys on Dark, Retro Purple, Midnight Blue and Amber Console. "
+                                           "Off: each theme keeps its own colours. High contrast and imported themes are never changed.")
         self.tidy_action = self._action(view_menu, "T&idy up the free layout", lambda: self.canvas.tidy() if self.layout_mode == "free" else None)
         view_menu.addSection("Desktop")
         self.widgets_menu = view_menu.addMenu("Desktop wid&gets")
@@ -181,6 +186,7 @@ class MenusMixin:
         self.fullscreen_action.setChecked(self.isFullScreen())
         self.reduce_action.setChecked(self.engine.mixer.reduce_effects)
         self.nexus_colors_action.setChecked(self.engine.mixer.nexus_colors)
+        self.tile_colors_action.setChecked(self.engine.mixer.tile_colors)
         self._show_look_items()
 
     def _fill_widgets_menu(self) -> None:
@@ -212,6 +218,8 @@ class MenusMixin:
         nexus = themes.current_look() == "nexus"
         for item in (self.nexus_section, self.nexus_colors_action, self.reduce_action):
             item.setVisible(nexus)
+        for item in (self.tile_section, self.tile_colors_action):
+            item.setVisible(themes.current_look() == "tile")
         self.tidy_action.setVisible(themes.has_free(themes.current_look()))  # Nexus and Tile have the Free layout
         self.tidy_action.setEnabled(self.layout_mode == "free")
 

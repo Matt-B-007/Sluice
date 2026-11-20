@@ -411,7 +411,7 @@ def window_summary() -> str:
             f"{info['scale']}. Size step: {info['step']}. Arrangement: {info['mode']}"
             f"{'' if info['mode'] in ('mini', 'free') else ', ' + dock.get(info['dock'], info['dock'])} (chosen: {info['chosen']}; "
             f"switched by the window's size: {automatic}). Rearranged {info['relayouts']} times this session. "
-            f"Nexus colours: {'on' if info['nexus_colors'] else 'off'}.\n")
+            f"Nexus colours: {'on' if info['nexus_colors'] else 'off'}. Tile colours: {'on' if info.get('tile_colors', True) else 'off'}.\n")
 
 
 def window_layout() -> str:

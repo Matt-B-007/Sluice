@@ -3,8 +3,10 @@ channels) so the big window can stay closed. They draw themselves and ask the en
 second, only while they are shown and only repaint when something they show has changed."""
 from __future__ import annotations
 
+import math
+
 from PySide6.QtCore import QPointF, QRectF, Qt, QTimer
-from PySide6.QtGui import QColor, QFont, QPainter, QPen
+from PySide6.QtGui import QColor, QFont, QPainter, QPen, QRadialGradient
 from PySide6.QtWidgets import QMenu, QVBoxLayout, QWidget
 
 from . import themes
@@ -143,6 +145,9 @@ class MicWidget(DesktopWidget):
         self.window_.toggle_mic_mute()
 
     def paintEvent(self, _event) -> None:
+        if themes.current_look() == "tile":
+            self._paint_key()
+            return
         muted, glow = self._state or (False, 0)
         panel, text, accent = self._colors()
         red = QColor(themes.color("mute_fg") if muted else "#2bd48a")
@@ -165,6 +170,42 @@ class MicWidget(DesktopWidget):
         if muted:
             p.setPen(QPen(red, 4, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
             p.drawLine(QPointF(cx - 16, cy + 17), QPointF(cx + 16, cy - 19))
+        p.end()
+
+
+    def _paint_key(self) -> None:
+        """The Tile look: a square raised key with the microphone in a tinted well; pushed in, red, while muted."""
+        from . import look_tile, ui_tile
+
+        muted, glow = self._state or (False, 0)
+        pc = look_tile.paint_colors()
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        skirt = 2 if muted else ui_tile.SKIRT  # a muted key is pushed in: it sits lower, with less of its edge showing
+        rect = QRectF(4, 2 + ui_tile.SKIRT - skirt, self.width() - 8, self.height() - 10 - (ui_tile.SKIRT - skirt))
+        ui_tile.paint_surface(p, rect, self.devicePixelRatioF(), radius=18, skirt=skirt)
+        face = rect.adjusted(0, 0, 0, -skirt)
+        tint = QColor(pc["red"] if muted else "#4c8dff")
+        well = QRectF(face.center().x() - 22, face.center().y() - 22, 44, 44)
+        fill = QColor(tint)
+        fill.setAlphaF(0.16)
+        p.setPen(QPen(QColor(tint.red(), tint.green(), tint.blue(), 90), 1))
+        p.setBrush(fill)
+        p.drawRoundedRect(well, 12, 12)
+        if not muted and glow:  # the level, as a ring that brightens round the well
+            ring = QColor("#2fcf7a")
+            ring.setAlpha(min(255, 60 + glow * 16))
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.setPen(QPen(ring, 2))
+            p.drawRoundedRect(well.adjusted(-3, -3, 3, 3), 14, 14)
+        p.setPen(QPen(tint, 2.2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        cx, cy = well.center().x(), well.center().y()
+        p.drawRoundedRect(QRectF(cx - 4.5, cy - 12, 9, 15), 4.5, 4.5)
+        p.drawArc(QRectF(cx - 9, cy - 6, 18, 15), 200 * 16, 140 * 16)
+        p.drawLine(QPointF(cx, cy + 9), QPointF(cx, cy + 13))
+        if muted:
+            p.drawLine(QPointF(cx - 12, cy - 12), QPointF(cx + 12, cy + 12))
         p.end()
 
 
@@ -235,6 +276,9 @@ class DialWidget(DesktopWidget):
         from .ui import db_to_fader_position
 
         db, muted, level = self._state or (0.0, False, 0)
+        if themes.current_look() == "tile":
+            self._paint_key(db, muted, level, db_to_fader_position(db))
+            return
         panel, text, accent = self._colors()
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -265,26 +309,88 @@ class DialWidget(DesktopWidget):
         p.end()
 
 
+    def _paint_key(self, db: float, muted: bool, level: int, position: float) -> None:
+        """The Tile look: a raised round knob in a groove, the level as an arc in the groove, the pointer on the knob."""
+        from . import look_tile
+
+        pc = look_tile.paint_colors()
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        side = min(self.width(), self.height())
+        groove = QRectF(6, 4, side - 12, side - 12)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor(pc["track"]))
+        p.drawEllipse(groove)
+        arc = groove.adjusted(5, 5, -5, -5)
+        accent = QColor(pc["red"] if muted else "#4c8dff")
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        if position > 0:
+            p.setPen(QPen(accent, 5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            p.drawArc(arc, 225 * 16, int(-270 * position * 16))
+        knob = groove.adjusted(16, 16, -16, -16)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor(pc["skirt_dark"]))
+        p.drawEllipse(knob.translated(0, 5))
+        p.setBrush(QColor(pc["skirt"]))
+        p.drawEllipse(knob.translated(0, 4))
+        gradient = QRadialGradient(knob.left() + knob.width() * 0.38, knob.top() + knob.height() * 0.3, knob.width() * 0.75)
+        gradient.setColorAt(0.0, QColor(pc["face_top"]))
+        gradient.setColorAt(1.0, QColor(pc["face_bottom"]))
+        p.setBrush(gradient)
+        p.drawEllipse(knob)
+        angle = math.radians(-135 + 270 * position)
+        cx, cy, r = knob.center().x(), knob.center().y(), knob.width() / 2
+        p.setPen(QPen(accent, 3, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        p.drawLine(QPointF(cx + math.sin(angle) * r * 0.55, cy - math.cos(angle) * r * 0.55),
+                   QPointF(cx + math.sin(angle) * r * 0.82, cy - math.cos(angle) * r * 0.82))
+        font = QFont(self.font())
+        font.setPixelSize(12)
+        font.setBold(True)
+        p.setFont(font)
+        p.setPen(QColor(pc["red"] if muted else pc["text"]))
+        p.drawText(knob.adjusted(0, 8, 0, 8), Qt.AlignmentFlag.AlignCenter,
+                   "off" if (muted or db <= -60) else f"{db:+.0f}" if abs(db) >= 10 else f"{db:+.1f}")
+        p.end()
+
+
 class StripWidget(DesktopWidget):
     """The compact list of channels as a floating panel."""
 
     def __init__(self, manager, spec) -> None:
         super().__init__(manager, spec)
-        from .ui_mini import MiniStrip
-
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
         self.setObjectName("desktopstrip")
         self.setAutoFillBackground(True)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
-        self.strip = MiniStrip(self.window_)
-        if spec.get("mix"):
-            self.strip.choose_mix(spec["mix"])
-        layout.addWidget(self.strip)
+        self._layout = layout
+        self.strip = None
+        self.restyle()
         self.setFixedWidth(340)
         self.setMinimumHeight(180)
         self.setToolTip("Drag the empty space to move. Right-click for more.")
         self._ids = self._channel_ids()
+
+    def restyle(self) -> None:
+        """Follow the look and colours of the main window: the Tile look's mini keys in a tray, or the plain list. The window's style
+        sheet does not reach a window of its own, so it is given here."""
+        from .ui_mini import MiniStrip
+
+        tile = themes.current_look() == "tile"
+        self.setStyleSheet(self.window_.styleSheet())
+        if self.strip is None or self.strip.tile != tile:
+            mix = self.strip.mix_id if self.strip is not None else self.spec.get("mix")
+            if self.strip is not None:
+                self._layout.removeWidget(self.strip)
+                self.strip.hide()
+                self.strip.deleteLater()
+            self._layout.setContentsMargins(*((0, 0, 0, 0) if tile else (12, 12, 12, 12)))  # Tile: the list's own tray is the panel
+            self.strip = MiniStrip(self.window_, tile=tile)
+            if mix:
+                self.strip.choose_mix(mix)
+            self._layout.addWidget(self.strip)
+            self._ids = self._channel_ids() if hasattr(self, "engine") else ()
+        self.strip.refresh_theme()
+        self.update()
 
     def title(self) -> str:
         return "Channel levels"
@@ -297,6 +403,8 @@ class StripWidget(DesktopWidget):
             self._ids = self._channel_ids()
             self.strip.rebuild()
         self.strip.sync_from_model()
+        if self.strip.tile:  # the mini keys show the live signal too (they repaint only when it changes)
+            self.strip.push_levels(self.engine.sample_levels(0.05))
         return ()
 
     def mousePressEvent(self, event) -> None:
@@ -308,6 +416,11 @@ class StripWidget(DesktopWidget):
         self._press = None
 
     def paintEvent(self, _event) -> None:
+        if self.strip.tile:  # the list paints its own tray; the corners round it show the window's floor
+            p = QPainter(self)
+            p.fillRect(self.rect(), QColor(themes.color("bg")))
+            p.end()
+            return
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         p.setPen(QPen(QColor(themes.color("border")), 1))
@@ -359,6 +472,14 @@ class DesktopWidgetManager:
                 spec["x"], spec["y"] = 100 + 20 * n, 100 + 20 * n
         widget.move(spec["x"], spec["y"])
         widget.show()
+
+    def restyle(self) -> None:
+        """The look or the colours changed: every open widget follows."""
+        for widget in self.open_widgets.values():
+            restyle = getattr(widget, "restyle", None)
+            if restyle is not None:
+                restyle()
+            widget.update()
 
     def close_spec(self, spec: dict) -> None:
         widget = self.open_widgets.pop(_key(spec), None)

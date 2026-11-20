@@ -17,7 +17,7 @@ from PySide6.QtCore import QPointF, QRectF, QSize, Qt
 from PySide6.QtGui import QColor, QIcon, QIconEngine, QPainter, QPainterPath, QPen, QPixmap
 
 NAMES = ("speaker", "speaker_off", "mic", "mic_off", "link", "sliders", "plus", "menu", "gear", "more", "chevron_down", "headphones",
-         "broadcast")
+         "broadcast", "chevron_up", "gamepad", "chat", "globe", "note", "bell")
 
 
 class _Grid:
@@ -109,6 +109,29 @@ def _draw(name: str, g: _Grid) -> None:
             g.circle(12, y, 1.5, filled=True)
     elif name == "chevron_down":
         g.poly([(6, 9), (12, 15), (18, 9)])
+    elif name == "chevron_up":
+        g.poly([(6, 15), (12, 9), (18, 15)])
+    elif name == "gamepad":  # the Tile look's Game channel
+        g.rrect(3, 7, 18, 11, 5.5)
+        g.line(7, 12.5, 11, 12.5)
+        g.line(9, 10.5, 9, 14.5)
+        g.circle(15.5, 11, 1.1, filled=True)
+        g.circle(17.5, 14, 1.1, filled=True)
+    elif name == "chat":  # Chat
+        g.poly([(4, 5), (20, 5), (20, 16), (11, 16), (6, 20), (6, 16), (4, 16)], closed=True)
+    elif name == "globe":  # Browser
+        g.circle(12, 12, 8.5)
+        g.arc(8, 3.5, 8, 17, 0, 360)
+        g.line(3.5, 12, 20.5, 12)
+    elif name == "note":  # Music
+        g.circle(8, 17, 2.8)
+        g.circle(17, 15, 2.8)
+        g.line(10.8, 17, 10.8, 6)
+        g.line(19.8, 15, 19.8, 4)
+        g.line(10.8, 6, 19.8, 4)
+    elif name == "bell":  # System
+        g.poly([(5, 17), (7, 14.5), (7, 10), (8.5, 6.5), (12, 5), (15.5, 6.5), (17, 10), (17, 14.5), (19, 17)], closed=True)
+        g.line(10.5, 20, 13.5, 20)
     elif name == "headphones":
         g.arc(4, 4, 16, 16, 0, 180)
         g.rrect(3.5, 12, 4, 7, 2)

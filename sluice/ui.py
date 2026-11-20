@@ -11,7 +11,7 @@ import threading
 import time
 from typing import Optional
 
-from PySide6.QtCore import QEasingCurve, QEvent, QPoint, QPointF, QPropertyAnimation, QRectF, QSize, Qt, QTimer, QUrl, Signal
+from PySide6.QtCore import QEasingCurve, QEvent, QPoint, QPointF, QPropertyAnimation, QRect, QRectF, QSize, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import (QAction, QColor, QDesktopServices, QFontMetrics, QGuiApplication, QIcon, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap, QRadialGradient)
 from PySide6.QtWidgets import (
     QAbstractSlider,
@@ -73,7 +73,7 @@ MIX_WIDTH = 224              # a master card in the Columns layout
 FIRST_RUN_WIDTH = 560
 ROW_NAME_WIDTH = 148         # the Rows layout: the name and what is on the channel
 ROW_TOOLS_WIDTH = 148        # ...the Effects and Link buttons
-ROW_CELL_MIN = 210           # ...and the least width of one mix's slider, level and mute button
+ROW_CELL_MIN = sizing.ROW_CELL_MIN  # ...and the least width of one mix's slider, level and mute button (the window plans with it)
 LAYOUTS = ("columns", "rows", "free")
 EMPTY_HINTS = {"mic": "Your microphone goes here.", "browser": "Chrome, Firefox and other browsers.",
                "game": "Games and anything loud.", "chat": "Discord and voice chat.", "music": "Spotify, VLC and players.",
@@ -93,6 +93,11 @@ def channel_width(mix_count: int) -> int:
 def _is_nexus(rows: bool = False) -> bool:
     """True in the Nexus look (the Columns layout; the Rows layout keeps its own shape until Nexus has one)."""
     return themes.current_look() == "nexus" and not rows
+
+
+def _is_tile() -> bool:
+    """True in the Tile look (raised keys)."""
+    return themes.current_look() == "tile"
 
 
 def _is_original(rows: bool = False) -> bool:
@@ -133,6 +138,11 @@ class ElidedLabel(QLabel):
     def resizeEvent(self, event) -> None:  # noqa: N802
         super().resizeEvent(event)
         self._show_fitting()
+
+    def changeEvent(self, event) -> None:  # noqa: N802
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.FontChange:  # a style sheet's font arrives after the first fit: fit again with it
+            self._show_fitting()
 
     def _show_fitting(self) -> None:
         shown = QFontMetrics(self.font()).elidedText(self._full, Qt.TextElideMode.ElideRight, max(8, self.width()))
@@ -212,6 +222,7 @@ class LevelMeter(QWidget):
         self._well = QColor(themes.color("well" if self.original else "meter_bg"))
         self._peak_color = QColor(themes.color("strong"))
         self._lit = None
+        self._rounded = None
         self._painted = None
         self.update()
 
@@ -224,8 +235,35 @@ class LevelMeter(QWidget):
 
     def resizeEvent(self, event) -> None:
         self._lit = None
+        self._rounded = None
         self._painted = None
         super().resizeEvent(event)
+
+    def _rounded_pixmaps(self) -> tuple:
+        """(well, lit bar), each already cut to the meter's rounded shape: painting then needs no clip path, which is most of a
+        meter frame's cost. Made once per size and theme."""
+        if getattr(self, "_rounded", None) is None:
+            ratio = self.devicePixelRatioF()
+            rect = QRectF(self.rect())
+            radius = min(rect.width(), rect.height()) / 2
+            shape = QPainterPath()
+            shape.addRoundedRect(rect, radius, radius)
+            out = []
+            for source in (None, self._lit_pixmap()):
+                pixmap = QPixmap(max(1, int(rect.width() * ratio)), max(1, int(rect.height() * ratio)))
+                pixmap.setDevicePixelRatio(ratio)
+                pixmap.fill(Qt.GlobalColor.transparent)
+                q = QPainter(pixmap)
+                q.setRenderHint(QPainter.RenderHint.Antialiasing)
+                q.setClipPath(shape)
+                if source is None:
+                    q.fillRect(rect, self._well)
+                else:
+                    q.drawPixmap(0, 0, source)
+                q.end()
+                out.append(pixmap)
+            self._rounded = tuple(out)
+        return self._rounded
 
     def _lit_pixmap(self) -> QPixmap:
         if self._lit is None:
@@ -288,22 +326,22 @@ class LevelMeter(QWidget):
             self._paint_original()
             return
         p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
         rect = QRectF(self.rect())
         radius = min(rect.width(), rect.height()) / 2
-        shape = QPainterPath()
-        shape.addRoundedRect(rect, radius, radius)
-        p.setClipPath(shape)
-        p.fillRect(rect, self._well)
+        well, lit = self._rounded_pixmaps()
+        p.drawPixmap(0, 0, well)
         fill, peak = self._shown()
         ratio = self.devicePixelRatioF()
-        lit = self._lit_pixmap()
         if fill > 0:
             if self.horizontal:
                 p.drawPixmap(0, 0, lit, 0, 0, int(fill * ratio), int(rect.height() * ratio))
             else:
                 top = self.height() - fill
                 p.drawPixmap(0, top, lit, 0, int(top * ratio), int(rect.width() * ratio), int(fill * ratio))
+        if 0 <= peak < radius or peak > self._length() - radius:  # a peak line in a rounded end is cut to the shape
+            shape = QPainterPath()
+            shape.addRoundedRect(rect, radius, radius)
+            p.setClipPath(shape)
         if peak >= 0:
             p.setPen(QPen(self._peak_color, 2))
             if self.horizontal:
@@ -329,6 +367,7 @@ class Fader(QAbstractSlider):
         self.horizontal = horizontal
         self.original = _is_original() and not horizontal  # the 0.9.7 fader: a grey groove, a dark green fill, a squarish handle
         self.nexus = _is_nexus() and not horizontal  # the Nexus fader: reach for it and it shows the sound it carries
+        self.tile = _is_tile()
         self._reveal = False
         self._history = [0.0] * 32 if self.nexus else []  # about a second of level, kept only while the waveform is showing
         self.setOrientation(Qt.Orientation.Horizontal if horizontal else Qt.Orientation.Vertical)
@@ -472,6 +511,20 @@ class Fader(QAbstractSlider):
         p.drawRoundedRect(track_rect, groove, groove)
         p.setBrush(QColor(themes.color("fill") if self.original else self.fill_color))
         p.drawRoundedRect(fill_rect, groove, groove)
+        if self.tile:  # the Tile look: the track is a groove pressed into the key, the handle a raised white pill
+            from . import look_tile, ui_tile
+            pc = look_tile.paint_colors()
+            shape = QPainterPath()
+            shape.addRoundedRect(track_rect, groove, groove)
+            ui_tile.paint_groove(p, shape, track_rect, pc)
+            ui_tile.paint_handle(p, thumb_rect, pc, False)
+            if self.hasFocus():
+                radius = min(tw, th) / 2.0
+                p.setBrush(Qt.BrushStyle.NoBrush)
+                p.setPen(QPen(QColor(themes.color("focus")), 2))
+                p.drawRoundedRect(thumb_rect.adjusted(-2, -2, 2, 2), radius + 2, radius + 2)
+            p.end()
+            return
         if self.nexus and self._reveal:
             self._paint_wave(p, track_rect)
         radius = 4.0 if self.original else min(tw, th) / 2.0
@@ -871,8 +924,22 @@ class RowCard(QFrame):
         super().__init__()
         self.setObjectName("row")
         self.bar_color = color
+        self.key = None
+        if _is_tile():
+            from .ui_tile import KeyBackground
+            self.key = KeyBackground((4, 1, 4, 8), radius=16)
 
     def paintEvent(self, event) -> None:
+        if self.key is not None:  # the Tile look: a raised key with a short bar in the channel's colour, not a full-height one
+            p = QPainter(self)
+            self.key.draw(self, p)
+            p.setRenderHint(QPainter.RenderHint.Antialiasing)
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(QColor(self.bar_color))
+            face = self.key.face_rect(self)
+            p.drawRoundedRect(QRectF(face.left() + 10, face.center().y() - 14, 5, 28), 2.5, 2.5)
+            p.end()
+            return
         super().paintEvent(event)
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -908,6 +975,9 @@ class ChannelStrip(QWidget):
         self.ring = None
         mixes = len(engine.mixer.mixes)
         self.channel, self.engine, self.window = channel, engine, window
+        if getattr(self, "tint", None) is None:  # the channel's identity colour (the Tile look has its own set)
+            from . import look_tile
+            self.tint = look_tile.channel_color(channel) if _is_tile() else channel.color
         self.compact = mixes > 2  # three fader columns share the strip
         self.faders: dict = {}
         self.meters: dict = {}
@@ -915,16 +985,15 @@ class ChannelStrip(QWidget):
         self.mutes: dict = {}
         self._empty = False
 
-        self.frame = RowCard(channel.color) if rows else QFrame()
+        self.frame = self._make_frame(rows)
         if not rows:
-            self.frame.setObjectName("strip")
             self.setFixedWidth(channel_width(mixes))
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.addWidget(self.frame)
         self.layout_root = QVBoxLayout(self.frame) if not rows else QHBoxLayout(self.frame)
         if rows:
-            self.layout_root.setContentsMargins(24, 8, 24, 8)
+            self.layout_root.setContentsMargins(24, 8, 24, 16 if _is_tile() else 8)  # Tile: room for the key's skirt
             self.layout_root.setSpacing(16)
         elif self.original:
             self.layout_root.setContentsMargins(8, 8, 8, 8)
@@ -933,7 +1002,7 @@ class ChannelStrip(QWidget):
             self.layout_root.setContentsMargins(16, 16, 16, 16)
             self.layout_root.setSpacing(16)
 
-        self.title = QLabel(channel.label)
+        self.title = ElidedLabel(channel.label)  # a long name ends in an ellipsis instead of being cut off; the tooltip has it whole
         self.title.setObjectName("title" if self.original else "name")
         if self.original:
             self.title.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -1002,10 +1071,18 @@ class ChannelStrip(QWidget):
         self.refresh_theme()
 
     # ------------------------------------------------------------------ building
+    def _make_frame(self, rows: bool) -> QFrame:
+        """The card behind the controls (the Tile look paints its own: see ui_tile.TileStrip)."""
+        if rows:
+            return RowCard(self.tint)
+        frame = QFrame()
+        frame.setObjectName("strip")
+        return frame
+
     def _title_tip(self) -> str:
         c = self.channel
-        return (f"Also recordable as “{c.solo_description}”. Double-click to rename" if c.separate
-                else "Double-click to rename")
+        return (f"{c.label}\nAlso recordable as “{c.solo_description}”. Double-click to rename" if c.separate
+                else f"{c.label}\nDouble-click to rename")
 
     def _build_options_menu(self) -> None:
         menu = self.menu
@@ -1233,7 +1310,7 @@ class ChannelStrip(QWidget):
 
     def _build_rows(self) -> None:
         layout = self.layout_root
-        layout.setContentsMargins(24, 8, 24, 8)
+        layout.setContentsMargins(24, 8, 24, 16 if _is_tile() else 8)
         layout.addSpacing(0)
         block = QVBoxLayout()
         block.setSpacing(4)
@@ -1292,7 +1369,7 @@ class ChannelStrip(QWidget):
 
     def _make_controls(self, mix: Mix, horizontal: bool) -> tuple:
         fader = Fader(horizontal=horizontal)
-        fader.set_fill(self.channel.color)
+        fader.set_fill(self.tint)
         fader.setAccessibleName(f"{self.channel.label}, {mix.label} level")
         fader.gainChanged.connect(partial(self._on_level, mix.id))
         meter = LevelMeter(horizontal=horizontal)
@@ -1510,6 +1587,7 @@ class ChannelStrip(QWidget):
         if ok and text.strip():
             self.engine.rename_channel(self.channel.id, text)
             self.title.setText(self.channel.label)
+            self.title.setToolTip(self._title_tip())
             self.window.refresh_sources()
 
     def delete(self) -> None:
@@ -1602,8 +1680,9 @@ class MixStrip(QFrame):
         self.rows = rows
         self.original = _is_original(rows)
         self.ring = None
+        self.key = None
         if not rows:
-            self.setFixedWidth(ORIGINAL_MIX_WIDTH if self.original else MIX_WIDTH)
+            self.setFixedWidth(ORIGINAL_MIX_WIDTH if self.original else MIX_WIDTH + (12 if _is_tile() else 0))  # Tile: + the key's sides
         self.mix, self.engine = mix, engine
         if self.original:
             self._build_original(mix, on_remove)
@@ -1612,6 +1691,11 @@ class MixStrip(QFrame):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(16 if not rows else 8)
+        self.key = None
+        if _is_tile():  # a raised key: room round the face for its skirt and shadow
+            from .ui_tile import SKIRT, KeyBackground
+            self.key = KeyBackground((6, 2, 6, 10), radius=16)
+            layout.setContentsMargins(6 + 16, 2 + 14, 6 + 16, 10 + SKIRT + 14)
         if _is_nexus(rows):  # a ring with the mix's letter in it, in the mix's colour
             mixc = themes.mix_colors(themes._current)
             color = mixc.get({MONITOR: "listen", STREAM: "broadcast"}.get(mix.id, ""), themes.color("accent"))
@@ -1834,6 +1918,14 @@ class MixStrip(QFrame):
         self.sync_from_model()
         self.refresh_theme()
 
+    def paintEvent(self, event) -> None:
+        if self.key is not None:
+            p = QPainter(self)
+            self.key.draw(self, p)
+            p.end()
+            return
+        super().paintEvent(event)
+
     def refresh_theme(self) -> None:
         self.fader.set_fill(themes.color("accent"))
         if self.menu_button is not None and not self.original:
@@ -1903,6 +1995,9 @@ class MixStrip(QFrame):
 
     def _on_device(self, _index: int) -> None:
         self.engine.set_mix_device(self.mix.id, self.combo.selected_device())
+        node = getattr(self, "node", None)
+        if node is not None:  # the Free layout's node shows the device too
+            node.refresh()
 
 
 # ------------------------------------------------------------------- playing now
@@ -1971,7 +2066,8 @@ class NexusNode(QFrame):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setAccessibleName(f"{title}: press Enter to open its controls")
         self.ring = NexusRing(color, picture)
-        self.name = QLabel(title)
+        self.name = ElidedLabel(title)
+        self.name.setToolTip(title)
         self.name.setObjectName("name")
         self.name.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.chips = QLabel("")
@@ -1994,6 +2090,9 @@ class NexusNode(QFrame):
         self.setProperty("open", on)
         self.style().unpolish(self)
         self.style().polish(self)
+
+    def push_level(self, linear: float, slow: float = 1.0) -> None:
+        self.ring.push(linear, slow)
 
     def refresh(self) -> None:
         """The level of each mix as a small chip, red and struck through when that mix is muted; the ring shows linked and muted."""
@@ -2071,8 +2170,13 @@ class FreeCanvas(QWidget):
         super().__init__()
         self.setObjectName("freecanvas")
         self.window_ = window
+        if themes.current_look() == "tile":  # tiles are larger than Nexus's nodes: a wider grid, three to a row
+            from .ui_tile import FREE_STEP
+            self.COLUMNS, (self.STEP_X, self.STEP_Y) = 3, FREE_STEP
+            self.MIX_X = 24 + 3 * FREE_STEP[0]
         self.nodes: dict = {}
         self.open_node: Optional[NexusNode] = None
+        self.open_tile = None  # the Tile look: the one tile folded out over the others (like a popover)
         self.setMinimumSize(640, 440)
         self.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
         self.add_button = QPushButton("+  Add channel", self)
@@ -2103,10 +2207,15 @@ class FreeCanvas(QWidget):
         # The canvas grows to hold every node (and scrolls), so many channels never pile up at the bottom edge.
         self.setMinimumSize(max(self.minimumWidth(), spot.x() + node.width() + 24), max(self.minimumHeight(), spot.y() + node.height() + 24))
         node.move(spot)
-        node.card.setParent(self)
-        node.card.hide()
+        if node.card is not None:
+            node.card.setParent(self)
+            node.card.hide()
         self.nodes[node.key] = node
         node.show()
+
+    def fit(self, node: QWidget) -> None:
+        """Grow the canvas to hold a node that moved or got bigger (a tile folded out)."""
+        self.setMinimumSize(max(self.minimumWidth(), node.x() + node.width() + 24), max(self.minimumHeight(), node.y() + node.height() + 24))
 
     def clamped(self, point: QPoint, node: QWidget) -> QPoint:
         return QPoint(max(0, min(point.x(), max(0, self.width() - node.width()))), max(0, min(point.y(), max(0, self.height() - node.height()))))
@@ -2125,15 +2234,34 @@ class FreeCanvas(QWidget):
         self.window_.say("Every node is back in its place.")
 
     def place_card(self, node: NexusNode) -> None:
+        """Open a node's card where it covers the fewest other nodes: right of the node, else left, below or above."""
         card = node.card
         card.resize(card.width(), card.sizeHint().height())
-        right = node.x() + node.width() + 8
-        x = right if right + card.width() <= self.width() else max(0, node.x() - 8 - card.width())
-        y = max(0, min(node.y(), max(0, self.height() - card.height())))
-        card.move(x, y)
+        w, h = card.width(), card.height()
+        clamp = lambda x, y: QPoint(max(0, min(x, max(0, self.width() - w))), max(0, min(y, max(0, self.height() - h))))
+        spots = [clamp(node.x() + node.width() + 8, node.y()), clamp(node.x() - 8 - w, node.y()),
+                 clamp(node.x(), node.y() + node.height() + 8), clamp(node.x(), node.y() - 8 - h)]
+        others = [n.geometry() for n in self.nodes.values() if n is not node and n.isVisible()]
+
+        def covered(spot: QPoint) -> int:
+            rect = QRect(spot, QSize(w, h))
+            return sum(max(0, r.width()) * max(0, r.height()) for r in (rect.intersected(o) for o in others))
+
+        best = min(spots, key=covered)  # min keeps the first of equals, so "right of the node" wins a tie
+        card.move(best)
         card.raise_()
 
     def toggle(self, node: NexusNode) -> None:
+        if node.card is None:  # a tile folds out in place, over its neighbours, and only one at a time
+            if self.open_tile is node:
+                self.close_card()
+                return
+            self.close_card()
+            self.open_tile = node
+            node.set_open(True)
+            node.raise_()
+            self.fit(node)
+            return
         was = self.open_node is node
         self.close_card()
         if not was:
@@ -2148,13 +2276,21 @@ class FreeCanvas(QWidget):
             node.card.hide()
             node.set_open(False)
             self.open_node = None
+        tile, self.open_tile = self.open_tile, None
+        if tile is not None:
+            try:
+                tile.set_open(False)
+            except RuntimeError:  # rebuilt meanwhile
+                pass
 
     def clear_channels(self) -> None:
         self.close_card()
+        self.open_tile = None
         for key in [k for k, n in self.nodes.items() if hasattr(n.strip, "channel")]:
             node = self.nodes.pop(key)
-            node.card.hide()
-            node.card.deleteLater()
+            if node.card is not None:
+                node.card.hide()
+                node.card.deleteLater()
             node.hide()
             node.deleteLater()
 
@@ -2350,6 +2486,8 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
             whatsnew.write_marker(config_file, __version__)
         self.controls = None  # set by attach_controls()
         self.setWindowTitle(f"Sluice {__version__}")
+        from . import fonts
+        fonts.load()  # Inter and JetBrains Mono, for the Tile look (added for Sluice alone; nothing is installed)
         self.apply_theme()  # before anything is built, so every widget (and the meters) starts in the chosen colours
         hints = QGuiApplication.styleHints()
         if hasattr(hints, "colorSchemeChanged"):  # "Match my system" follows the desktop while Sluice is running
@@ -2603,12 +2741,13 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         """The layout actually shown for a saved choice at the window's size: Free belongs to the Nexus look, so any other look shows
         Columns, and a window too small for cards shows the compact list. The saved choice is never changed by any of this."""
         size = self._plan_size
-        return sizing.plan_for(size.width(), size.height(), mode, themes.current_look()).mode
+        return sizing.plan_for(size.width(), size.height(), mode, themes.current_look(), mixes=len(self.engine.mixer.mixes)).mode
 
     def _refresh_plan(self) -> bool:
         """Work out how the window should be arranged at its size now; True when the cards have to be rebuilt for it."""
         size = self._plan_size
-        plan = sizing.plan_for(size.width(), size.height(), self.engine.mixer.layout, themes.current_look(), self._plan)
+        plan = sizing.plan_for(size.width(), size.height(), self.engine.mixer.layout, themes.current_look(), self._plan,
+                               mixes=len(self.engine.mixer.mixes))
         changed = self._plan is None or (plan.mode, plan.dock) != (self._plan.mode, self._plan.dock)
         self._plan = plan
         self.layout_mode, self._dock = plan.mode, plan.dock
@@ -2680,7 +2819,8 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
             "scale": f"{screen.devicePixelRatio():g}" if screen is not None else "?",
             "step": plan.step if plan else "?", "mode": plan.mode if plan else "?", "dock": plan.dock if plan else "?",
             "chosen": self._chosen_layout(), "relayouts": self._relayouts,
-            "nexus_colors": bool(self.engine.mixer.nexus_colors), "layout": "\n".join(parts),
+            "nexus_colors": bool(self.engine.mixer.nexus_colors), "tile_colors": bool(self.engine.mixer.tile_colors),
+            "layout": "\n".join(parts),
         }
 
     def _relayout(self) -> None:
@@ -2719,11 +2859,16 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         self.channel_scroll = scroll
         self.content_layout.addWidget(scroll)
         colors = themes.mix_colors(themes._current)
+        tile = themes.current_look() == "tile"
         for index, strip in enumerate(self.mix_strips):
             mix = strip.mix
             color = {MONITOR: colors["listen"], STREAM: colors["broadcast"]}.get(mix.id, themes.color("mute"))
-            node = NexusNode(self.canvas, mix.id, mix.label, color,
-                             lambda ratio, mix=mix: icons.app_pixmap("", mix.label, 36, ratio, mix.id), strip, strip)
+            if tile:
+                from .ui_tile import TileMixNode
+                node = TileMixNode(self.canvas, strip, color)
+            else:
+                node = NexusNode(self.canvas, mix.id, mix.label, color,
+                                 lambda ratio, mix=mix: icons.app_pixmap("", mix.label, 36, ratio, mix.id), strip, strip)
             strip.node = node
             if strip.ring is not None:
                 strip.ring.hide()
@@ -2736,6 +2881,15 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
     def _rebuild_free(self) -> None:
         self.canvas.clear_channels()
         self.first_run = None
+        if themes.current_look() == "tile":  # a tile is its own node: dragged by its header, folded out in place
+            self.strips = [self._channel_strip(c, False) for c in self.engine.mixer.channels]
+            if self.strips:  # a third mix makes every tile taller: the grid's rows grow with them, so tiles never overlap
+                self.canvas.STEP_Y = max(self.canvas.STEP_Y, max(s.height() for s in self.strips) + 6)
+            for index, strip in enumerate(self.strips):
+                self.canvas.add_node(strip, index, False)
+                strip.refresh_sources()
+            self.refresh_theme_widgets()
+            return
         self.strips = [ChannelStrip(c, self.engine, self, rows=False) for c in self.engine.mixer.channels]
         for index, strip in enumerate(self.strips):
             node = NexusNode(self.canvas, strip.channel.id, strip.channel.label, strip.channel.color, strip._ring_picture, strip, strip)
@@ -2759,7 +2913,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
             if strip.combo:
                 strip.combo.about_to_show.connect(self._on_popup)
         self.channels_row = None
-        self.mini = MiniStrip(self)
+        self.mini = MiniStrip(self, tile=themes.current_look() == "tile")
         self.channels_widget = self.mini
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -2822,8 +2976,13 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         for strip in self.mix_strips:
             if strip.combo:
                 strip.combo.about_to_show.connect(self._on_popup)
-        self.channels_widget = QWidget()
-        self.channels_widget.setObjectName("channels")
+        tray = _is_tile() and not rows
+        if tray:  # the Tile look's keys sit in a tray
+            from .ui_tile import TileTray
+            self.channels_widget = TileTray()
+        else:
+            self.channels_widget = QWidget()
+            self.channels_widget.setObjectName("channels")
         page = QHBoxLayout()
         page.setContentsMargins(0, 0, 0, 0)
         page.setSpacing(8 if original else 24)
@@ -2833,8 +2992,9 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
             self.channels_row.setSpacing(16)
             scroll = QScrollArea()
         else:
-            self.channels_row = FlowLayout(self.channels_widget, 8 if original else 16)  # the cards wrap onto new lines as the window narrows
-            self.channels_row.setContentsMargins(0, 0, 8, 8)
+            tile = themes.current_look() == "tile"  # a tile keeps room round itself for its shadow, so the gap between is smaller
+            self.channels_row = FlowLayout(self.channels_widget, 8 if original else (2 if tile else 16))  # the cards wrap onto new lines as the window narrows
+            self.channels_row.setContentsMargins(*((14, 14, 14, 22) if tray else (0, 0, 8, 8)))
             scroll = QScrollArea()
             scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setWidgetResizable(True)
@@ -3201,7 +3361,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
                 item.widget().hide()
                 item.widget().deleteLater()
         self.first_run = None
-        self.strips = [ChannelStrip(c, self.engine, self, rows=rows) for c in self.engine.mixer.channels]
+        self.strips = [self._channel_strip(c, rows) for c in self.engine.mixer.channels]
         for strip in self.strips:
             if rows:
                 strip.setMaximumHeight(104)
@@ -3222,6 +3382,46 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
             self.channels_row.addWidget(add)
         self.refresh_theme_widgets()
         self._update_first_run()
+
+    def _channel_strip(self, channel: Channel, rows: bool) -> "ChannelStrip":
+        """A channel's card in the look in use: a tile in the Tile look (Columns and Free), a ChannelStrip everywhere else."""
+        if themes.current_look() == "tile" and not rows:
+            from .ui_tile import TileStrip
+            return TileStrip(channel, self.engine, self, free=self.layout_mode == "free")
+        return ChannelStrip(channel, self.engine, self, rows=rows)
+
+    def tile_mover(self):
+        """What moves a tile when it is dragged by its header (the Tile look)."""
+        if getattr(self, "_tile_mover", None) is None:
+            from .ui_tile import TileMover
+            self._tile_mover = TileMover(self)
+        return self._tile_mover
+
+    def commit_tile_order(self, order: list) -> None:
+        """Keep the channel order a dragged tile left (it is saved with the settings)."""
+        rank = {channel_id: i for i, channel_id in enumerate(order)}
+        mixer = self.engine.mixer
+        if [c.id for c in mixer.channels] == order:
+            return
+        mixer.channels.sort(key=lambda c: rank.get(c.id, len(rank)))
+        self.strips.sort(key=lambda s: rank.get(s.channel.id, len(rank)))
+        self.say("Channel order changed.")
+
+    def move_tile(self, channel_id: str, delta: int) -> None:
+        """Move a channel one place earlier or later (the tile's menu: the keyboard way to do what dragging does)."""
+        ids = [c.id for c in self.engine.mixer.channels]
+        if channel_id not in ids:
+            return
+        index = ids.index(channel_id)
+        target = max(0, min(len(ids) - 1, index + delta))
+        if target == index:
+            return
+        ids.insert(target, ids.pop(index))
+        self.commit_tile_order(ids)
+        self.rebuild_channels()
+        strip = next((s for s in self.strips if s.channel.id == channel_id), None)
+        if strip is not None:
+            strip.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def add_channel(self) -> None:
         text, ok = QInputDialog.getText(self, "New channel", "Name (for example Game, Music, Browser):")
@@ -3265,7 +3465,10 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
                 strip.ring.push(loudest, self._meter_slow)
             node = getattr(strip, "node", None)
             if node is not None:
-                node.ring.push(loudest, self._meter_slow)
+                node.push_level(loudest, self._meter_slow)
+            after = getattr(strip, "after_meters", None)
+            if after is not None:  # a tile: its clip note and the app meters of a folded-out tile
+                after(loudest)
         for strip in self.mix_strips:
             level = levels.get(f"mix:{strip.mix.id}", 0.0)
             strip.meter.push(level)
@@ -3275,7 +3478,9 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
                 strip.ring.push(level, self._meter_slow)
             node = getattr(strip, "node", None)
             if node is not None:
-                node.ring.push(level, self._meter_slow)
+                node.push_level(level, self._meter_slow)
+        if getattr(self, "mini", None) is not None and self.mini.tile:
+            self.mini.push_levels(levels)
         self.tracker.meter_tick()
         self._refresh_tray_icon()
 

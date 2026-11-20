@@ -536,7 +536,8 @@ def test_menu_bar_has_the_usual_menus_in_the_usual_order(ui):
         "Reset all settings to the defaults…"]
     assert _texts(_menu(win, "View")) == ["Layout", "Columns (a card for each channel)", "Rows (a line for each channel)",
                                           "Free (nodes you place anywhere)", "Appearance", "Look", "Theme", "Nexus",
-                                          "Nexus colours on dark themes", "Reduce effects", "Tidy up the free layout",
+                                          "Nexus colours on dark themes", "Reduce effects", "Tile",
+                                          "Tile colours on built-in themes", "Tidy up the free layout",
                                           "Desktop", "Desktop widgets", "Window", "Full screen", "Reset window size"]
 
 

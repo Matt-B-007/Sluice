@@ -446,7 +446,9 @@ def has_free(look) -> bool:
 
 _reduce = False
 _nexus_colors = True
-NEXUS_THEMES = ("dark", "purple", "midnight", "amber")  # not High contrast (made to be read) and not imported themes
+NEXUS_THEMES = ("dark", "purple", "midnight", "amber")
+TILE_DARK_THEMES = ("dark", "purple", "midnight", "amber")  # the Tile look's graphite keys (look_tile.TILE_DARK), with Tile colours on
+TILE_LIGHT_THEMES = ("light", "paper")                       # ...and its white keys (look_tile.TILE_LIGHT). Never High contrast or imported  # not High contrast (made to be read) and not imported themes
 
 
 def set_reduce_effects(on: bool) -> None:
@@ -469,12 +471,29 @@ def nexus_colors() -> bool:
     return _nexus_colors
 
 
+_tile_colors = True
+
+
+def set_tile_colors(on: bool) -> None:
+    """Whether the Tile look shows its own key colours on the built-in themes (View > Tile colours)."""
+    global _tile_colors
+    _tile_colors = bool(on)
+
+
+def tile_colors() -> bool:
+    return _tile_colors
+
+
 def look_colors(theme: "Theme", look: str) -> dict:
     """The colours to show for a theme in a look. The Original look shows the built-in themes as they were in 0.9.7;
     imported themes, and every other look, show the theme's own colours."""
     if valid_look(look) == "nexus" and theme.id in NEXUS_THEMES and _nexus_colors:  # Nexus's own colours on the dark themes
         from .look_nexus import NEXUS_DARK
         return complete({**theme.colors, **NEXUS_DARK}, given=NEXUS_DARK.keys())
+    if valid_look(look) == "tile" and _tile_colors and theme.id in TILE_DARK_THEMES + TILE_LIGHT_THEMES:  # the Tile look's key colours
+        from .look_tile import TILE_DARK, TILE_LIGHT
+        own = TILE_DARK if theme.id in TILE_DARK_THEMES else TILE_LIGHT
+        return complete({**theme.colors, **own}, given=own.keys())
     if valid_look(look) == "original" and theme.id in BUILT_IN:
         from .look_original import ORIGINAL_PALETTES
         old = ORIGINAL_PALETTES.get(theme.id)
@@ -497,7 +516,7 @@ def _style_for(items: tuple, look: str = DEFAULT_LOOK) -> str:
     if look == "original":
         from .look_original import ORIGINAL_STYLE
         return ORIGINAL_STYLE.substitute(values)
-    if look == "tile":  # the Calm sheet with the Tile rules after it: raised tiles, all style sheet
+    if look == "tile":  # the Calm sheet with the Tile rules after it: flat surfaces with a hairline edge
         from .look_tile import TILE_STYLE_EXTRA, tile_colors
         values.update(tile_colors(values, mix))
         return STYLE_TEMPLATE.substitute(values) + TILE_STYLE_EXTRA.substitute(values)
@@ -516,10 +535,19 @@ def build_style(colors: dict, look: str = DEFAULT_LOOK) -> str:
 _current: dict = dict(DARK)
 
 
+_generation = 0
+
+
 def set_current(colors: dict) -> None:
     """Remember the colours in use, for the few widgets that paint themselves (the meters) or build their own sheet."""
-    global _current
+    global _current, _generation
     _current = dict(colors)
+    _generation += 1
+
+
+def generation() -> int:
+    """A number that changes whenever the colours in use change: painters that cache colours compare it."""
+    return _generation
 
 
 def color(name: str) -> str:

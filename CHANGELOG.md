@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.11.4
+The Tile look becomes raised keys in a tray, light and dark; lighter meters in every look; and fixes to spacing, the Free layout and the command line.
+- **Tile: raised keys.** Each channel is a key: a face lit from above, a thick lower edge and a soft shadow, in a tray. Each mix has a groove
+  that is both its fader and its meter (a soft fill for the fader, a bright fill for the sound, a tick for the peak) with a white handle.
+  Small buttons are keys too and look pushed in while on (muted, linked). White keys on Light and Paper, graphite keys on the dark themes.
+- **Tile: everything matches.** The Listen and Broadcast cards, the rows of the Rows layout, the compact list and the desktop widgets (the
+  microphone button, the volume dial and the channel list) are keys too. The desktop widgets now follow the look and the colours you choose.
+- **View > Tile colours.** On (the default), the built-in themes show the Tile look's own key colours; off, every theme keeps its own.
+  High contrast and imported themes are never changed.
+- **Tile: fold out, move, focus.** Fold a key out for a dB scale, its effects as chips you switch on and off, and its apps with a Move
+  button. Drag a key by its name to move it (a dashed "Drop here" slot shows where it lands; Escape puts it back), or use Move earlier /
+  Move later in its menu. A key with the keyboard focus has a ring in its channel's colour.
+- **Inter and JetBrains Mono** come with Sluice (SIL Open Font License; the licences are in `sluice/data/fonts`) and are used by the Tile look,
+  so it reads the same on every computer. Nothing is installed on the system.
+- **Lighter meters.** The meters in every look are drawn from shapes made once instead of being cut to shape every frame: Calm uses about
+  half the processor time it did for its meters, Tile less than half of what its first version did.
+- **Long channel names** end in "…" instead of being cut off, in every look and layout; the tooltip has the whole name.
+- **Rows with the Recording mix.** The window offers the Rows layout only when every mix has room for its slider, level and mute button (it
+  shows the compact list otherwise), and three mix cards stand at the side only when the window is tall enough. Before, the levels could sit
+  on the sliders and the third column ran off the edge; with two mixes this could happen in windows 980-1080 pixels wide.
+- **Free layout.** A card opens where it covers the fewest nodes. In Tile, one key is folded out at a time, over the others, with a deeper
+  shadow; clicking the floor or Escape folds it back. Keys no longer overlap when the Recording mix makes them taller, and the Broadcast key
+  names its real device (it said "Default output").
+- **Command line.** `sluice --rollback` now holds its lock until the old files are back, so a Sluice started meanwhile cannot run half-replaced
+  files; `--cleanup` and `--uninstall` let go of the lock when they finish.
+- **Bug report** says whether Tile colours are on.
+
 ## 0.11.3
 The window fits any size, a new Tile look, desktop widgets, and a fix for the audio engine going silent when channels change.
 - **Audio engine fix.** Adding, removing or reconnecting channels while Sluice runs no longer blocks the audio for a moment (the Rust engine now does its slow

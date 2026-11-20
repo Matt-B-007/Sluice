@@ -63,6 +63,7 @@ class ThemesMixin:
         themes.set_look(self.engine.mixer.look)
         themes.set_reduce_effects(self.engine.mixer.reduce_effects)
         themes.set_nexus_colors(self.engine.mixer.nexus_colors)
+        themes.set_tile_colors(self.engine.mixer.tile_colors)
         colors = themes.look_colors(theme, self.engine.mixer.look)
         themes.set_current(colors)
         self.setStyleSheet(themes.build_style(colors, self.engine.mixer.look))
@@ -70,6 +71,9 @@ class ThemesMixin:
         if app is not None:
             app.setPalette(_palette_for(colors))
         self.refresh_theme_widgets()
+        desktop = getattr(self, "desktop", None)
+        if desktop is not None:  # the desktop widgets are windows of their own: they follow the look and colours too
+            desktop.restyle()
         return theme
 
     def _fill_look_menu(self) -> None:
@@ -107,6 +111,12 @@ class ThemesMixin:
         self.engine.mixer.nexus_colors = bool(on)
         self.apply_theme()
         self.say("Nexus colours on." if on else "Each theme shows its own colours in Nexus.")
+
+    def set_tile_colors(self, on: bool) -> None:
+        """Tile: its own white and graphite keys on the built-in themes, or each theme's own colours."""
+        self.engine.mixer.tile_colors = bool(on)
+        self.apply_theme()
+        self.say("Tile colours on." if on else "Each theme shows its own colours in Tile.")
 
     def set_reduce_effects(self, on: bool) -> None:
         """Nexus: no shimmer on the rings and no waveform on the faders."""

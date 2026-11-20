@@ -359,17 +359,28 @@ def test_the_tile_look_is_a_look_with_its_own_sheet_for_every_theme():
     assert themes.LOOKS["tile"] == "Tile" and themes.valid_look("tile") == "tile" and themes.has_free("tile") and not themes.has_free("calm")
     for theme in themes.BUILT_IN.values():
         sheet = themes.build_style(theme.colors, "tile")
-        assert "$" not in sheet.replace("$$", "") and "QFrame#strip" in sheet and "border-bottom: 6px solid" in sheet, theme.id
+        assert "$" not in sheet.replace("$$", "") and "QFrame#strip" in sheet and "QFrame#tileframe" in sheet, theme.id
+        assert "border-bottom: 3px solid" in sheet.split("/* Tile")[1]  # 0.11.4: raised keys (a thick lower edge on the small keys)
         assert sheet != themes.build_style(theme.colors, "calm")
 
 
-def test_tiles_are_lit_and_lipped_to_suit_the_theme_dark_or_light():
+def test_tiles_take_their_own_key_colours_on_the_built_in_themes_while_tile_colours_is_on():
     from sluice import look_tile
-    dark, light = themes.BUILT_IN["dark"].colors, themes.BUILT_IN["light"].colors
-    assert not look_tile.is_light(dark["panel"]) and look_tile.is_light(light["panel"]) and look_tile.is_light("#fff")
-    d, l = look_tile.tile_colors(dark, themes.mix), look_tile.tile_colors(light, themes.mix)
-    assert d["tile_hi"] != d["tile_lip"] and l["tile_hi"] != l["tile_lip"] and d != l
-    assert d["tile_lip"] != dark["panel"] and l["tile_lip"] != light["panel"]
+    dark, light, contrast = themes.BUILT_IN["dark"], themes.BUILT_IN["light"], themes.BUILT_IN["contrast"]
+    try:
+        themes.set_tile_colors(True)
+        tiled = themes.look_colors(dark, "tile")
+        assert tiled["panel"] == look_tile.TILE_DARK["panel"] and tiled["text"] == "#eef2f5" and tiled["track"] == "#14171b"
+        assert themes.look_colors(themes.BUILT_IN["midnight"], "tile")["panel"] == look_tile.TILE_DARK["panel"]
+        assert themes.look_colors(light, "tile")["panel"] == look_tile.TILE_LIGHT["panel"]
+        assert themes.look_colors(contrast, "tile") == contrast.colors and themes.look_colors(dark, "calm") == dark.colors
+        themes.set_tile_colors(False)
+        assert themes.look_colors(dark, "tile") == dark.colors and themes.look_colors(light, "tile") == light.colors
+    finally:
+        themes.set_tile_colors(True)
+    assert not look_tile.is_light(tiled["panel"]) and look_tile.is_light(light.colors["panel"]) and look_tile.is_light("#fff")
+    d, l = look_tile.tile_colors(tiled, themes.mix), look_tile.tile_colors(light.colors, themes.mix)
+    assert d["tile_edge"] != l["tile_edge"] and d["skirt"] != l["skirt"]
 
 
 def test_the_tile_look_is_saved_read_back_and_has_the_free_layout(qapp, tmp_path):
@@ -388,18 +399,24 @@ def test_the_tile_look_is_saved_read_back_and_has_the_free_layout(qapp, tmp_path
         win.shutdown()
 
 
-def test_a_node_folds_its_card_out_and_clicking_the_floor_folds_it_shut_in_tile(qapp, tmp_path):
+def test_in_free_a_tile_folds_out_in_place_and_a_mix_tile_folds_its_card_out_beside_it(qapp, tmp_path):
     from PySide6.QtCore import QPoint, Qt
     from PySide6.QtTest import QTest
     win, _ = make(qapp, tmp_path, "tile", "free")
     try:
-        node = next(iter(win.canvas.nodes.values()))
-        QTest.mouseClick(node, Qt.MouseButton.LeftButton, pos=node.rect().center())
+        tile = win.canvas.nodes["music"]
+        assert tile is next(s for s in win.strips if s.channel.id == "music") and tile.card is None
+        width = tile.width()
+        QTest.mouseClick(tile.chevron, Qt.MouseButton.LeftButton)
         settle(qapp)
-        assert win.canvas.open_node is node and node.card.isVisible()
+        assert tile.expanded and tile.width() > width and win.canvas.open_node is None
+        listen = win.canvas.nodes["monitor"]
+        QTest.mouseClick(listen.chevron, Qt.MouseButton.LeftButton)
+        settle(qapp)
+        assert win.canvas.open_node is listen and listen.card.isVisible()
         QTest.mouseClick(win.canvas, Qt.MouseButton.LeftButton, pos=QPoint(win.canvas.width() - 20, win.canvas.height() - 20))
         settle(qapp)
-        assert win.canvas.open_node is None and not node.card.isVisible()
+        assert win.canvas.open_node is None and not listen.card.isVisible()
     finally:
         win.shutdown()
 
@@ -408,10 +425,11 @@ def test_the_tile_look_has_no_glow_and_no_nexus_items(qapp, tmp_path):
     from sluice import ui
     win, _ = make(qapp, tmp_path, "tile", "free")
     try:
-        ring = next(iter(win.canvas.nodes.values())).ring
+        node = win.canvas.nodes["monitor"]
         before = len(ui._GLOWS)
-        ring.push(0.9); ring.push(0.9); ring.grab()
+        node.push_level(0.9); node.push_level(0.9); node.grab()
         assert len(ui._GLOWS) == before  # the halo is Nexus's
+        assert all(getattr(s, "ring", None) is None for s in win.strips)
         win._refresh_view_menu()
         for action in (win.nexus_colors_action, win.reduce_action):
             assert not action.isVisible()
