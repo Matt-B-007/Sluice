@@ -94,6 +94,7 @@ class Engine:
         self.hear_broadcast = False  # not saved: it always starts off, so nobody is surprised by the wrong mix
         self._started = False
         self._last_links: set = set()
+        self.refresh_seconds = REFRESH_SECONDS  # the window lengthens this while it is hidden in the tray
         self._raw_first_seen: dict = {}   # app -> when it was first seen on the raw microphone
         self._raw_reported: set = set()   # apps already reported (once each, until they stop listening)
         self.raw_mic: dict = {}           # app -> the sentence to show, for the ones reported now and not dismissed
@@ -542,7 +543,7 @@ class Engine:
         now = time.monotonic() if now is None else now
         changed: set = set()
         relink = False
-        if now - self._last_refresh >= REFRESH_SECONDS:
+        if now - self._last_refresh >= self.refresh_seconds:
             if self.refresh_devices():
                 changed.add("devices")
                 relink = True

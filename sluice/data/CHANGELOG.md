@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.11.2
+Lighter Nexus, and a tidy-up of the layouts.
+- **Nexus uses less processor time.** The rings are redrawn 15 times a second instead of 30 (the sound still updates at full rate and the bars fall
+  back at the same speed), so the whole window costs about 7-8% of one core, close to Calm. While the Sluice window is not the one you are using,
+  Nexus updates at half rate again; it stays live, so it still works on a second screen beside a game.
+- **No clipped text.** The *BROADCAST* tag on narrow Nexus cards was two pixels too wide; fixed. Every look, layout (Columns, Rows, Free), four
+  themes and three window sizes were checked for text cut off or controls outside their card.
+- **Free layout holds any number of channels.** The canvas grows (and scrolls) to hold every node, so channels past the bottom edge no longer pile up there.
+- **Nexus colours on every dark theme.** Dark, Retro Purple, Midnight and Amber now show Nexus's neon colours in the Nexus look. A new *Nexus colours*
+  switch under View > Theme (on by default) turns that off so each theme keeps its own colours. Light, High contrast and imported themes never change.
+- **Soft glow on the rings and the active fader.** Drawn once and reused, so it costs next to nothing; *Reduce effects* turns it off.
+- **Neon edge lines** on the cards, top bar and nodes in Nexus.
+- **Lighter while hidden.** With Sluice in the tray it checks devices and links every 4 seconds instead of 2.
+- **Compare looks.** View > Look > *Compare looks...* shows a small picture of Calm, Original and Nexus in the colours of your theme, with a button to pick one.
+
 ## 0.11.1
 A third look, **Nexus**: a neon dark look where every channel is a ring that pulses with its sound.
 - **View > Look > Nexus.** Each channel and mix is a ring of bars around the app's icon, in the channel's colour. A chain badge on the ring shows

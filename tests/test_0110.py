@@ -81,7 +81,7 @@ def test_choosing_a_look_restyles_the_window_and_is_remembered(rig, tmp_path):
 def test_the_look_menu_lists_the_looks_with_the_current_one_ticked(rig):
     win, engine = rig
     win._fill_look_menu()
-    actions = {a.text(): a.isChecked() for a in win.look_menu.actions()}
+    actions = {a.text(): a.isChecked() for a in win.look_menu.actions() if a.isCheckable()}
     assert set(actions) == set(themes.LOOKS.values())
     assert actions[themes.LOOKS["calm"]] and not actions[themes.LOOKS["original"]]
     win.choose_look("original")
@@ -244,3 +244,102 @@ def test_bug_report_says_which_look_and_layout_are_on_screen(tmp_path, monkeypat
     assert "Layout shown: columns" in report.look_summary()
     themes.set_look("calm")
     themes.set_reduce_effects(False)
+
+
+def test_free_canvas_grows_to_hold_every_node(rig):
+    win, engine = rig
+    win.choose_look("nexus")
+    win.set_layout("free")
+    key = next(iter(win.canvas.nodes))
+    engine.mixer.free_positions[key] = [100, 1500]
+    win._rebuild_free()
+    win.canvas.add_node  # the canvas is the one the window now holds
+    win.set_layout("columns")
+    win.set_layout("free")
+    node = win.canvas.nodes[key]
+    assert node.y() == 1500 and win.canvas.minimumHeight() >= 1500 + node.height()
+
+
+def test_nexus_colours_apply_to_the_dark_themes_and_can_be_switched_off(rig):
+    win, engine = rig
+    win.choose_look("nexus")
+    for theme_id in ("dark", "purple", "midnight", "amber"):
+        win.choose_theme(theme_id)
+        assert themes.color("bg") == "#05080f"
+    win.choose_theme("contrast")  # made to be read: never changed
+    assert themes.color("bg") != "#05080f"
+    win.choose_theme("light")
+    assert themes.color("bg") != "#05080f"
+    win.choose_theme("midnight")
+    win.set_nexus_colors(False)
+    assert themes.color("bg") == themes.BUILT_IN["midnight"].colors["bg"] and not engine.mixer.nexus_colors
+    win.choose_theme("dark")
+    assert themes.color("bg") == themes.BUILT_IN["dark"].colors["bg"]
+    win.set_nexus_colors(True)
+    assert themes.color("bg") == "#05080f"
+    win.choose_look("calm")
+    assert themes.color("bg") != "#05080f"
+
+
+def test_nexus_colours_setting_is_saved_and_defaults_on():
+    from sluice.model import Mixer
+    assert Mixer.demo().nexus_colors is True
+    data = Mixer.demo().to_dict()
+    assert data["nexus_colors"] is True
+    data["nexus_colors"] = False
+    assert Mixer.from_dict(data).nexus_colors is False
+    del data["nexus_colors"]
+    assert Mixer.from_dict(data).nexus_colors is True
+
+
+def test_halos_are_drawn_once_and_reused_and_stop_with_reduce_effects(rig):
+    from sluice import ui
+    win, engine = rig
+    win.choose_look("nexus")
+    ring = win.strips[0].ring
+    ring.push(0.5)
+    ring.grab()
+    before = len(ui._GLOWS)
+    assert before >= 1
+    ring.push(0.45)
+    ring.grab()
+    assert len(ui._GLOWS) == before  # reused, not drawn again
+    win.set_reduce_effects(True)
+    ring.push(0.6)
+    ring.grab()
+    assert len(ui._GLOWS) == before
+    win.set_reduce_effects(False)
+
+
+def test_the_engine_checks_devices_less_often_while_the_window_is_hidden(rig):
+    win, engine = rig
+    from sluice.engine import REFRESH_SECONDS
+    win.show()
+    win._window_state_changed()
+    assert engine.refresh_seconds == REFRESH_SECONDS
+    win.hide()
+    win._window_state_changed()
+    assert engine.refresh_seconds > REFRESH_SECONDS
+    win.show()
+    win._window_state_changed()
+    assert engine.refresh_seconds == REFRESH_SECONDS
+
+
+def test_compare_looks_shows_every_look_and_picks_one(rig):
+    from sluice.ui_looks import CompareLooksDialog, draw_preview
+    win, engine = rig
+    dialog = CompareLooksDialog(win)
+    assert set(dialog.buttons) == set(themes.LOOKS)
+    assert not dialog.buttons["calm"].isEnabled()  # the one in use
+    dialog.buttons["nexus"].click()
+    assert engine.mixer.look == "nexus"
+    assert not dialog.buttons["nexus"].isEnabled() and dialog.buttons["calm"].isEnabled()
+    colors = themes.look_colors(win.current_theme(), "original")
+    for look in themes.LOOKS:
+        assert not draw_preview(look, colors).isNull()
+
+
+def test_the_look_menu_offers_compare_looks(rig):
+    win, _ = rig
+    win._fill_look_menu()
+    assert any("Compare looks" in a.text() for a in win.look_menu.actions())

@@ -12,7 +12,7 @@ import time
 from typing import Optional
 
 from PySide6.QtCore import QEasingCurve, QEvent, QPoint, QPointF, QPropertyAnimation, QRectF, QSize, Qt, QTimer, QUrl, Signal
-from PySide6.QtGui import (QAction, QColor, QDesktopServices, QFontMetrics, QGuiApplication, QIcon, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap)
+from PySide6.QtGui import (QAction, QColor, QDesktopServices, QFontMetrics, QGuiApplication, QIcon, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap, QRadialGradient)
 from PySide6.QtWidgets import (
     QAbstractSlider,
     QCheckBox,
@@ -441,6 +441,8 @@ class Fader(QAbstractSlider):
         if self.nexus and self._reveal:
             self._paint_wave(p, track_rect)
         radius = 4.0 if self.original else min(tw, th) / 2.0
+        if self.nexus and self._reveal and not themes.reduce_effects():  # a halo round the handle while it is in use
+            p.drawPixmap(QPointF(thumb_rect.center().x() - 28, thumb_rect.center().y() - 28), _glow(QColor(self.fill_color).name(), 56, self.devicePixelRatioF(), 80))
         if not self.original:
             p.setBrush(QColor(0, 0, 0, 70))
             p.drawRoundedRect(thumb_rect.translated(0, 1.5), radius, radius)
@@ -583,6 +585,34 @@ class SourcePicture(QWidget):
 MIX_ICONS = {MONITOR: "headphones", STREAM: "broadcast", RECORDING: "mic"}
 
 
+_GLOWS: dict = {}
+
+
+def _glow(color: str, diameter: int, ratio: float, peak: int = 90) -> QPixmap:
+    """A soft round glow in a colour, drawn once and kept: painting it again is one cheap copy of an image (no blur effect that redraws)."""
+    key = (color, diameter, round(ratio * 100), peak)
+    pix = _GLOWS.get(key)
+    if pix is None:
+        size = max(2, round(diameter * ratio))
+        pix = QPixmap(size, size)
+        pix.fill(Qt.GlobalColor.transparent)
+        gradient = QRadialGradient(size / 2.0, size / 2.0, size / 2.0)
+        for stop, alpha in ((0.0, peak), (0.55, peak // 3), (1.0, 0)):
+            c = QColor(color)
+            c.setAlpha(alpha)
+            gradient.setColorAt(stop, c)
+        painter = QPainter(pix)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(gradient)
+        painter.drawEllipse(0, 0, size, size)
+        painter.end()
+        pix.setDevicePixelRatio(ratio)
+        if len(_GLOWS) > 48:
+            _GLOWS.clear()
+        _GLOWS[key] = pix
+    return pix
+
+
 class NexusRing(QWidget):
     """The Nexus look's meter: a ring of short bars around a picture. The bars stand up with the sound and fall back; the picture is the
     app's or game's own icon (the first one on the channel), dimmed while it is silent.
@@ -600,6 +630,7 @@ class NexusRing(QWidget):
         super().__init__()
         self.color, self._picture_for, self._pix = color, picture, None
         self._level, self._step, self._phase, self._tick = 0.0, 0, 0, 0
+        self._dirty, self._gate = False, 0
         self.linked, self.muted, self._badge = False, False, None
         self.setFixedSize(self.SIZE, self.SIZE)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
@@ -618,20 +649,25 @@ class NexusRing(QWidget):
             self.linked, self.muted = linked, muted
             self.update()
 
-    def push(self, linear: float) -> None:
+    def push(self, linear: float, slow: float = 1.0) -> None:
+        """Take the newest level. The ring is repainted at half the meter rate (15 times a second): the eye cannot tell, and drawing is the
+        cost. ``slow`` is 2 when the meters run at half rate, so the bars fall back at the same speed in seconds."""
         if self.muted:
             linear = 0.0
         frac = level_fraction(linear)
-        self._level = max(frac, self._level - 0.03)
+        self._level = max(frac, self._level - 0.03 * slow)
         step = int(self._level * self.STEPS + 0.5) if self._level > 0.03 else 0
-        moved = step != self._step
+        if step != self._step:
+            self._step = step
+            self._dirty = True
         if step and not themes.reduce_effects():
             self._tick += 1
             if self._tick % 3 == 0:
                 self._phase += 1
-                moved = True
-        if moved:
-            self._step = step
+                self._dirty = True
+        self._gate ^= 1
+        if self._dirty and self._gate:
+            self._dirty = False
             self.update()
 
     def paintEvent(self, _event) -> None:
@@ -643,6 +679,10 @@ class NexusRing(QWidget):
         p.setPen(QPen(QColor(themes.color("border2")), 1))
         p.drawEllipse(QPointF(c, c), 25.0, 25.0)
         strength = self._step / self.STEPS
+        if alive and not themes.reduce_effects():  # a soft halo that grows with the sound
+            p.setOpacity(min(1.0, 0.25 + strength))
+            p.drawPixmap(QPointF(0, 0), _glow(self.color, self.SIZE, self.devicePixelRatioF()))
+            p.setOpacity(1.0)
         path = QPainterPath()
         for i, (cos, sin) in enumerate(self._ANGLES):
             length = 2.0 + (14.0 * strength * (0.55 + 0.45 * abs(math.sin(i * 1.3 + self._phase * 1.05))) if alive else 0.0)
@@ -2019,7 +2059,11 @@ class FreeCanvas(QWidget):
     def add_node(self, node: NexusNode, index: int, mix: bool) -> None:
         node.setParent(self)
         saved = self.window_.engine.mixer.free_positions.get(node.key)
-        node.move(self.clamped(QPoint(*saved) if saved else self.default_position(index, mix), node))
+        spot = QPoint(*saved) if saved else self.default_position(index, mix)
+        spot = QPoint(max(0, min(spot.x(), 4000)), max(0, min(spot.y(), 4000)))
+        # The canvas grows to hold every node (and scrolls), so many channels never pile up at the bottom edge.
+        self.setMinimumSize(max(self.minimumWidth(), spot.x() + node.width() + 24), max(self.minimumHeight(), spot.y() + node.height() + 24))
+        node.move(spot)
         node.card.setParent(self)
         node.card.hide()
         self.nodes[node.key] = node
@@ -2354,6 +2398,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         self.meter_timer = QTimer(self)
         self.meter_timer.timeout.connect(self._update_meters)
         self.meter_timer.start(33)
+        self._meter_slow = 1.0
         self.engine_timer = QTimer(self)
         self.engine_timer.timeout.connect(self._tick_engine)
         self.engine_timer.start(500)
@@ -2366,6 +2411,8 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
     # ------------------------------------------------------------------ the top bar and the content
     def _build_top_bar(self) -> QWidget:
         bar = QWidget()
+        bar.setObjectName("topbar")
+        bar.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         bar.setFixedHeight(40)
         row = QHBoxLayout(bar)
         row.setContentsMargins(0, 0, 0, 0)
@@ -2478,6 +2525,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
     def _restructure_for_look(self) -> None:
         """A different look has different parts, not only different colours: rebuild the cards in it."""
         self._apply_chrome()
+        self._tune_meter_rate()
         self.layout_mode = self._effective_layout(self.engine.mixer.layout)
         self._build_content()
         self._show_layout_choice()
@@ -2979,20 +3027,20 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
                 if fader._reveal:  # the waveform is only fed while someone is looking at it
                     fader.feed(level)
             if strip.ring is not None:
-                strip.ring.push(loudest)
+                strip.ring.push(loudest, self._meter_slow)
             node = getattr(strip, "node", None)
             if node is not None:
-                node.ring.push(loudest)
+                node.ring.push(loudest, self._meter_slow)
         for strip in self.mix_strips:
             level = levels.get(f"mix:{strip.mix.id}", 0.0)
             strip.meter.push(level)
             if strip.fader._reveal:
                 strip.fader.feed(level)
             if strip.ring is not None:
-                strip.ring.push(level)
+                strip.ring.push(level, self._meter_slow)
             node = getattr(strip, "node", None)
             if node is not None:
-                node.ring.push(level)
+                node.ring.push(level, self._meter_slow)
         self.tracker.meter_tick()
         self._refresh_tray_icon()
 
@@ -3270,10 +3318,22 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         if self._closed:
             return
         if on and not self.meter_timer.isActive():
-            self.meter_timer.start(33)
+            self.meter_timer.start(self._meter_interval())
         elif not on and self.meter_timer.isActive():
             self.meter_timer.stop()
         self._window_state_changed()
+
+    def _meter_interval(self) -> int:
+        """33 ms normally; 66 ms in Nexus while this window is not the one in use (it is still live, for a second screen beside a game)."""
+        slow = themes.current_look() == "nexus" and self.isVisible() and not self.isActiveWindow()
+        self._meter_slow = 2.0 if slow else 1.0
+        return 66 if slow else 33
+
+    def _tune_meter_rate(self) -> None:
+        if self.meter_timer.isActive():
+            wanted = self._meter_interval()
+            if self.meter_timer.interval() != wanted:
+                self.meter_timer.setInterval(wanted)
 
     def showEvent(self, event) -> None:
         self._set_meters_running(not self.isMinimized())
@@ -3291,6 +3351,8 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         super().hideEvent(event)
 
     def changeEvent(self, event) -> None:
+        if event.type() == QEvent.Type.ActivationChange and not self._closed:
+            self._tune_meter_rate()
         if event.type() == QEvent.Type.WindowStateChange:
             self._set_meters_running(self.isVisible() and not self.isMinimized())
             if self.tray_active and self.isMinimized() and not self._closed:

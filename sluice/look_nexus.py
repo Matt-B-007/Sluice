@@ -26,12 +26,15 @@ NEXUS_DARK = {
 
 NEXUS_EXTRA = """
 /* Nexus: glass cards with a thin cool outline, capital-letter headings, cyan light on what is on. */
-QFrame#strip, QFrame#row, QFrame#mix { background: $panel; border: 1px solid $border2; border-radius: 20px; }
+QFrame#strip, QFrame#row, QFrame#mix { background: $panel; border: 1px solid $accent_edge; border-radius: 20px; }
+QWidget#topbar { border-bottom: 1px solid $accent_soft; }
+QFrame#statuschip, QFrame#segmented { border-color: $accent_soft; }
 QFrame#mix[mix="monitor"] { border-color: $listen_edge; }
 QFrame#mix[mix="stream"] { border-color: $broadcast_edge; }
 QLabel#name, QLabel#title { font-weight: 700; letter-spacing: 0.4px; color: $title; }
 QLabel#appname { font-size: 20px; font-weight: 800; letter-spacing: 3px; color: $title; }
-QLabel#tag { font-weight: 700; letter-spacing: 1.4px; }
+QLabel#tag { font-weight: 700; letter-spacing: 1px; }
+QLabel#tag[narrow="true"] { letter-spacing: 0.4px; }
 QLabel#mixheading { letter-spacing: 1.4px; }
 QPushButton { border-radius: 12px; border: 1px solid $border2; }
 QPushButton:hover { border-color: $accent; }
@@ -44,7 +47,7 @@ QPushButton#addchip, QPushButton#addchannel { border: 1px dashed $accent; color:
 QPushButton#addchip:hover, QPushButton#addchannel:hover { background: $accent_bg; border-color: $accent; color: $accent_text; }
 QFrame#segmented { border: 1px solid $border2; border-radius: 14px; background: rgba(255,255,255,0.03); }
 QPushButton#segment:checked { background: $accent_bg; color: $accent_text; border: 1px solid $accent; }
-QFrame#statuschip { border: 1px solid $border2; border-radius: 14px; background: rgba(255,255,255,0.03); }
+QFrame#statuschip { border: 1px solid $accent_soft; border-radius: 14px; background: rgba(255,255,255,0.03); }
 QFrame#sourcechip, QFrame#chip { background: $surface2; border: 1px solid $border2; border-radius: 10px; }
 QLabel#livechip { background: $live_bg; color: $live_fg; border: 1px solid $live_fg; }
 QComboBox { border: 1px solid $border2; }
@@ -53,8 +56,8 @@ QLineEdit#readout:hover { border-color: $accent; }
 QMenu { border: 1px solid $border2; }
 QMenu::item:selected { background: $accent_bg; color: $accent_text; }
 QToolTip { border: 1px solid $accent; }
-QFrame#nexusnode { background: transparent; border: 1px solid transparent; border-radius: 18px; }
-QFrame#nexusnode:hover { border-color: $border2; }
+QFrame#nexusnode { background: transparent; border: 1px solid $accent_soft; border-radius: 18px; }
+QFrame#nexusnode:hover { border-color: $accent_edge; }
 QFrame#nexusnode:focus, QFrame#nexusnode[open="true"] { border-color: $accent; background: $accent_bg; }
 QLabel#nodechips { font-family: monospace; font-size: 10px; color: $text2; background: transparent; }
 QWidget#freecanvas { background: transparent; }

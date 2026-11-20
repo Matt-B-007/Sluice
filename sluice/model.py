@@ -225,6 +225,7 @@ class Mixer:
         self.buffer_frames = DEFAULT_BUFFER  # used the next time Sluice starts
         self.auto_update = False  # download new releases in the background and install them when Sluice closes (off by default)
         self.layout = "columns"  # how the channels are laid out: "columns" (a card each), "rows" (a line each) or "free" (Nexus: nodes you place)
+        self.nexus_colors = True  # Nexus: its neon colours on the dark themes (off: each theme keeps its own colours)
         self.reduce_effects = False  # Nexus: no shimmer on the rings and no waveform on the faders (for slow or busy machines)
         self.free_positions: dict = {}  # the Free layout: where each node sits, {channel or mix id: [x, y]}
         self.look = "calm"  # the shapes and sizes of the window ("calm", "original" or "nexus"), apart from the colour theme
@@ -386,6 +387,7 @@ class Mixer:
             "theme": self.theme,
             "look": self.look,
             "layout": self.layout,
+            "nexus_colors": self.nexus_colors,
             "reduce_effects": self.reduce_effects,
             "free_positions": {k: [int(v[0]), int(v[1])] for k, v in self.free_positions.items()},
             "channels": [
@@ -443,6 +445,7 @@ class Mixer:
             mixer.look = look
         if data.get("layout") in ("columns", "rows", "free"):
             mixer.layout = data["layout"]
+        mixer.nexus_colors = data.get("nexus_colors") is not False
         mixer.reduce_effects = data.get("reduce_effects") is True
         positions = data.get("free_positions")
         if isinstance(positions, dict):

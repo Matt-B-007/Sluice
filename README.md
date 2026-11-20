@@ -15,7 +15,13 @@ An open-source virtual audio mixer for Linux (PipeWire). Put your mic, games, mu
 > and use the Sluice support forum. Please do not post the `sluice --report` file there: it contains device and app
 > names, so offer it in a private ticket instead.
 
-## What's new in 0.11.1
+## What's new in 0.11.2
+
+Nexus uses less processor time (rings redrawn 15 times a second, half rate again while the window is not in use), a clipped *BROADCAST* tag is fixed, and the
+Free layout grows to hold any number of channels. Nexus now has its neon colours on every dark theme (with a switch under **View > Theme**), a soft glow, neon edge
+lines, and **View > Look > Compare looks...** shows a picture of each look. Sluice also checks devices less often while hidden in the tray. 0.11.1 and earlier are below.
+
+**Added in 0.11.1:**
 
 A third look under **View > Look**: **Nexus**, a neon dark look with a pulsing ring for every channel, waveform faders, a **Free** layout of nodes you drag
 anywhere, and **View > Reduce effects** for slow computers. 0.11.0 and earlier are below.

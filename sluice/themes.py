@@ -438,6 +438,8 @@ def current_look() -> str:
 
 
 _reduce = False
+_nexus_colors = True
+NEXUS_THEMES = ("dark", "purple", "midnight", "amber")  # not High contrast (made to be read) and not imported themes
 
 
 def set_reduce_effects(on: bool) -> None:
@@ -450,10 +452,20 @@ def reduce_effects() -> bool:
     return _reduce
 
 
+def set_nexus_colors(on: bool) -> None:
+    """Whether the Nexus look shows its own neon colours on the dark themes (View > Theme > Nexus colours)."""
+    global _nexus_colors
+    _nexus_colors = bool(on)
+
+
+def nexus_colors() -> bool:
+    return _nexus_colors
+
+
 def look_colors(theme: "Theme", look: str) -> dict:
     """The colours to show for a theme in a look. The Original look shows the built-in themes as they were in 0.9.7;
     imported themes, and every other look, show the theme's own colours."""
-    if valid_look(look) == "nexus" and theme.id == "dark":  # Nexus has its own Dark; the other themes keep their colours
+    if valid_look(look) == "nexus" and theme.id in NEXUS_THEMES and _nexus_colors:  # Nexus's own colours on the dark themes
         from .look_nexus import NEXUS_DARK
         return complete({**theme.colors, **NEXUS_DARK}, given=NEXUS_DARK.keys())
     if valid_look(look) == "original" and theme.id in BUILT_IN:
@@ -473,6 +485,8 @@ def valid_look(look) -> str:
 def _style_for(items: tuple, look: str = DEFAULT_LOOK) -> str:
     values = dict(items)
     values.update(mix_colors(values))
+    values["accent_edge"] = mix(values["panel"], values["accent"], 0.5)  # a thin neon outline for Nexus
+    values["accent_soft"] = mix(values["panel"], values["accent"], 0.22)
     if look == "original":
         from .look_original import ORIGINAL_STYLE
         return ORIGINAL_STYLE.substitute(values)

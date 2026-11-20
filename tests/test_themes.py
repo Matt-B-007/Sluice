@@ -255,7 +255,8 @@ def _theme_menu(win):
 
 def test_the_theme_menu_lists_the_themes_and_ticks_the_one_in_use(win):
     menu = _theme_menu(win)
-    items = [(a.text().replace("&", ""), a.isChecked()) for a in menu.actions() if a.text() and a.isCheckable()]
+    items = [(a.text().replace("&", ""), a.isChecked()) for a in menu.actions() if a.text() and a.isCheckable()
+             and "Nexus colours" not in a.text()]
     assert items == [("Dark", True), ("Light", False), ("High contrast", False), ("Retro Purple", False),
                      ("Midnight Blue", False), ("Amber Console", False), ("Paper", False), ("Match my system", False)]
     tail = [a.text().replace("&", "") for a in menu.actions() if a.text() and not a.isCheckable()]
@@ -270,7 +271,7 @@ def test_choosing_a_theme_changes_the_window_the_setting_and_the_tick(win):
     assert themes.BUILT_IN["purple"].colors["bg"] in win.styleSheet()
     assert "Retro Purple" in win.status_label.text()
     menu = _theme_menu(win)
-    assert [a.text() for a in menu.actions() if a.isChecked()] == ["Retro Purple"]
+    assert [a.text() for a in menu.actions() if a.isChecked() and "Nexus colours" not in a.text()] == ["Retro Purple"]
     assert win.autosave_timer.isActive()  # the choice is part of the settings that save themselves
     assert json.loads(win._snapshot())["theme"] == "purple"
 

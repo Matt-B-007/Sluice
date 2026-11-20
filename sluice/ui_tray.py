@@ -13,8 +13,11 @@ from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QMessageBox
 
 from . import ui_icons as icons
+from .engine import REFRESH_SECONDS
 from .model import config_path
 from .ui_constants import TALKING_HOLD, TALKING_LEVEL, TRAY_WATCH_MS
+
+HIDDEN_REFRESH_SECONDS = 4.0
 
 log = logging.getLogger("sluice.ui")
 
@@ -66,6 +69,8 @@ class TrayMixin:
         """The window was shown, hidden or minimized: tell the efficiency tracker, and start or stop the tray watcher."""
         showing = self.isVisible() and not self.isMinimized()
         self.tracker.set_state("open" if showing else ("tray" if self.tray_active else "background"))
+        # nobody is looking: check the devices and links every 4 s instead of every 2 s (apps are still moved by their own, faster rule)
+        self.engine.refresh_seconds = REFRESH_SECONDS if showing else HIDDEN_REFRESH_SECONDS
         self._sync_tray_timer()
 
     def _sync_tray_timer(self) -> None:
