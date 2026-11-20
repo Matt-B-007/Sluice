@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The Rust JACK client against a real (dummy-driver) JACK server. Skipped when jackd or libjack is not around."""
+import gc
 import os
 import shutil
 import subprocess
@@ -59,6 +60,8 @@ def server(monkeypatch):
             engine.stop()
         except Exception:
             pass
+    started.clear()  # and let go of them now: a JACK client freed after its server has gone crashes libjack
+    gc.collect()
     time.sleep(0.2)
     proc.terminate()
     proc.wait(timeout=10)

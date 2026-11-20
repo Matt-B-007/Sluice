@@ -336,6 +336,10 @@ impl JackEngine {
             }
         });
         *self.shared.callback.lock().map_err(|_| PyRuntimeError::new_err("callback lock poisoned"))? = None;
+        // The ports keep the JACK client alive. Let go of them now, while the server is still there, so the client is closed here and
+        // not whenever Python finally frees this object (which can be after the server has gone, and libjack then crashes).
+        let ports = std::mem::take(&mut *self.shared.ports.lock().map_err(|_| PyRuntimeError::new_err("ports lock poisoned"))?);
+        py.detach(move || drop(ports));
         if !message.is_empty() {
             self.shared.set_error(message);
         }

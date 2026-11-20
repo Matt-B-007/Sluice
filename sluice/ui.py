@@ -1626,6 +1626,7 @@ class MixStrip(QFrame):
         names.setSpacing(4)
         eyebrow = _label(MIX_EYEBROWS.get(mix.id, "MIX"), "tag", center=False)
         eyebrow.setProperty("mix", mix.id)
+        eyebrow.setProperty("narrow", True)  # 11 px, no letter spacing: FOR YOUR AUDIENCE must fit the card even in a wider fallback font
         names.addWidget(eyebrow)
         self.setProperty("mix", mix.id)
         title = QLabel(mix.label)
