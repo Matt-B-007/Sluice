@@ -594,3 +594,22 @@ def test_control_watch_streams_and_cleans_up(qapp, tmp_path):
     finally:
         server.close()
         engine.shutdown()
+
+
+def test_original_look_fits_in_a_wider_fallback_font(qapp, tmp_path):
+    """CI draws with DejaVu Sans, wider than the fonts on most desktops: nothing may be cut off there either."""
+    from PySide6.QtGui import QFont
+
+    saved = qapp.font()
+    qapp.setFont(QFont("DejaVu Sans", 10))
+    try:
+        found = []
+        for size in ((1456, 800), (900, 800), (1920, 1080)):
+            win, _ = make(qapp, tmp_path, "original", "columns", size, many_apps=True)
+            try:
+                found += problems(win, size, f"original/{size}")
+            finally:
+                win.shutdown()
+        assert found == [], "\n".join(map(str, found[:8]))
+    finally:
+        qapp.setFont(saved)

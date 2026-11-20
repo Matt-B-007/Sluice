@@ -1752,7 +1752,11 @@ class MixStrip(QFrame):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(6)
-        layout.addWidget(_label(MIX_EYEBROWS.get(mix.id, "MIX"), "tag"))
+        eyebrow = ElidedLabel(MIX_EYEBROWS.get(mix.id, "MIX"), tip_when_cut=True)  # a wider fallback font ends in "..." instead of being cut
+        eyebrow.setObjectName("tag")
+        eyebrow.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        eyebrow.setProperty("narrow", True)  # 11 px, no letter spacing
+        layout.addWidget(eyebrow)
         title = _label(mix.label, "title")
         self.menu_button = None
         if on_remove is None:
