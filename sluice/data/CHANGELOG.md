@@ -14,6 +14,7 @@ Lighter Nexus, and a tidy-up of the layouts.
 - **Neon edge lines** on the cards, top bar and nodes in Nexus.
 - **Lighter while hidden.** With Sluice in the tray it checks devices and links every 4 seconds instead of 2.
 - **Compare looks.** View > Look > *Compare looks...* shows a small picture of Calm, Original and Nexus in the colours of your theme, with a button to pick one.
+- **Steadier tests.** The JACK test no longer crashes the whole test run on a busy computer (its helper called libjack while the test server was still starting), and it stops its clients however it ends. No change to the program itself.
 
 ## 0.11.1
 A third look, **Nexus**: a neon dark look where every channel is a ring that pulses with its sound.

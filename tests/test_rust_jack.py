@@ -3,6 +3,7 @@
 import os
 import shutil
 import subprocess
+import sys
 import time
 
 import numpy as np
@@ -24,25 +25,49 @@ if os.environ.get("SLUICE_NO_RUST") or os.environ.get("SLUICE_NO_RUST_IO"):
 from sluice.audio_io import RustJackIO, make_jack_io  # noqa: E402
 
 
+PROBE = "import jack; jack.Client('probe', no_start_server=True).close()"
+started = []  # every io a test made, so the fixture can stop it whatever happens
+
+
+def make_io(*args, **kwargs):
+    io = make_jack_io(*args, **kwargs)
+    started.append(io)
+    return io
+
+
 @pytest.fixture
 def server(monkeypatch):
     name = f"sluicetest{os.getpid()}"
     monkeypatch.setenv("JACK_DEFAULT_SERVER", name)
     proc = subprocess.Popen(["jackd", "-n", name, "-r", "-d", "dummy", "-r", "48000", "-p", "512"],
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    deadline = time.time() + 10
+    deadline = time.time() + 20
     while time.time() < deadline:
-        try:
-            jack.Client("probe", no_start_server=True).close()
+        # Ask from a separate process: libjack can crash outright when it meets a server that is still starting,
+        # and that must not take the whole test run down with it.
+        probe = subprocess.run([sys.executable, "-c", PROBE], capture_output=True, timeout=30)
+        if probe.returncode == 0:
             break
-        except jack.JackError:
-            time.sleep(0.2)
+        time.sleep(0.3)
     else:
         proc.kill()
         pytest.skip("could not start a dummy JACK server here")
+    started.clear()
     yield name
+    for engine in started:  # a test that failed half way must not leave a client running when the server disappears
+        try:
+            engine.stop()
+        except Exception:
+            pass
+    time.sleep(0.2)
     proc.terminate()
     proc.wait(timeout=10)
+
+
+def wait_for(condition, seconds=10.0):
+    end = time.time() + seconds
+    while time.time() < end and not condition():
+        time.sleep(0.05)
 
 
 class FakeGraph:
@@ -53,10 +78,11 @@ class FakeGraph:
 
 
 def test_blocks_flow_through_and_ports_follow_the_mixer(server):
-    io = make_jack_io()
+    io = make_io()
     assert isinstance(io, RustJackIO) and io.sample_rate == 48000 and io.blocksize == 512
     io.sync_ports(["mic"], ["main"])
-    graph = FakeGraph(lambda inputs, frames: {"main": inputs["mic"] * 0.5})
+    # like the real graph: a channel may be missing for a block while ports change
+    graph = FakeGraph(lambda inputs, frames: {"main": inputs.get("mic", np.zeros((2, frames), np.float32)) * 0.5})
     io.start(graph)
     assert graph.live
     c = jack.Client("tester", no_start_server=True)
@@ -72,7 +98,7 @@ def test_blocks_flow_through_and_ports_follow_the_mixer(server):
     try:
         c.connect("tester:o", "sluice:in_mic_L")
         c.connect("sluice:out_main_L", "tester:i")
-        time.sleep(0.8)
+        wait_for(lambda: heard and max(heard) > 0.39)  # connecting takes a moment on a busy machine
         assert max(heard) == pytest.approx(0.4, abs=1e-6)
         io.sync_ports(["mic", "chat"], ["main", "alt"])
         names = {p.name for p in c.get_ports("sluice:")}
@@ -90,14 +116,14 @@ def test_blocks_flow_through_and_ports_follow_the_mixer(server):
 
 
 def test_an_exception_in_the_graph_gives_silence_and_an_error_not_a_crash(server):
-    io = make_jack_io()
+    io = make_io()
     io.sync_ports(["mic"], ["main"])
 
     def broken(inputs, frames):
         raise ValueError("boom")
 
     io.start(FakeGraph(broken))
-    time.sleep(0.3)
+    wait_for(lambda: "ValueError: boom" in io.error)
     assert "ValueError: boom" in io.error
     io.error = ""
     assert io.error == ""
@@ -105,7 +131,7 @@ def test_an_exception_in_the_graph_gives_silence_and_an_error_not_a_crash(server
 
 
 def test_a_second_client_with_the_same_name_is_refused(server):
-    first = make_jack_io()
+    first = make_io()
     try:
         with pytest.raises(Exception):  # PipeWire says "name not unique"; a real JACK server only says "failure"
             make_jack_io()
@@ -117,7 +143,7 @@ def test_python_jack_is_used_when_rust_is_switched_off(server, monkeypatch):
     from sluice.audio_io import JackIO
 
     monkeypatch.setenv("SLUICE_NO_RUST_IO", "1")
-    io = make_jack_io()
+    io = make_io()
     try:
         assert isinstance(io, JackIO)
     finally:
