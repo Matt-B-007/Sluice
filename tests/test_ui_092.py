@@ -136,6 +136,7 @@ def test_with_the_third_mix_there_is_no_add_strip_and_the_mix_can_be_removed_fro
 
 def test_the_faders_line_up_across_strips_with_and_without_a_microphone(three):
     win, _, _ = three
+    win.resize(2800, 1000)  # wide enough for every card on one line (narrower windows wrap the cards)
     win.show()
     QTest.qWait(100)
     heights = {s.channel.id: s.faders[MONITOR].height() for s in win.strips}

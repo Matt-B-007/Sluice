@@ -183,6 +183,26 @@ class Channel:
         return f"Sluice ({self.label}) recording feed"
 
 
+WIDGET_KINDS = ("mic", "dial", "strip")  # the desktop widgets (ui_desktop)
+MAX_DESKTOP_WIDGETS = 12
+
+
+def clean_widget_spec(spec) -> dict | None:
+    """A saved widget description made safe, or None if it is not one."""
+    if not isinstance(spec, dict) or spec.get("kind") not in WIDGET_KINDS:
+        return None
+
+    def text(key):
+        value = spec.get(key)
+        return value if isinstance(value, str) and 0 < len(value) <= 60 else None
+
+    def number(key):
+        value = spec.get(key)
+        return value if isinstance(value, int) and not isinstance(value, bool) and -5000 <= value <= 20000 else None
+
+    return {"kind": spec["kind"], "mix": text("mix"), "channel": text("channel"), "x": number("x"), "y": number("y")}
+
+
 @dataclass
 class Mix:
     id: str
@@ -227,8 +247,9 @@ class Mixer:
         self.layout = "columns"  # how the channels are laid out: "columns" (a card each), "rows" (a line each) or "free" (Nexus: nodes you place)
         self.nexus_colors = True  # Nexus: its neon colours on the dark themes (off: each theme keeps its own colours)
         self.reduce_effects = False  # Nexus: no shimmer on the rings and no waveform on the faders (for slow or busy machines)
+        self.desktop_widgets: list = []  # widgets left on the desktop: [{kind, mix, channel, x, y}], see ui_desktop
         self.free_positions: dict = {}  # the Free layout: where each node sits, {channel or mix id: [x, y]}
-        self.look = "calm"  # the shapes and sizes of the window ("calm", "original" or "nexus"), apart from the colour theme
+        self.look = "calm"  # the shapes and sizes of the window ("calm", "original", "nexus" or "tile"), apart from the colour theme
         self.theme = "dark"  # a theme id: dark, light, contrast, purple, system, or custom:<name> (an imported file)
         self.close_action = DEFAULT_CLOSE  # "quit", "minimize" (keep running in the taskbar) or "tray" (keep running in the system tray)
 
@@ -389,6 +410,7 @@ class Mixer:
             "layout": self.layout,
             "nexus_colors": self.nexus_colors,
             "reduce_effects": self.reduce_effects,
+            "desktop_widgets": [dict(w) for w in self.desktop_widgets],
             "free_positions": {k: [int(v[0]), int(v[1])] for k, v in self.free_positions.items()},
             "channels": [
                 {
@@ -441,12 +463,21 @@ class Mixer:
         if isinstance(theme, str) and 0 < len(theme) <= 80:
             mixer.theme = theme  # an id that no longer exists simply shows the default theme
         look = data.get("look")
-        if isinstance(look, str) and look in ("calm", "original", "nexus"):
+        if isinstance(look, str) and look in ("calm", "original", "nexus", "tile"):
             mixer.look = look
         if data.get("layout") in ("columns", "rows", "free"):
             mixer.layout = data["layout"]
         mixer.nexus_colors = data.get("nexus_colors") is not False
         mixer.reduce_effects = data.get("reduce_effects") is True
+        widgets = data.get("desktop_widgets")
+        if isinstance(widgets, list):
+            seen = set()
+            for item in widgets:
+                spec = clean_widget_spec(item)
+                key = (spec["kind"], spec["mix"], spec["channel"]) if spec else None
+                if spec is not None and key not in seen and len(mixer.desktop_widgets) < MAX_DESKTOP_WIDGETS:
+                    seen.add(key)
+                    mixer.desktop_widgets.append(spec)
         positions = data.get("free_positions")
         if isinstance(positions, dict):
             for key, pair in list(positions.items())[:60]:

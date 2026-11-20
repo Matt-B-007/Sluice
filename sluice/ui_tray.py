@@ -85,7 +85,7 @@ class TrayMixin:
             self.tray_timer.stop()
 
     def _tray_tick(self) -> None:
-        self.engine.levels()  # reads the microphone level (and clears the peaks, as the meters would)
+        self.engine.sample_levels(0.1)  # reads the microphone level (the peaks are shared with the meters and the widgets)
         self.tracker.meter_tick()
         self._refresh_tray_icon()
 

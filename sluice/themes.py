@@ -420,7 +420,7 @@ def mix_colors(colors: dict) -> dict:
     return out
 
 
-LOOKS = {"calm": "Calm", "original": "Original", "nexus": "Nexus"}  # the Look setting: shapes, sizes and painting, apart from colour
+LOOKS = {"calm": "Calm", "original": "Original", "nexus": "Nexus", "tile": "Tile"}  # the Look setting: shapes, sizes and painting, apart from colour
 DEFAULT_LOOK = "calm"
 
 
@@ -435,6 +435,13 @@ def set_look(look) -> None:
 
 def current_look() -> str:
     return _look
+
+
+FREE_LOOKS = ("nexus", "tile")  # the looks that have the Free layout (nodes you drag; a click folds a card out beside one)
+
+
+def has_free(look) -> bool:
+    return valid_look(look) in FREE_LOOKS
 
 
 _reduce = False
@@ -490,6 +497,10 @@ def _style_for(items: tuple, look: str = DEFAULT_LOOK) -> str:
     if look == "original":
         from .look_original import ORIGINAL_STYLE
         return ORIGINAL_STYLE.substitute(values)
+    if look == "tile":  # the Calm sheet with the Tile rules after it: raised tiles, all style sheet
+        from .look_tile import TILE_STYLE_EXTRA, tile_colors
+        values.update(tile_colors(values, mix))
+        return STYLE_TEMPLATE.substitute(values) + TILE_STYLE_EXTRA.substitute(values)
     if look == "nexus":  # the Calm sheet with Nexus's rules after it: the later rule wins where both name the same thing
         from .look_nexus import NEXUS_STYLE_EXTRA
         return STYLE_TEMPLATE.substitute(values) + NEXUS_STYLE_EXTRA.substitute(values)

@@ -148,3 +148,28 @@ def test_python_jack_is_used_when_rust_is_switched_off(server, monkeypatch):
         assert isinstance(io, JackIO)
     finally:
         io.stop()
+
+
+def test_channels_that_stay_are_never_missing_while_others_come_and_go(server):
+    """Adding or removing a channel must not make the channels that stay vanish for a block (that was a block of silence)."""
+    from sluice import spectral
+
+    if spectral.rust_is_older(rust.VERSION, "0.10.1"):
+        pytest.skip(f"the installed engine ({rust.VERSION}) is older than the fix (0.10.1): run ./install.sh again to rebuild it")
+    io = make_io()
+    missing = []
+
+    def graph_fn(inputs, frames):
+        if "mic" not in inputs or "main" not in ("main",):
+            missing.append(sorted(inputs))
+        return {"main": np.zeros((2, frames), np.float32)}
+
+    io.sync_ports(["mic"], ["main"])
+    io.start(FakeGraph(graph_fn))
+    for i in range(25):
+        io.sync_ports(["mic", f"extra{i}"], ["main"])
+        time.sleep(0.01)
+    io.sync_ports(["mic"], ["main"])
+    time.sleep(0.2)
+    io.stop()
+    assert missing == []

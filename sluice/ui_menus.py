@@ -11,7 +11,7 @@ from PySide6.QtCore import QUrl
 from PySide6.QtGui import QAction, QActionGroup, QDesktopServices, QKeySequence
 from PySide6.QtWidgets import QCheckBox, QMenu, QMessageBox
 
-from . import __version__
+from . import __version__, themes
 from .model import BUFFER_CHOICES, MONITOR, STREAM
 from .ui_constants import DEFAULT_SIZE, DISCORD_URL, ISSUES_URL, PROJECT_URL
 
@@ -69,7 +69,7 @@ class MenusMixin:
                                                      shortcut, checkable=True)
         mixer_menu.aboutToShow.connect(self._refresh_mixer_menu)
 
-        # View: how the window looks.
+        # View: how the window looks, in three groups (the Nexus ones only show in the Nexus look).
         view_menu = bar.addMenu("&View")
         view_menu.addSection("Layout")
         self.layout_actions = {}
@@ -81,19 +81,28 @@ class MenusMixin:
             action.setActionGroup(layout_group)
             action.triggered.connect(lambda _c=False, key=key: self.set_layout(key))
             self.layout_actions[key] = action
-        view_menu.addSeparator()
-        self.theme_menu = view_menu.addMenu("&Theme")
-        self.theme_menu.aboutToShow.connect(self._fill_theme_menu)
+        view_menu.addSection("Appearance")
         self.look_menu = view_menu.addMenu("&Look")
         self.look_menu.aboutToShow.connect(self._fill_look_menu)
-        self.tidy_action = self._action(view_menu, "T&idy up the free layout", lambda: self.canvas.tidy() if self.layout_mode == "free" else None)
-        self.reduce_action = self._action(view_menu, "Re&duce effects (Nexus)", lambda: self.set_reduce_effects(self.reduce_action.isChecked()),
+        self.theme_menu = view_menu.addMenu("&Theme")
+        self.theme_menu.aboutToShow.connect(self._fill_theme_menu)
+        self.nexus_section = view_menu.addSection("Nexus")
+        self.nexus_colors_action = self._action(view_menu, "&Nexus colours on dark themes",
+                                                lambda: self.set_nexus_colors(self.nexus_colors_action.isChecked()), checkable=True)
+        self.nexus_colors_action.setToolTip("Nexus's deep blue and cyan on Dark, Retro Purple, Midnight Blue and Amber Console. Off: each theme "
+                                            "keeps its own colours. High contrast and imported themes are never changed.")
+        self.reduce_action = self._action(view_menu, "Re&duce effects", lambda: self.set_reduce_effects(self.reduce_action.isChecked()),
                                           checkable=True)
-        self.reduce_action.setToolTip("For slow or busy computers: the Nexus rings stop shimmering and the faders show no waveform")
-        view_menu.addSeparator()
+        self.reduce_action.setToolTip("For slow or busy computers: the Nexus rings stop shimmering and the faders show no waveform or glow")
+        self.tidy_action = self._action(view_menu, "T&idy up the free layout", lambda: self.canvas.tidy() if self.layout_mode == "free" else None)
+        view_menu.addSection("Desktop")
+        self.widgets_menu = view_menu.addMenu("Desktop wid&gets")
+        self.widgets_menu.setToolTipsVisible(True)
+        self.widgets_menu.aboutToShow.connect(self._fill_widgets_menu)
+        view_menu.addSection("Window")
         self.fullscreen_action = self._action(view_menu, "&Full screen", self.toggle_fullscreen, "F11", checkable=True)
         self._action(view_menu, "Reset &window size", self.reset_window_size)
-        view_menu.aboutToShow.connect(lambda: (self.fullscreen_action.setChecked(self.isFullScreen()), self.reduce_action.setChecked(self.engine.mixer.reduce_effects)))
+        view_menu.aboutToShow.connect(self._refresh_view_menu)
 
         # Settings: everything that is chosen once and then left alone, in four groups.
         self.settings_menu = settings_menu = bar.addMenu("&Settings")
@@ -148,7 +157,10 @@ class MenusMixin:
         self._action(self.help_menu, "&Keyboard shortcuts", self.show_shortcuts, "F1")
         self.help_menu.addAction("&What's new in this version", self.show_whats_new)
         self.help_menu.addSeparator()
-        self.help_menu.addAction("Save bug &report\u2026", self.save_report)
+        report_action = self.help_menu.addAction("Save bug &report\u2026", self.save_report)
+        report_action.setToolTip("Something wrong, or something looks wrong? Save this file and send it: it lists the window size, how the "
+                                 "window was arranged and where each part is, as well as the audio setup.")
+        self.help_menu.setToolTipsVisible(True)
         self._action(self.help_menu, "I heard a &glitch", self.mark_glitch, "Ctrl+Shift+G")
         self.help_menu.addAction("Report a &problem", partial(self.open_link, ISSUES_URL))
         self.help_menu.addSeparator()
@@ -164,6 +176,44 @@ class MenusMixin:
         for menu in (file_menu, mixer_menu, view_menu, self.help_menu):
             self.main_menu.addMenu(menu)
         bar.setVisible(False)
+
+    def _refresh_view_menu(self) -> None:
+        self.fullscreen_action.setChecked(self.isFullScreen())
+        self.reduce_action.setChecked(self.engine.mixer.reduce_effects)
+        self.nexus_colors_action.setChecked(self.engine.mixer.nexus_colors)
+        self._show_look_items()
+
+    def _fill_widgets_menu(self) -> None:
+        """Small windows to leave on the desktop: tick one to show it, untick to close it."""
+        menu = self.widgets_menu
+        menu.clear()
+        items = [("Microphone mute button", "mic", None, "A round button: click it to mute or unmute your microphone")]
+        for mix in self.engine.mixer.mixes:
+            items.append((f"{mix.label} volume dial", "dial", mix.id, f"A dial for the {mix.label} main level: scroll to change it, click to mute"))
+        items.append(("Channel list", "strip", None, "Every channel on one line, in a small window"))
+        for text, kind, mix, tip in items:
+            action = menu.addAction(text)
+            action.setCheckable(True)
+            action.setChecked(self.desktop.is_open(kind, mix))
+            action.setToolTip(tip)
+            action.triggered.connect(lambda _c=False, kind=kind, mix=mix: self._toggle_desktop_widget(kind, mix))
+        menu.addSeparator()
+        close_all = menu.addAction("Close all widgets", lambda: self.desktop.close_all(forget=True))
+        close_all.setEnabled(bool(self.desktop.open_widgets))
+
+    def _toggle_desktop_widget(self, kind: str, mix) -> None:
+        was_open = self.desktop.is_open(kind, mix)
+        self.desktop.toggle(kind, mix)
+        if not was_open and not self.desktop.is_open(kind, mix):
+            self.say("That is as many widgets as Sluice keeps. Close one first.")
+
+    def _show_look_items(self) -> None:
+        """The View items that only mean something in the Nexus look are shown only there (and Tidy up only in the looks with Free)."""
+        nexus = themes.current_look() == "nexus"
+        for item in (self.nexus_section, self.nexus_colors_action, self.reduce_action):
+            item.setVisible(nexus)
+        self.tidy_action.setVisible(themes.has_free(themes.current_look()))  # Nexus and Tile have the Free layout
+        self.tidy_action.setEnabled(self.layout_mode == "free")
 
     def uninstall_app(self) -> None:
         """Two ways to remove Sluice, each showing exactly what it removes; then Sluice closes and a separate process does it."""

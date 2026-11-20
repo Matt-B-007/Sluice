@@ -353,6 +353,8 @@ def anonymize(text: str) -> str:
     for word, placeholder in ((user, "<user>"), (host, "<host>"), (host.split(".")[0] if host else "", "<host>")):
         if word and len(word) >= 3 and word.lower() not in ("root", "localhost", "user", "host"):
             text = re.sub(rf"(?<![A-Za-z0-9]){re.escape(word)}(?![A-Za-z0-9])", placeholder, text, flags=re.IGNORECASE)
+    # the machine name in a kernel-log line, whatever it was when the line was written (it can change between boots)
+    text = re.sub(r"(?m)^(\d{4}-\d\d-\d\dT[\d:.+-]+\s+)\S+(\s+kernel:)", r"\1<host>\2", text)
     text = re.sub(r"/run/user/\d+", "/run/user/<uid>", text)
     text = re.sub(r"/(?:home|Users)/[^/\s]+", "~", text)
     # USB serial numbers: alsa_input.usb-Vendor_Product_SERIAL-00.analog-stereo
@@ -375,9 +377,47 @@ def look_summary() -> str:
     look = themes.current_look()
     chosen = saved.get("layout", "columns") if isinstance(saved, dict) else "columns"
     chosen = chosen if chosen in ("columns", "rows", "free") else "columns"
-    shown = "columns" if chosen == "free" and look != "nexus" else chosen
+    shown = "columns" if chosen == "free" and look not in ("nexus", "tile") else chosen
     note = f" (saved as {chosen})" if shown != chosen else ""
     return f"Look: {look}. Layout shown: {shown}{note}. Effects reduced: {'yes' if themes.reduce_effects() else 'no'}.\n"
+
+
+_window_source = None  # a function returning what the window knows about its own arrangement (set by the window)
+
+
+def set_window_source(source) -> None:
+    """The window registers itself so the report can say how it was arranged; None when it closes."""
+    global _window_source
+    _window_source = source
+
+
+def _window_info() -> dict:
+    try:
+        return dict(_window_source()) if _window_source is not None else {}
+    except Exception as exc:  # the report must still be written
+        return {"error": f"{type(exc).__name__}: {exc}"}
+
+
+def window_summary() -> str:
+    """One line on the size and arrangement of the window: what is needed to explain 'things overlap' or 'it is cut off'."""
+    info = _window_info()
+    if not info:
+        return ""
+    if info.get("error"):
+        return f"Window: (could not read: {info['error']})\n"
+    dock = {"right": "Listen and Broadcast beside the channels", "bottom": "Listen and Broadcast in a bar under the channels"}
+    automatic = "yes" if info["mode"] != info["chosen"] else "no"
+    return (f"Window: {info['width']}x{info['height']} px{' (full screen)' if info.get('fullscreen') else ''} on a {info['screen']} screen at scale "
+            f"{info['scale']}. Size step: {info['step']}. Arrangement: {info['mode']}"
+            f"{'' if info['mode'] in ('mini', 'free') else ', ' + dock.get(info['dock'], info['dock'])} (chosen: {info['chosen']}; "
+            f"switched by the window's size: {automatic}). Rearranged {info['relayouts']} times this session. "
+            f"Nexus colours: {'on' if info['nexus_colors'] else 'off'}.\n")
+
+
+def window_layout() -> str:
+    """The sizes of the main parts of the window, so a layout problem can be seen without a screenshot."""
+    info = _window_info()
+    return info.get("layout", "") if info else ""
 
 
 def build_report(log_lines: int = LOG_LINES) -> str:
@@ -393,9 +433,12 @@ def build_report(log_lines: int = LOG_LINES) -> str:
         "It still contains device names, app names and plugin file paths. Look it over before sharing it.\n"
         f"Created: {time.strftime('%Y-%m-%d %H:%M:%S %Z')} by Sluice {__version__}\n"
         + look_summary()
+        + window_summary()
         + efficiency.summary_line(efficiency_data)
     ]
     parts.append(_section("sluice", f"version {__version__}\nPython {platform.python_version()}\n{platform.platform()}"))
+    if window_layout():
+        parts.append(_section("Window layout (position and size in pixels of the main parts)", window_layout()))
 
     try:
         parts.append(_section("Self-check (sluice --diagnose)", diagnose_report()[0]))

@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.11.3
+The window fits any size, a new Tile look, desktop widgets, and a fix for the audio engine going silent when channels change.
+- **Audio engine fix.** Adding, removing or reconnecting channels while Sluice runs no longer blocks the audio for a moment (the Rust engine now does its slow
+  work outside its lock). This needs the new engine, **version 0.10.1**: run `./install.sh` again to rebuild it. *Help > Save bug report* warns if the one
+  you have is older.
+- **The window fits its size.** Cards wrap onto more rows instead of being cut; Listen and Broadcast sit on the right when the window is wide and in a bar at the
+  bottom when it is narrower; text and controls scale in steps. When the window is too small for cards (short, or narrow and tall) it shows a **compact list**,
+  one line per channel. Your saved layout is never changed by this: make the window bigger and it returns. Overlaps and scrollbars over readouts found at 900x600
+  and 1280x800 are fixed.
+- **Menus reorganised.** View: Layout, Appearance (Look, Theme), Desktop widgets, Window. Settings: Startup, Audio, Updates. Nexus-only items show only in Nexus.
+- **Bug report** now lists the window size, the size step, where Listen/Broadcast are docked and how many times the window rearranged itself; paths and host
+  names are hidden the same way everywhere.
+- **Easier to start.** The first-run guide has a step for choosing a look (Compare looks), plain labels, and every control has a name and keyboard focus.
+- **Tile look.** A dark or light look with a lit edge on each card; Columns, Rows or Free (tiles that fold out). About as light as Calm.
+- **Desktop widgets** (*View > Desktop widgets*): a microphone mute button, a volume dial for Listen or Broadcast (scroll to change, click to mute) and a channel
+  list, as small borderless windows that stay on the desktop with Sluice's window closed. They come back next time and cost nothing while nothing changes.
+- **Live meters for other programs.** `sluice ctl meters` prints the levels once; `sluice ctl watch` prints them ten times a second.
+
 ## 0.11.2
 Lighter Nexus, and a tidy-up of the layouts.
 - **Nexus uses less processor time.** The rings are redrawn 15 times a second instead of 30 (the sound still updates at full rate and the bars fall

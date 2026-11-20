@@ -250,47 +250,44 @@ impl JackEngine {
             let guard = state.lock().map_err(|_| PyRuntimeError::new_err("state lock poisoned"))?;
             let client = client_of(&guard).ok_or_else(|| PyRuntimeError::new_err("the audio client is closed"))?;
             let err = |e: jack::Error| PyRuntimeError::new_err(format!("{e:?}"));
-            // register what is missing (the callback keeps using the old set meanwhile)
+            // 1. what is missing, looked up with the lock held only for a moment (the callback keeps the whole old set meanwhile)
+            let (missing_in, missing_out): (Vec<String>, Vec<String>) = {
+                let ports = shared.ports.lock().map_err(|_| PyRuntimeError::new_err("ports lock poisoned"))?;
+                (
+                    channel_ids.iter().filter(|id| !ports.inputs.contains_key(*id)).cloned().collect(),
+                    mix_ids.iter().filter(|id| !ports.outputs.contains_key(*id)).cloned().collect(),
+                )
+            };
+            // 2. register the new ports without holding the lock: the callback still sees every port it had
             let mut new_in: BTreeMap<String, InPair> = BTreeMap::new();
             let mut new_out: BTreeMap<String, OutPair> = BTreeMap::new();
-            let mut old = {
+            for id in &missing_in {
+                let l = client.register_port(&format!("in_{id}_L"), AudioIn::default()).map_err(err)?;
+                let r = client.register_port(&format!("in_{id}_R"), AudioIn::default()).map_err(err)?;
+                new_in.insert(id.clone(), (l, r));
+            }
+            for id in &missing_out {
+                let l = client.register_port(&format!("out_{id}_L"), AudioOut::default()).map_err(err)?;
+                let r = client.register_port(&format!("out_{id}_R"), AudioOut::default()).map_err(err)?;
+                new_out.insert(id.clone(), (l, r));
+            }
+            // 3. one short swap under the lock: add the new ports, take out only the ports that are no longer wanted
+            let (old_in, old_out) = {
                 let mut ports = shared.ports.lock().map_err(|_| PyRuntimeError::new_err("ports lock poisoned"))?;
-                for id in &channel_ids {
-                    if let Some(pair) = ports.inputs.remove(id) {
-                        new_in.insert(id.clone(), pair);
-                    }
-                }
-                for id in &mix_ids {
-                    if let Some(pair) = ports.outputs.remove(id) {
-                        new_out.insert(id.clone(), pair);
-                    }
-                }
-                std::mem::take(&mut *ports) // what is left over is what is no longer wanted
+                ports.inputs.extend(new_in);
+                ports.outputs.extend(new_out);
+                let stale_in: Vec<String> = ports.inputs.keys().filter(|k| !channel_ids.contains(*k)).cloned().collect();
+                let stale_out: Vec<String> = ports.outputs.keys().filter(|k| !mix_ids.contains(*k)).cloned().collect();
+                let old_in: Vec<InPair> = stale_in.iter().filter_map(|k| ports.inputs.remove(k)).collect();
+                let old_out: Vec<OutPair> = stale_out.iter().filter_map(|k| ports.outputs.remove(k)).collect();
+                (old_in, old_out)
             };
-            for id in &channel_ids {
-                if !new_in.contains_key(id) {
-                    let l = client.register_port(&format!("in_{id}_L"), AudioIn::default()).map_err(err)?;
-                    let r = client.register_port(&format!("in_{id}_R"), AudioIn::default()).map_err(err)?;
-                    new_in.insert(id.clone(), (l, r));
-                }
-            }
-            for id in &mix_ids {
-                if !new_out.contains_key(id) {
-                    let l = client.register_port(&format!("out_{id}_L"), AudioOut::default()).map_err(err)?;
-                    let r = client.register_port(&format!("out_{id}_R"), AudioOut::default()).map_err(err)?;
-                    new_out.insert(id.clone(), (l, r));
-                }
-            }
-            {
-                // swapping takes the lock, so it waits for a block that is still running with the old ports
-                let mut ports = shared.ports.lock().map_err(|_| PyRuntimeError::new_err("ports lock poisoned"))?;
-                *ports = Ports { inputs: new_in, outputs: new_out };
-            }
-            for (_, (l, r)) in std::mem::take(&mut old.inputs) {
+            // 4. give the unwanted ports back (the callback no longer uses them)
+            for (l, r) in old_in {
                 let _ = client.unregister_port(l);
                 let _ = client.unregister_port(r);
             }
-            for (_, (l, r)) in std::mem::take(&mut old.outputs) {
+            for (l, r) in old_out {
                 let _ = client.unregister_port(l);
                 let _ = client.unregister_port(r);
             }

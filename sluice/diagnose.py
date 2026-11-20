@@ -129,6 +129,8 @@ def _engine() -> tuple:
     text = ", ".join(f"{k}: {v}" for k, v in parts.items())
     if spectral.RUST_VERSION:
         text += f" (Rust engine version {spectral.RUST_VERSION}: numbered apart from Sluice, so it can be older)"
+        if spectral.rust_is_older():
+            text += f". This Sluice comes with engine {spectral.RUST_EXPECTED}; run ./install.sh again in the Sluice folder to rebuild it (fixes made since are not in your copy)"
     elif spectral.RUST_ERROR:
         text += f" (the Rust build could not be used: {spectral.RUST_ERROR})"
     elif not os.environ.get("SLUICE_NO_RUST"):

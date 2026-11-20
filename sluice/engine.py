@@ -90,6 +90,8 @@ class Engine:
         self.server_lost = False  # the audio server (PipeWire) went away: the window then restarts Sluice (see reconnect.py)
         self._guard_streak = 0
         self.mic_level = 0.0  # the loudest microphone channel at the last meter update (0 to 1), for the tray icon
+        self.last_levels: dict = {}   # what levels() returned last, and when: see sample_levels()
+        self._levels_at = -1.0
         self.mic_muted = False  # not saved either: Sluice always starts with the microphone live
         self.hear_broadcast = False  # not saved: it always starts off, so nobody is surprised by the wrong mix
         self._started = False
@@ -986,6 +988,16 @@ class Engine:
         self.apply_links()
 
     # ------------------------------------------------------------------ meters
+    def sample_levels(self, max_age: float = 0.02) -> dict:
+        """The meters for whoever wants them. ``levels()`` takes the peaks it reports, so two callers would each see only part of the
+        sound; this lets the window's meters, the desktop widgets and the control socket share one reading (re-read only when the last
+        one is older than ``max_age`` seconds)."""
+        now = time.monotonic()
+        if self._levels_at < 0 or now - self._levels_at >= max_age:
+            self.last_levels = self.levels()
+            self._levels_at = now
+        return self.last_levels
+
     def levels(self) -> dict:
         """Peak levels since the last call. 'ch:<id>:<mix>' is after effects and fader; 'mix:<id>' is the output."""
         peaks = self.graph.take_peaks() if self.graph else {}

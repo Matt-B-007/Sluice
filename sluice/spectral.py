@@ -239,6 +239,19 @@ PythonNoiseReducer, PythonEchoReducer, PythonJoint = NoiseReducer, EchoReducer, 
 BACKEND = "python"
 RUST_VERSION = ""
 RUST_ERROR = ""
+RUST_EXPECTED = "0.10.1"  # the engine in this Sluice; an older build still works, but lacks fixes made since
+
+
+def rust_is_older(version=None, expected=None) -> bool:
+    """Whether the installed Rust engine is older than the one shipped with this Sluice (run ./install.sh again to rebuild it)."""
+    def key(text: str) -> tuple:
+        try:
+            return tuple(int(part) for part in str(text).split(".")[:3])
+        except ValueError:
+            return (0,)
+    version = RUST_VERSION if version is None else version
+    expected = RUST_EXPECTED if expected is None else expected
+    return bool(version) and key(version) < key(expected)
 
 if not os.environ.get("SLUICE_NO_RUST"):
     try:

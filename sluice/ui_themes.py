@@ -158,14 +158,6 @@ class ThemesMixin:
             for theme in custom:
                 remove.addAction(theme.name, partial(self.remove_theme, theme.id))
         menu.addSeparator()
-        neon = menu.addAction("&Nexus colours on dark themes")
-        neon.setCheckable(True)
-        neon.setChecked(self.engine.mixer.nexus_colors)
-        neon.setEnabled(themes.valid_look(self.engine.mixer.look) == "nexus")
-        neon.setToolTip("Only in the Nexus look: its deep blue and cyan on Dark, Retro Purple, Midnight Blue and Amber Console. "
-                        "Off: each theme keeps its own colours. High contrast and imported themes are never changed.")
-        neon.triggered.connect(lambda checked=False: self.set_nexus_colors(neon.isChecked()))
-        menu.addSeparator()
         more = menu.addAction("&Get more themes\u2026", partial(self.open_link, THEMES_URL))
         more.setToolTip("Opens the theme collection on the project page in your browser: download a file, then Import theme")
         menu.setToolTipsVisible(True)

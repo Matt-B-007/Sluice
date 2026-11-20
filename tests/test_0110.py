@@ -343,3 +343,12 @@ def test_the_look_menu_offers_compare_looks(rig):
     win, _ = rig
     win._fill_look_menu()
     assert any("Compare looks" in a.text() for a in win.look_menu.actions())
+
+
+def test_an_older_rust_engine_is_noticed_and_a_newer_or_missing_one_is_not():
+    from sluice import spectral
+    assert spectral.rust_is_older("0.9.6", "0.10.1")
+    assert spectral.rust_is_older("0.10.0", "0.10.1")
+    assert not spectral.rust_is_older("0.10.1", "0.10.1")
+    assert not spectral.rust_is_older("0.11.0", "0.10.1")
+    assert not spectral.rust_is_older("", "0.10.1")  # no Rust at all is not "older"

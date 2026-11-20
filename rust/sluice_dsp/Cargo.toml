@@ -1,6 +1,6 @@
 [package]
 name = "sluice_dsp"
-version = "0.10.0"
+version = "0.10.1"
 edition = "2021"
 license = "GPL-3.0-or-later"
 description = "Sluice's real-time audio engine pieces in Rust (Sluice falls back to Python without it)"

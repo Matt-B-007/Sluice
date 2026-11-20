@@ -25,6 +25,8 @@ from .model import MAX_DB, MIN_DB, clamp_db
 log = logging.getLogger("sluice.control")
 
 MAX_REQUEST = 64 * 1024
+WATCH_MS = 100       # how often a watching program gets the meters
+MAX_WATCHERS = 8
 STATES = ("on", "off", "toggle")
 
 
@@ -64,12 +66,13 @@ class ControlApi:
                 "assign": self._assign,
                 "hear-broadcast": self._hear_broadcast,
                 "mic-mute": self._mic_mute,
+                "meters": self._meters,
                 "show": lambda _request: {},  # the window itself is raised by whoever listens (see ui_controls)
             }.get(cmd)
             if handler is None:
-                raise ControlError(f"unknown command {cmd!r}; try: status, level, mute, master, master-mute, assign, hear-broadcast, mic-mute, show")
+                raise ControlError(f"unknown command {cmd!r}; try: status, level, mute, master, master-mute, assign, hear-broadcast, mic-mute, meters, watch, show")
             result = handler(request)
-            if cmd != "status":
+            if cmd not in ("status", "meters"):
                 self.on_change(cmd)
             return {"ok": True, **result}
         except ControlError as exc:
@@ -155,6 +158,13 @@ class ControlApi:
             ],
         }
 
+    def meters(self) -> dict:
+        """The live levels, 0 to 1: ``ch:<channel>:<mix>`` after effects and fader, ``mix:<mix>`` at each output."""
+        return {key: round(float(value), 3) for key, value in self.engine.sample_levels(0.05).items()}
+
+    def _meters(self, _request: dict) -> dict:
+        return {"meters": self.meters(), "mic_muted": self.engine.mic_muted}
+
     def _level(self, request: dict) -> dict:
         channel = self._channel(request)
         mixes = self._mixes(request)
@@ -212,6 +222,8 @@ class ControlServer:
         self.api = api
         self.path = path
         self._buffers: dict = {}
+        self._watchers: list = []      # connections that asked to watch the meters: they get a line 10 times a second
+        self._watch_timer = None
         self.server = QLocalServer()
         self.server.setSocketOptions(QLocalServer.SocketOption.UserAccessOption)
         QLocalServer.removeServer(path)  # a stale socket from a crash; sluice itself is single-instance
@@ -231,7 +243,28 @@ class ControlServer:
 
     def _drop(self, connection) -> None:
         self._buffers.pop(connection, None)
+        if connection in self._watchers:
+            self._watchers.remove(connection)
+            self._sync_watch_timer()
         connection.deleteLater()
+
+    def _sync_watch_timer(self) -> None:
+        from PySide6.QtCore import QTimer
+
+        if self._watchers and self._watch_timer is None:
+            self._watch_timer = QTimer()
+            self._watch_timer.timeout.connect(self._push_meters)
+            self._watch_timer.start(WATCH_MS)
+        elif not self._watchers and self._watch_timer is not None:
+            self._watch_timer.stop()
+            self._watch_timer.deleteLater()
+            self._watch_timer = None
+
+    def _push_meters(self) -> None:
+        line = json.dumps({"meters": self.api.meters(), "mic_muted": self.api.engine.mic_muted}).encode("utf-8") + b"\n"
+        for connection in list(self._watchers):
+            if connection.write(line) < 0:
+                connection.abort()
 
     def _read(self, connection) -> None:
         buffer = self._buffers.get(connection)
@@ -251,6 +284,15 @@ class ControlServer:
             self._reply(connection, {"ok": False, "error": "that is not valid JSON"})
             return
         log.debug("control request: %s", request)
+        if isinstance(request, dict) and request.get("cmd") == "watch":  # stays open: the meters are pushed until it is closed
+            if len(self._watchers) >= MAX_WATCHERS:
+                self._reply(connection, {"ok": False, "error": "too many programs are watching the meters"})
+                return
+            connection.write(json.dumps({"ok": True, "watching": True, "interval_ms": WATCH_MS}).encode("utf-8") + b"\n")
+            connection.flush()
+            self._watchers.append(connection)
+            self._sync_watch_timer()
+            return
         self._reply(connection, self.api.handle(request))
 
     @staticmethod
@@ -271,6 +313,8 @@ class ControlServer:
             connection.abort()
             connection.deleteLater()
         self._buffers.clear()
+        self._watchers.clear()
+        self._sync_watch_timer()
         try:
             self.server.newConnection.disconnect()
         except (RuntimeError, TypeError):
@@ -310,6 +354,51 @@ def send(request: dict, path: Optional[str] = None, timeout: float = 3.0) -> dic
         raise ConnectionError("sluice sent an answer that could not be read") from exc
 
 
+def watch(callback, path: Optional[str] = None, timeout: float = 3.0, limit: Optional[int] = None) -> int:
+    """Ask for the meters to be pushed and call ``callback(message)`` for each one (a dict) until the connection ends or ``limit``
+    messages arrived. Returns how many came. Raises ``ConnectionError`` if no sluice is running."""
+    path = path or socket_path()
+    connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    connection.settimeout(timeout)
+    count, data = 0, b""
+    try:
+        connection.connect(path)
+        connection.sendall(json.dumps({"cmd": "watch"}).encode("utf-8") + b"\n")
+        while limit is None or count < limit:
+            while b"\n" not in data:
+                chunk = connection.recv(65536)
+                if not chunk:
+                    return count
+                data += chunk
+            line, data = data.split(b"\n", 1)
+            message = json.loads(line.decode("utf-8"))
+            if message.get("ok") is False:
+                raise ConnectionError(message.get("error", "refused"))
+            if "meters" in message:
+                count += 1
+            callback(message)
+    except (FileNotFoundError, ConnectionRefusedError) as exc:
+        raise ConnectionError("sluice is not running (or has no control socket)") from exc
+    except socket.timeout as exc:
+        raise ConnectionError("sluice stopped sending meters") from exc
+    finally:
+        connection.close()
+    return count
+
+
+def watch_cli() -> int:
+    import sys
+
+    try:
+        watch(lambda message: print(json.dumps(message), flush=True), timeout=5.0)
+    except KeyboardInterrupt:
+        return 0
+    except ConnectionError as exc:
+        print(f"sluice ctl: {exc}", file=sys.stderr)
+        return 2
+    return 0
+
+
 # ------------------------------------------------------------------------------------ the CLI
 def _format_status(response: dict) -> str:
     lines = []
@@ -343,6 +432,8 @@ def build_parser():
         p.add_argument("state", nargs="?", default="toggle", choices=STATES, help="default: toggle")
 
     sub.add_parser("status", help="show every level and mute")
+    sub.add_parser("meters", help="show the live levels (0 to 1) once")
+    sub.add_parser("watch", help="print the live levels 10 times a second until you press Ctrl+C (for widgets and other programs)")
     p = sub.add_parser("level", help="channel fader")
     p.add_argument("channel")
     p.add_argument("--mix", help="listen or broadcast (default: both)")
@@ -376,6 +467,8 @@ def run_cli(argv: list) -> int:
         value = getattr(args, key, None)
         if value is not None:
             request[key] = value
+    if args.cmd == "watch":
+        return watch_cli()
     try:
         response = send(request)
     except ConnectionError as exc:

@@ -15,7 +15,14 @@ An open-source virtual audio mixer for Linux (PipeWire). Put your mic, games, mu
 > and use the Sluice support forum. Please do not post the `sluice --report` file there: it contains device and app
 > names, so offer it in a private ticket instead.
 
-## What's new in 0.11.2
+## What's new in 0.11.3
+
+The window now fits any size (cards wrap, Listen and Broadcast move to the side or the bottom, and a compact list takes over when it is small), there is a
+fourth look, **Tile**, and **View > Desktop widgets** puts a microphone mute button, a volume dial or a channel list on the desktop. The audio engine no longer
+blocks when channels change: run `./install.sh` again to get engine 0.10.1. The View and Settings menus are reorganised, the bug report says more about the
+window, and `sluice ctl meters` / `sluice ctl watch` give other programs the live levels. 0.11.2 and earlier are below.
+
+**Added in 0.11.2:**
 
 Nexus uses less processor time (rings redrawn 15 times a second, half rate again while the window is not in use), a clipped *BROADCAST* tag is fixed, and the
 Free layout grows to hold any number of channels. Nexus now has its neon colours on every dark theme (with a switch under **View > Theme**), a soft glow, neon edge
@@ -330,7 +337,7 @@ To watch what it is doing while you test: `tail -f ~/.local/state/sluice/sluice.
 |---|---|
 | **File** | Save settings (Ctrl+S), Import settings, Export settings, Restore earlier settings, Open folder (Settings, Logs, Themes), Quit (Ctrl+Q) |
 | **Mixer** | Add channel (Ctrl+N), Refresh devices and apps (F5), Recording mix (a third mix), Recording devices for OBS, Mute my microphone (Ctrl+M), Hear Broadcast (Ctrl+B), Mute Listen (Ctrl+Shift+L), Mute Broadcast (Ctrl+Shift+B) |
-| **View** | Layout (Columns or Rows), Theme (choose, import, export, remove, get more), Full screen (F11), Reset window size |
+| **View** | *Layout:* Columns, Rows, Free. *Appearance:* Look (Calm, Original, Nexus, Tile, Compare looks), Theme. *Desktop:* Desktop widgets. *Window:* Full screen (F11), Reset window size |
 | **Settings** | *Startup:* Running in the background, Add Sluice to the applications menu. *Audio:* Audio buffer, MIDI controllers and Stream Deck. *Updates:* Update automatically, Check for updates, Go back to the previous version. Then Reset all settings to the defaults |
 | **Help** | Keyboard shortcuts (F1), What's new in this version, Save bug report, I heard a glitch (Ctrl+Shift+G), Report a problem, Join the Discord, Project page on GitHub, About, Uninstall Sluice |
 
@@ -465,6 +472,8 @@ program, because the virtual environment is not on your `PATH`:
 /path/to/sluice/.venv/bin/sluice ctl master-mute broadcast on                  # on, off or toggle
 /path/to/sluice/.venv/bin/sluice ctl assign firefox music                      # send an app to a channel ('none' releases it)
 /path/to/sluice/.venv/bin/sluice ctl mic-mute toggle                           # mute every microphone, Sluice (Mic) included (on, off, toggle)
+/path/to/sluice/.venv/bin/sluice ctl meters                                     # the live levels, 0 to 1, once
+/path/to/sluice/.venv/bin/sluice ctl watch                                      # the live levels 10 times a second until Ctrl+C
 /path/to/sluice/.venv/bin/sluice ctl hear-broadcast                            # check the audience mix in your own output (on, off, toggle)
 /path/to/sluice/.venv/bin/sluice ctl status                                    # print every level and mute
 ```

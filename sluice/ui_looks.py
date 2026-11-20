@@ -12,6 +12,7 @@ BLURBS = {
     "calm": "Soft cards and quiet colours. The easiest on the eyes and on the computer.",
     "original": "The look of Sluice 0.9.7: flat, compact and familiar.",
     "nexus": "Round rings, neon edges and a free layout. Reduce effects keeps it light.",
+    "tile": "Raised tiles with a lit edge and a lip, in the colours of your theme, dark or light. Free layout too.",
 }
 
 
@@ -24,7 +25,7 @@ def draw_preview(look: str, colors: dict, ratio: float = 1.0) -> QPixmap:
     p.setRenderHint(QPainter.Antialiasing)
     panel, accent, text = QColor(colors["panel"]), QColor(colors["accent"]), QColor(colors["text"])
     edge = QColor(themes.mix(colors["panel"], colors["accent"], 0.5)) if look == "nexus" else QColor(colors.get("border", colors["panel"]))
-    radius = {"calm": 10, "original": 3, "nexus": 12}.get(look, 8)
+    radius = {"calm": 10, "original": 3, "nexus": 12, "tile": 9}.get(look, 8)
     p.setPen(Qt.NoPen)
     p.setBrush(panel)
     p.drawRect(0, 0, W, 18)
@@ -33,6 +34,12 @@ def draw_preview(look: str, colors: dict, ratio: float = 1.0) -> QPixmap:
     for i in range(2):
         x = 10 + i * 70
         card = QRectF(x, 28, 62, 112)
+        if look == "tile":  # the lip under the tile, then a lit top edge on it
+            lip = QColor(colors["panel"])
+            lip = lip.darker(220) if lip.lightness() < 150 else lip.darker(140)
+            p.setPen(Qt.NoPen)
+            p.setBrush(lip)
+            p.drawRoundedRect(card.translated(0, 5), radius, radius)
         p.setBrush(panel)
         p.setPen(QPen(edge, 1))
         p.drawRoundedRect(card, radius, radius)
