@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import shutil
 import threading
 import time
 from functools import partial
@@ -13,7 +14,7 @@ from typing import Optional
 from PySide6.QtCore import QEvent, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import QAction, QDesktopServices, QGuiApplication
 from PySide6.QtWidgets import (
-    QCheckBox, QFileDialog, QFrame, QHBoxLayout, QInputDialog, QLabel, QMainWindow, QMessageBox, QPushButton, QScrollArea, QSizePolicy,
+    QApplication, QCheckBox, QFileDialog, QFrame, QHBoxLayout, QInputDialog, QLabel, QMainWindow, QMessageBox, QPushButton, QScrollArea, QSizePolicy,
     QVBoxLayout, QWidget,
 )
 
@@ -22,7 +23,7 @@ from .engine import Engine
 from .flow import FlowLayout, OverlapLayout
 from .model import Channel, list_backups, Mixer, RECORDING, STREAM
 from .ui_base import (
-    _icon_button, _is_nexus, _is_original, _is_tile, _label, ADD_MIX_WIDTH, AUTO_UPDATE_DELAY_MS, AUTOSAVE_MS, CLOSE_HINT, DEFAULT_SIZE,
+    _icon_button, _is_nexus, _is_original, _is_tile, _label, ADD_MIX_WIDTH, AUTO_UPDATE_DELAY_MS, AUTOSAVE_MS, CLOSE_HINT, DEFAULT_SIZE, default_size,
     DISCORD_URL, ElidedLabel, FIRST_RUN_WIDTH, ISSUES_URL, LAYOUTS, MIX_HEADINGS, MIX_TAGS, PROJECT_URL, ROW_CELL_MIN, ROW_NAME_WIDTH,
     ROW_TOOLS_WIDTH, TILE_GAP, TOP_BAR_GAP, TOP_BAR_HEIGHT,
 )
@@ -128,6 +129,11 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         self.setWindowTitle(f"Sluice {__version__}")
         from . import fonts
         fonts.load()  # Inter and JetBrains Mono, for the Tile look (added for Sluice alone; nothing is installed)
+        from . import ui_glass
+        themes.set_see_through(False)
+        themes.set_reduce_effects(self.engine.mixer.reduce_effects)
+        if ui_glass.wants_see_through(self.engine.mixer):  # 0.11.7: Glass on KDE: decided before the window first appears
+            ui_glass.make_see_through(self)
         self.apply_theme()  # before anything is built, so every widget (and the meters) starts in the chosen colours
         hints = QGuiApplication.styleHints()
         if hasattr(hints, "colorSchemeChanged"):  # "Match my system" follows the desktop while Sluice is running
@@ -148,6 +154,9 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
 
         root = QWidget()
         root.setObjectName("root")
+        root.setProperty("seethrough", themes.see_through())
+        self.statusBar().setProperty("seethrough", themes.see_through())
+        self.glass_backdrop = ui_glass.GlassBackdrop(self, root, self.statusBar())  # Glass: soft shapes behind the panes
         self.setCentralWidget(root)
         self.dress_skin()  # the theme was chosen before the content existed: the skin's sheet goes on it now
         root.setFocusPolicy(Qt.FocusPolicy.ClickFocus)  # the window starts with nothing highlighted; Tab moves to the first control
@@ -223,13 +232,15 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         efficiency.activate(self.tracker)
         self.tray_timer = QTimer(self)  # watches the microphone for the tray icon, only while the window is hidden in the tray
         self.tray_timer.timeout.connect(self._tray_tick)
+        from .ui_tray import SuspendWatcher, is_wayland
+        self.suspend_watcher = SuspendWatcher(self) if is_wayland() else None  # 0.11.7: minimize into the tray on Wayland too
         self._update_tray()  # the tray icon is there from the start if Sluice is set to run in the tray
         self.setMinimumSize(360, 300)  # smaller than the cards need: the compact list takes over below that (see sizing.py)
         self._relayout_timer = QTimer(self)
         self._relayout_timer.setSingleShot(True)
         self._relayout_timer.setInterval(0)
         self._relayout_timer.timeout.connect(self._relayout)
-        self.resize(*DEFAULT_SIZE)
+        self.resize(*default_size(self._screen_area()))
         self._apply_step()
         self._plan_ready = True
         report.set_window_source(self._report_info)
@@ -256,8 +267,8 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         row = QHBoxLayout(bar)
         row.setContentsMargins(0, 0, 0, TOP_BAR_GAP)  # room between the buttons and the line under the bar (0.11.5)
         row.setSpacing(16)
-        self.menu_button = _icon_button("menu", "Menu: file, mixer, view and help", 40)
-        self.menu_button.setMenu(self.main_menu)
+        self.menu_button = _icon_button("menu", "Menu: mutes, layout, desktop widgets and help", 40)
+        self.menu_button.clicked.connect(self.show_panel)  # 0.11.7: the ☰ panel (ui_panel.py), not the old nested menus
         row.addWidget(self.menu_button)
         self.settings_button = _icon_button("gear", "Settings: themes and skins, audio, startup, controllers and updates", 40)
         self.settings_button.setAccessibleName("Settings")
@@ -451,6 +462,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
             "chosen": self._chosen_layout(), "relayouts": self._relayouts,
             "look_colors": bool(self.engine.mixer.look_colors),
             "widgets": self._widgets_summary(),
+            "minimize": self.minimize_detection(),
             "layout": "\n".join(parts),
         }
 
@@ -655,12 +667,31 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         self.repopulate_devices()
         self.refresh_theme_widgets()
 
+    def _screen_area(self):
+        """The free area of the screen the window is on (or the main one), as (width, height), or None."""
+        if QApplication.platformName() in ("offscreen", "minimal"):  # a virtual 800x600 screen (tests): not a real one to fit
+            return None
+        screen = self.screen() or QApplication.primaryScreen()
+        if screen is None:
+            return None
+        area = screen.availableGeometry()
+        return area.width(), area.height()
+
     def _widgets_summary(self) -> str:
         """For the bug report: how many desktop widgets are open and how they are shown (KDE layer-shell, or why not)."""
         from . import desktop_place
         desktop = getattr(self, "desktop", None)
         count = len(desktop.open_widgets) if desktop is not None else 0
-        return f"{count} open, shown as {desktop_place.status()}" if count else f"none open (they would be {desktop_place.status()})"
+        if not count:
+            return f"none open (they would be {desktop_place.status()})"
+        skin, _colors = desktop.dressing()
+        each = []
+        for (kind, mix, channel), widget in desktop.open_widgets.items():
+            name = "/".join(filter(None, [kind, mix, channel]))
+            each.append(f"{name} ({'layer-shell' if widget.layered else 'window'}"
+                        f"{', blur on' if getattr(widget, '_blurred', False) else ''})")
+        own = f"; their own skin: {skin}" if skin else ""
+        return f"{count} open, shown as {desktop_place.status()}{own}. Each: {', '.join(each)}"
 
     def _glass_mixes(self, holder) -> None:
         """The Nexus look: Listen and Broadcast glow on their floor with their sound, as the channel cards do."""
@@ -1236,6 +1267,24 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
             else:
                 self.show_notes(f"What's new in Sluice {__version__}", f"Sluice was updated to {__version__}. What's new:", text)
 
+    def engine_rebuild_state(self) -> tuple:
+        """(whether Settings > Updates can offer "Rebuild the audio engine", the line under it)."""
+        from . import spectral
+        root = update_install.install_root()
+        last = update_install.last_rebuild()
+        tail = ""
+        if last is not None:
+            tail = " Last try: " + ("it worked." if last["result"] == "ok" else f"{last['result']}.")
+        if root is None or not (root / "rust" / "sluice_dsp").is_dir():
+            return False, "This copy of Sluice has no engine source to build (it was not installed from its folder)."
+        if not shutil.which("cargo"):
+            return False, "Rust is not installed (install it, then rebuild)."
+        if spectral.RUST_VERSION and spectral.rust_is_older():
+            return True, f"Yours is {spectral.RUST_VERSION}; this Sluice comes with {spectral.RUST_EXPECTED}: rebuild for the fixes since.{tail}"
+        if spectral.RUST_VERSION:
+            return True, f"Engine {spectral.RUST_VERSION}, up to date. Rebuild if it misbehaves.{tail}"
+        return True, f"The Rust engine is not in use: build it for less CPU.{tail}"
+
     def rebuild_engine(self) -> None:
         """Rebuild the Rust engine in the background (offered after an update that ships a newer one); say how it went."""
         root = update_install.install_root()
@@ -1407,6 +1456,12 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
                 self.meter_timer.setInterval(wanted)
 
     def showEvent(self, event) -> None:
+        if themes.see_through() and not getattr(self, "_blur_asked", False) and self.windowHandle() is not None:
+            from . import ui_glass
+            self._blur_asked = ui_glass.blur_window(self)  # KWin blurs the wallpaper behind the see-through window
+        if self.suspend_watcher is not None and not getattr(self, "_suspend_watched", False) and self.windowHandle() is not None:
+            self.suspend_watcher.watch(self.windowHandle())
+            self._suspend_watched = True
         self._set_meters_running(not self.isMinimized())
         if not self._whats_new_done:
             QTimer.singleShot(700, self._maybe_show_whats_new)
@@ -1424,6 +1479,8 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
     def changeEvent(self, event) -> None:
         if event.type() == QEvent.Type.ActivationChange and not self._closed:
             self._tune_meter_rate()
+            if self.suspend_watcher is not None:
+                self.suspend_watcher.note_active()  # in use until now (a minimize takes the activation away as it happens)
         if event.type() == QEvent.Type.WindowStateChange:
             self._set_meters_running(self.isVisible() and not self.isMinimized())
             if self.tray_active and self.isMinimized() and not self._closed:

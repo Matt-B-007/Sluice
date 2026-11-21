@@ -305,6 +305,8 @@ def _engine_facts(engine) -> dict:
     return {
         "audio_load_average": round(average, 4),
         "audio_load_worst": round(worst, 4),
+        "audio_load_worst_at": getattr(engine, "worst_block", lambda: (None, 0.0))()[0],
+        "audio_load_worst_after": round(getattr(engine, "worst_block", lambda: (None, 0.0))()[1], 1),
         "audio_load_samples": blocks,
         "dropouts": int(getattr(engine.io, "xruns", 0) or 0),
         "channels": len(mixer.channels),
@@ -497,7 +499,8 @@ def format_section(data: Optional[dict], source: str = "") -> str:
         lines.append("")
         lines.append(f"Maths libraries loaded (they start worker threads of their own; this computer has {data.get('processor_threads') or '?'} processor threads)")
         lines.append("  " + ("; ".join(libs) if libs else "none found") +
-                     ("\n  To test whether they cost anything, start Sluice with: OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 sluice" if libs else ""))
+                     (f"\n  Their worker threads: OPENBLAS_NUM_THREADS={os.environ.get('OPENBLAS_NUM_THREADS', 'not set')} "
+                      "(Sluice sets 1 unless you set it yourself)" if libs else ""))
     recent = data.get("pulse_recent")
     if recent:
         lines.append("")
@@ -508,6 +511,11 @@ def format_section(data: Optional[dict], source: str = "") -> str:
     if data.get("audio_load_samples", 0):
         lines.append(f"  average {data['audio_load_average']:.1%}, worst block {data['audio_load_worst']:.1%}, "
                      f"dropouts {data.get('dropouts', 0)}")
+        if data.get("audio_load_worst_at"):  # 0.11.7: when it was, so a one-off at start-up is told apart from one mid-session
+            after = data.get("audio_load_worst_after", 0.0)
+            when = time.strftime("%H:%M:%S", time.localtime(data["audio_load_worst_at"]))
+            lines.append(f"  the worst block was at {when}, {after:g} s after Sluice started"
+                         + (" (during start-up)" if after < 10 else ""))
     else:
         lines.append("  (not measured by this audio backend)")
     if "channels" in data:

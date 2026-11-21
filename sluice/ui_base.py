@@ -28,7 +28,15 @@ AUTO_UPDATE_DELAY_MS = 20000  # the automatic update (if switched on) looks once
 TILE_GAP = -16  # Tile: keys overlap by the room they keep for their shadows (22 px a side), so 28 px of tray shows between them
 TOP_BAR_GAP = 12  # between the top bar's buttons and the line under it (0.11.5)
 TOP_BAR_HEIGHT = 40 + TOP_BAR_GAP
-DEFAULT_SIZE = (1456, 800)  # wide enough for five channels beside the two master cards
+DEFAULT_SIZE = (1680, 860)  # 0.11.7: five channel cards beside Listen and Broadcast (1456 fitted only four since 0.11.5)
+
+
+def default_size(available=None) -> tuple:
+    """DEFAULT_SIZE, made smaller to fit ``available`` (the screen's free area as (width, height)) with a little room round it."""
+    width, height = DEFAULT_SIZE
+    if available:
+        width, height = min(width, max(360, available[0] - 40)), min(height, max(300, available[1] - 40))
+    return width, height
 
 NONE_DATA = "__none__"  # combo item data for "no device" (Qt dislikes None)
 ORIGINAL_CHANNEL_WIDTH = 200        # the Original look: a channel strip with two mixes, as in 0.9.7

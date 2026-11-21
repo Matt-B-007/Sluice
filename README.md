@@ -56,20 +56,21 @@ The same mixer in the light theme, in the Rows layout, and the first-run screen:
 ![Rows layout](docs/screenshot-rows.png)
 ![First run](docs/first-run.png)
 
-## What's new in 0.11.6
+## What's new in 0.11.7
 
-- **A new skin, Glass:** frosted panes over a soft wash of colour, for the window and the desktop widgets. On KDE Plasma, Glass widgets
-  blur what is behind them.
-- **Desktop widgets can have their own skin and theme** (*Settings > Themes and skins > Desktop widgets*), for example Glass widgets with
-  the window in Calm. On KDE Plasma under Wayland they place themselves on the right screen and no longer take the keyboard (the layer-shell
-  fix from the 0.11.5 bug report).
-- **Looks are now called skins**, under *Themes and skins*. Menus and dialogs look the same in every skin, and Original's text is the
-  same size as the others'.
-- **Menus with sections** (Channels, Mixes, Quick mutes; Learn, Something wrong, Community), clear room before every shortcut, and new
-  shortcuts: Ctrl+Q, Ctrl+1 / Ctrl+2, Ctrl+Shift+W (show or hide your widgets), Ctrl+0; Hear Broadcast moved to Ctrl+H.
-- **Tile and Nexus fixes:** tiles take a new theme's colours at once, Listen and Broadcast keys sit 28 px apart, yellow sliders stay
-  yellow, and Nexus's Rows layout has the sound ring too.
-- **After an update** that comes with a newer audio engine, Sluice offers to rebuild it.
+- **A new ☰ panel and a redrawn Settings window**, in one design: big tiles for muting your mic, adding a channel and refreshing; quick
+  mutes; Columns or Rows; and everything you use while mixing. What you set once now lives in Settings, which has a new *Backup and
+  reset* section.
+- **Glass that looks like glass.** On KDE Plasma the window is see-through and KWin blurs your wallpaper behind it; elsewhere Sluice paints
+  soft colour shapes behind frosted panes. Faders glow, and panes get more solid wherever text would be hard to read.
+- **Desktop widgets drag smoothly** on KDE (no more lag or jumping), snap only when you let go, and come back with Ctrl+Shift+W even after a
+  restart.
+- **Only the tray when minimized**, on Wayland too, and Ctrl+W hides Sluice into the tray.
+- **The default window fits five channels** again, and Tile tiles lost their empty band.
+- **Engine rebuild fixed** (it pointed at the wrong Python on some systems), and a *Rebuild the audio engine* button in Settings > Updates.
+- **Lighter on your computer:** far fewer helper processes while nothing changes, and no idle maths threads.
+- **A clearer bug report:** the engine and the last rebuild, the last update, each open widget, minimizing, and when the worst audio
+  block happened.
 
 ![The Glass skin, dark](docs/screenshot-glass.png)
 
@@ -283,16 +284,14 @@ To watch what it is doing while you test: `tail -f ~/.local/state/sluice/sluice.
 
 ## The menus
 
-The ☰ button in the top bar holds the menus; the ⚙ button beside it opens the Settings window. (In the Original skin, the menus are in a
-menu bar across the top, as in 0.9.7, with *View* also holding the skin and theme and a *Settings* menu.)
+The ☰ button in the top bar opens one panel; the ⚙ button beside it opens the Settings window. Both are drawn in the same design, and
+everything in them works from the keyboard (the arrow keys or Tab to move, Enter or Space to use, Escape to close). In the Original
+skin, the menus are in a menu bar across the top, as in 0.9.7.
 
-| Menu | What is in it |
+| Where | What is in it |
 |---|---|
-| **File** | Save settings (Ctrl+S), Import settings…, Export settings…, Restore earlier settings, Reset all settings to the defaults…, Open folder (Settings, Logs, Themes), Quit (Ctrl+Q) |
-| **Mixer** | *Channels:* Add channel… (Ctrl+N), Refresh devices and apps (F5). *Mixes:* Recording mix (a third mix), Recording devices for OBS…. *Quick mutes:* Mute my microphone (Ctrl+M), Mute Listen (Ctrl+Shift+L), Mute Broadcast (Ctrl+Shift+B), Hear Broadcast (Ctrl+H) |
-| **View** | *Layout:* Columns (Ctrl+1), Rows (Ctrl+2). *Desktop:* Desktop widgets, Show or hide my widgets (Ctrl+Shift+W). *Window:* Full screen (F11), Reset window size (Ctrl+0) |
-| **Settings…** (the ⚙ button, Ctrl+,) | A window with *Themes and skins* (the skin, with a picture of each in your theme; the theme; the skin's own colours; reduce effects; the layout; the desktop widgets' own skin and theme), *Audio* (the buffer), *Startup and background*, *Controllers* (MIDI and Stream Deck) and *Updates* (automatic updates, check now, go back a version, reset all settings). Every part works from the keyboard: Tab between controls, the arrow keys between the skin pictures, Space to choose |
-| **Help** | *Learn:* Keyboard shortcuts (F1), What's new in this version. *Something wrong:* I heard a glitch (Ctrl+Shift+G), Save bug report…, Report a problem. *Community:* Join the Discord, Project page on GitHub. About Sluice. Uninstall Sluice… (apart, at the bottom) |
+| **☰ panel** | Three tiles: Mute my mic (Ctrl+M), Add channel (Ctrl+N), Refresh (F5). *Quick mutes:* Listen (Ctrl+Shift+L), Broadcast (Ctrl+Shift+B), Hear Broadcast (Ctrl+H). *Layout:* Columns (Ctrl+1), Rows (Ctrl+2). *Mixer and desktop:* Desktop widgets, Show or hide my widgets (Ctrl+Shift+W), Recording mix, Recording devices for OBS, Full screen (F11), Hide to tray (Ctrl+W). *Help:* Keyboard shortcuts (F1), What's new, I heard a glitch (Ctrl+Shift+G), Save bug report, Report a problem, GitHub, Discord, About. At the bottom: Settings… (Ctrl+,) and Quit (Ctrl+Q) |
+| **Settings** (the ⚙ button, Ctrl+,) | *Themes and skins* (the skin, with a picture of each in your theme; the theme; see-through window for Glass on KDE; the skin's own colours; reduce effects; the layout; the desktop widgets' own skin and theme), *Audio* (the buffer), *Startup and background*, *Controllers* (MIDI and Stream Deck), *Updates* (automatic updates, check now, go back a version, rebuild the audio engine, uninstall) and *Backup and reset* (save, import and export your settings, restore an earlier copy, open Sluice's folders, reset everything) |
 
 Settings are saved automatically a few seconds after every change and when you quit (see *Saving*). **Import settings** checks the file, keeps your current settings as
 `config.before-import.json`, and takes effect the next time Sluice starts; quitting does not overwrite the imported file.
@@ -329,6 +328,20 @@ top without either.
 **Glass widgets.** Choose *Glass* as the widgets' skin (*Settings > Themes and skins > Desktop widgets*) and they become frosted panes you
 can see your wallpaper through. On KDE Plasma, KWin also blurs what is behind them (through KDE's own window-effects library, which comes
 with Plasma); on other desktops they are see-through without the blur. *Reduce effects* turns the blur off.
+
+**Moving widgets.** Drag a widget by any part that is not a slider or a button (the pointer shows an open hand). It snaps to the screen's
+edges and to other widgets when you let go. *Ctrl+Shift+W* puts all your widgets away and brings the same ones back, even after a restart.
+
+**Taskbar and tray.** With *When I close the window: keep running in the tray*, minimizing Sluice hides it into the tray too. On Wayland
+the desktop never tells an app it was minimized, so Sluice watches for KWin suspending the window instead; *Ctrl+W* (or *Hide to tray* in
+the ☰ panel) always works. Desktop widgets stay out of the taskbar and Alt-Tab.
+
+## Glass
+
+Glass makes the window's cards frosted panes. **On KDE Plasma** the window itself becomes see-through and KWin blurs your wallpaper behind
+it (*Settings > Themes and skins > See-through window*; it takes effect the next time Sluice starts). **Elsewhere**, or with that off, Sluice
+paints soft shapes in your theme's colours behind the panes. Either way the panes get more solid where text would be hard to read, and
+*Reduce effects* turns the blur and the see-through off.
 
 ## Themes
 

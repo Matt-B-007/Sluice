@@ -1,5 +1,56 @@
 # Changelog
 
+## 0.11.7
+A new ☰ panel and Settings window in one design, Glass that looks like glass, smooth widget dragging on KDE, the tray on Wayland, and the
+fixes from the 0.11.6 bug report.
+- **The ☰ panel.** One flat panel in place of the File / Mixer / View / Help submenus: tiles for Mute my mic, Add channel and Refresh;
+  quick mutes for Listen, Broadcast and Hear Broadcast; Columns or Rows; desktop widgets, the Recording mix, devices for OBS, full screen
+  and Hide to tray; Help; Settings… and Quit. It is built from the same actions as before, so every shortcut works as it did. The arrow
+  keys or Tab move through it, Enter or Space uses an item, Escape closes it, and every part has a name for screen readers. The Original
+  skin keeps its classic menu bar.
+- **Settings redrawn** in the same design: grouped rows, switches, an icon for each section. A new *Backup and reset* section holds saving,
+  importing and exporting your settings, earlier copies, Sluice's folders and Reset all. *Updates* gained *Rebuild the audio engine* (any
+  time, with what happened last time) and *Uninstall*.
+- **Glass that looks like glass.** On KDE Plasma (with KWin's blur) the window itself is see-through and KWin blurs your wallpaper behind
+  it: *Settings > Themes and skins > See-through window*, on by default for Glass, taking effect at the next start. Elsewhere, or with it
+  off, Sluice paints soft shapes in the theme's colours behind the panes, with a fine grain. The panes are more see-through (about 38% on
+  Dark, 52% on Light), lit along their top edge, with a faint glow from the top and no solid borders; tracks and meter wells are see-through
+  shades; faders glow. A readability guard makes a pane more solid wherever the theme's text would read below 4.5:1 over what is behind
+  it. *Reduce effects* turns the blur, the see-through window and the backdrop off.
+- **Glass blur actually works.** Sluice runs its own Qt (from PySide6), so KDE's window-effects library looked for its plugins in the wrong
+  folder, printed "Could not find any platform plugin" and blurred nothing. Sluice now tells it where the system keeps them, and only uses
+  it when the system's Qt is the same version as Sluice's (the bug report says why not otherwise).
+- **Glass desktop widgets** are more see-through (guarded the same way, against any wallpaper), and the Channel levels list is see-through
+  too.
+- **Dragging desktop widgets on KDE.** Layer-shell widgets are moved by Sluice, and Qt's idea of the pointer's screen position is out of date
+  for them, so they lagged and jumped. They now move by the pointer's distance from where they were taken, one step per frame the compositor
+  shows; they snap to edges and other widgets only when let go (a pause mid-drag no longer snaps them away); and the pointer shows an open
+  hand where a widget can be taken.
+- **Widgets put away with Ctrl+Shift+W are saved,** so the same key brings them back after quitting or an update's restart.
+- **Only the tray when minimized.** Wayland never tells an app it was minimized, so with "keep running in the tray" Sluice stayed in the
+  taskbar. Sluice now watches for KWin suspending the window right after it was in use, and hides into the tray (only when a tray is there).
+  *Ctrl+W* and *Hide to tray* in the ☰ panel always do it. The KWin rule Sluice offers for widgets now also keeps them out of the taskbar,
+  the pager and Alt-Tab.
+- **Menus everywhere look the same.** The shared menu style is on the whole application, so the tray's menu, a desktop widget's menu and a
+  message box with no parent window are styled too.
+- **The default window fits five channels** beside Listen and Broadcast (1680 x 860; smaller screens get a window that fits them). Since
+  0.11.5 it fitted four.
+- **Tile tiles are only as tall as their lanes** (a folded tile is 264 x 192): the empty band above the effects row is gone.
+- **Engine rebuild fixed.** It followed the link a venv's Python is (to /usr/bin/python), told maturin the environment was /usr and failed
+  with "Failed to find pip". It now uses the venv itself, puts its pip first, and says the build's last lines if it fails.
+- **Fewer helper processes.** With PipeWire's change watcher running, the check for apps on the raw microphone runs only after a change
+  (and once a minute to be safe), instead of every 5 seconds: about 15 pw-link processes a minute while idle became a handful.
+- **No idle maths threads.** Sluice keeps numpy's maths libraries to one worker thread (they started one per processor thread: 31 idle on a
+  32-thread CPU). A value you set yourself is kept.
+- **Bug report.** New summary lines: the audio engine, whether this Sluice ships a newer one, and the last rebuild and how it went; the last
+  update; each open widget (layer-shell or window, blur on); whether this desktop tells Sluice it was minimized. The audio section says when
+  the worst block was, and whether that was during start-up.
+- **Log names match the files:** `sluice.update_install`, `sluice.desktop_place`, `sluice.control_socket`.
+- **Original's dropdown workaround removed** (0.11.6 made it unnecessary).
+- **Checked:** an update swaps the whole program folder, so modules a new version dropped do not linger (now tested); MIDI and Stream Deck
+  bindings send named commands, never key presses, so moving Hear Broadcast to Ctrl+H changed nothing for them; What's new shows the notes
+  of every version you skipped.
+
 ## 0.11.6
 A new Glass skin, desktop widgets with their own skin and theme, the KDE layer-shell fix from the 0.11.5 bug report, menus and shortcuts put in
 order, and fixes to Tile, Nexus and Original.

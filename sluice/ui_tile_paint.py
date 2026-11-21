@@ -15,7 +15,7 @@ from .model import MIN_DB
 
 
 OPEN_W = 360                   # a folded-out tile (its height follows what it holds)
-LANE_EXTRA_H = 38              # each lane past the second (the Recording mix) makes a folded tile this much taller
+LANE_EXTRA_H = 44              # each lane past the second (the Recording mix) makes a folded tile this much taller (a 30 px lane and 14 px gap)
 SHADOW = (22, 10, 22, 40)      # left, top, right, bottom: the room around a tile for its shadows and halo (0.11.5: none is cut off)
 PAD = 14                       # inside the tile's edge
 SKIRT = 8                      # the key's thick lower edge, inside the tile's footprint

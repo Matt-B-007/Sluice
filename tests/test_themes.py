@@ -11,6 +11,12 @@ from sluice import themes
 from sluice.model import Mixer
 
 
+def _sheet():
+    """The shared sheet (menus, dialogs, tooltips): on the application since 0.11.7."""
+    from PySide6.QtWidgets import QApplication
+    return QApplication.instance().styleSheet()
+
+
 # ------------------------------------------------------------------- the built-in colour sets
 @pytest.mark.parametrize("theme", list(themes.BUILT_IN.values()), ids=lambda t: t.id)
 def test_every_built_in_theme_is_complete_and_valid(theme):
@@ -264,11 +270,11 @@ def test_the_theme_menu_lists_the_themes_and_ticks_the_one_in_use(win):
 
 
 def test_choosing_a_theme_changes_the_window_the_setting_and_the_tick(win):
-    dark_sheet = win.styleSheet()
+    dark_sheet = _sheet()
     menu = _theme_menu(win)
     next(a for a in menu.actions() if a.text() == "Retro Purple").trigger()
-    assert win.engine.mixer.theme == "purple" and win.styleSheet() != dark_sheet
-    assert themes.BUILT_IN["purple"].colors["bg"] in win.styleSheet()
+    assert win.engine.mixer.theme == "purple" and _sheet() != dark_sheet
+    assert themes.BUILT_IN["purple"].colors["bg"] in _sheet()
     assert "Retro Purple" in win.status_label.text()
     menu = _theme_menu(win)
     assert [a.text() for a in menu.actions() if a.isChecked() and "Nexus colours" not in a.text()] == ["Retro Purple"]
@@ -301,16 +307,16 @@ def test_the_meters_pick_up_the_new_colours(win):
 def test_match_my_system_follows_the_desktop(win, monkeypatch):
     monkeypatch.setattr(win, "_system_is_dark", lambda: False)
     win.choose_theme("system")
-    assert win.engine.mixer.theme == "system" and themes.LIGHT["bg"] in win.styleSheet()
+    assert win.engine.mixer.theme == "system" and themes.LIGHT["bg"] in _sheet()
     assert "following your system" in win.status_label.text()
     monkeypatch.setattr(win, "_system_is_dark", lambda: True)
     win._on_system_scheme_changed()  # the desktop switched while Sluice was running
-    assert themes.DARK["bg"] in win.styleSheet()
+    assert themes.DARK["bg"] in _sheet()
     win.apply_theme("purple")
-    before = win.styleSheet()
+    before = _sheet()
     monkeypatch.setattr(win, "_system_is_dark", lambda: False)
     win._on_system_scheme_changed()  # not following the system any more: nothing changes
-    assert win.styleSheet() == before
+    assert _sheet() == before
 
 
 def test_the_saved_theme_is_used_when_the_window_starts(qapp, tmp_path):
@@ -320,7 +326,7 @@ def test_the_saved_theme_is_used_when_the_window_starts(qapp, tmp_path):
     engine.start()
     window = MainWindow(engine, config_file=tmp_path / "config.json")
     try:
-        assert themes.BUILT_IN["contrast"].colors["accent"] in window.styleSheet()
+        assert themes.BUILT_IN["contrast"].colors["accent"] in _sheet()
     finally:
         window.shutdown()
         themes.set_current(themes.DARK)
@@ -336,7 +342,7 @@ def test_importing_a_theme_stores_it_applies_it_and_lists_it(win, tmp_path):
     stored = win.import_theme_from(source)
     assert stored.id == "custom:moonlight" and win.engine.mixer.theme == "custom:moonlight"
     assert (tmp_path / "themes" / "moonlight.json").is_file()
-    assert "#7c5cff" in win.styleSheet() and "imported" in win.status_label.text()
+    assert "#7c5cff" in _sheet() and "imported" in win.status_label.text()
     menu = _theme_menu(win)
     assert ("Moonlight", True) in [(a.text(), a.isChecked()) for a in menu.actions() if a.isCheckable()]
     assert any(a.menu() and "Remove" in a.text() for a in menu.actions())
@@ -356,11 +362,11 @@ def test_a_hard_to_read_theme_asks_first_and_is_not_kept_on_no(win, tmp_path, mo
 
 
 def test_a_bad_theme_file_changes_nothing(win, tmp_path):
-    before = win.styleSheet()
+    before = _sheet()
     for source in (_write(tmp_path / "a.json", name="A", colors={"accent": "url(x)"}), tmp_path / "missing.json"):
         with pytest.raises(themes.ThemeError):
             win.import_theme_from(source)
-    assert win.styleSheet() == before and win.engine.mixer.theme == "dark"
+    assert _sheet() == before and win.engine.mixer.theme == "dark"
     assert not (tmp_path / "themes").exists()
 
 
@@ -389,7 +395,7 @@ def test_removing_the_theme_in_use_goes_back_to_dark(win, tmp_path):
     win.import_theme_from(_write(tmp_path / "m.json", name="Moonlight", colors={"accent": "#7c5cff"}))
     win.remove_theme("custom:moonlight")
     assert win.engine.mixer.theme == "dark" and not (tmp_path / "themes" / "moonlight.json").exists()
-    assert themes.DARK["bg"] in win.styleSheet()
+    assert themes.DARK["bg"] in _sheet()
 
 
 def test_a_saved_choice_that_lost_its_file_shows_dark_and_says_so(win, tmp_path):
@@ -409,7 +415,7 @@ def test_demo_mode_has_no_themes_folder(qapp):
         window.open_theme_folder()
         assert "Demo mode" in window.status_label.text()
         window.apply_theme("light")  # the built-in ones work everywhere
-        assert themes.LIGHT["bg"] in window.styleSheet()
+        assert themes.LIGHT["bg"] in _sheet()
     finally:
         window.shutdown()
         themes.set_current(themes.DARK)

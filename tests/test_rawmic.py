@@ -117,3 +117,27 @@ def test_the_window_shows_the_warning_and_can_stop_it(qapp, tmp_path, monkeypatc
         assert win.raw_mic_button.isHidden() and "rawmic:OBS" in engine.mixer.hints_seen
     finally:
         win.shutdown()
+
+
+def test_with_a_graph_watcher_the_raw_mic_check_waits_for_a_change():
+    """0.11.7: the check runs pw-link; every 5 seconds made Sluice start about 15 pw-link processes a minute while idle."""
+    from sluice import engine as engine_module
+    from sluice.audio_io import NullIO
+    from sluice.backend import MockSystem
+    from sluice.engine import Engine
+    from sluice.linker import NullLinker
+    from sluice.model import Mixer
+
+    class Watching:
+        def running(self):
+            return True
+
+    engine = Engine(Mixer.demo(), MockSystem(), NullIO(realtime=False), NullLinker())
+    engine._last_raw_check = 100.0
+    watcher = Watching()
+    assert not engine._raw_check_due(100.0 + rawmic.CHECK_SECONDS + 1, watcher)  # nothing changed: no look
+    assert engine._raw_check_due(100.0 + engine_module.RAW_SAFETY_SECONDS, watcher)  # once a minute, to be safe
+    engine._raw_first_seen["obs"] = 100.0
+    assert engine._raw_check_due(100.0 + rawmic.CHECK_SECONDS, watcher)  # an app seen on it: follow it up
+    engine._raw_first_seen.clear()
+    assert engine._raw_check_due(100.0 + rawmic.CHECK_SECONDS, None)  # no watcher: on the clock, as before

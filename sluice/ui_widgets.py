@@ -52,7 +52,12 @@ class DesktopWidget(QWidget):
         self.settle_timer.setInterval(220)
         self.settle_timer.timeout.connect(self.settle)
         self._drag_from = None
+        self._grab_at = QPointF()
+        self._dragging = False
+        self._drag_pending = None
+        self._drag_waiting = False
         self.layered = False
+        self.setMouseTracking(True)  # to show where it can be taken (an open hand) and where its controls are
         self.setAccessibleName(self.title())
         self.setWindowTitle(f"{desktop_place.RULE_TITLE}: {self.title()}")  # a KWin rule finds the widgets by this
 
@@ -69,6 +74,8 @@ class DesktopWidget(QWidget):
     # -- the shared behaviour
     def event(self, event) -> bool:
         """Every event (painting, the mouse, showing) in the widgets' own skin and theme, when they have one (0.11.6)."""
+        if event.type() == QEvent.Type.UpdateRequest and self._drag_waiting:
+            self._drag_frame()  # the last step is on screen: take the next
         look, colors = self.manager.dressing()
         with themes.dressed_as(look, colors):
             return super().event(event)
@@ -111,7 +118,8 @@ class DesktopWidget(QWidget):
             origin = (screen.geometry().x(), screen.geometry().y()) if screen is not None else (0, 0)
             desktop_place.layer_shell().place(self.windowHandle(), x, y, origin, screen)
             self.spec["x"], self.spec["y"] = int(x), int(y)
-            self.settle_timer.start()
+            if not self._dragging:
+                self.settle_timer.start()
         else:
             self.move(x, y)
 
@@ -121,7 +129,11 @@ class DesktopWidget(QWidget):
         return screen or self.screen() or (app.primaryScreen() if app is not None else None)
 
     def settle(self) -> None:
-        """It has stopped moving: snap to the screen's edges and to the other widgets, and remember the place on this screen."""
+        """It has stopped moving: snap to the screen's edges and to the other widgets, and remember the place on this screen. Not
+        while it is still held (a pause mid-drag used to snap it away under the pointer): then it waits for the release."""
+        if self._dragging or QApplication.mouseButtons() & Qt.MouseButton.LeftButton:
+            self.settle_timer.start()
+            return
         here = self.position()
         screen = self._screen_at(here + QPoint(self.width() // 2, self.height() // 2))
         if screen is None:
@@ -139,35 +151,88 @@ class DesktopWidget(QWidget):
         desktop_place.remember(self.spec, screen.name() or "screen", x, y)
 
     # -- pressing, dragging and clicking
+    # 0.11.7: a layer-shell widget (KDE Plasma on Wayland) is moved by Sluice, and Qt's screen position for the pointer is out of
+    # date for such a window (it does not know where the surface is), so moving by it lagged and jumped. Now the widget moves by
+    # how far the pointer is from where it was pressed, measured inside the widget, one step per frame the compositor shows: after
+    # a step lands, the pointer's place in the widget already counts it, so nothing is added twice.
+    DRAG_START = 4  # pixels the pointer moves before a press becomes a drag (a smaller press is a click)
+
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
             self._press = event.globalPosition().toPoint()
             self._drag_from = (self._press, self.position())
+            self._grab_at = event.position()  # where in the widget it was taken
+            self._dragging = False
+            self._drag_pending = None
+            self._drag_waiting = False
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
 
     def mouseMoveEvent(self, event) -> None:
-        point = event.globalPosition().toPoint()
-        if self._press is not None and (point - self._press).manhattanLength() > 6:
+        if not (event.buttons() & Qt.MouseButton.LeftButton) or self._drag_from is None:
+            self.hover(event.position())
+            return
+        local = event.position()
+        offset = local - self._grab_at
+        if not self._dragging:
+            if abs(offset.x()) + abs(offset.y()) <= self.DRAG_START:
+                return
+            self._dragging = True
             self._press = None
             if not self.layered:
                 handle = self.windowHandle()
-                if handle is not None:
-                    handle.startSystemMove()  # the desktop moves it (the only way on Wayland for an ordinary window)
+                if handle is not None and handle.startSystemMove():  # the desktop moves it (the only way on Wayland, smooth on X11)
+                    self._drag_from = None
                     return
-        if self._press is None and self._drag_from is not None and (event.buttons() & Qt.MouseButton.LeftButton):
-            start, origin = self._drag_from  # a layer-shell widget (or a desktop with no system move) is moved by Sluice
-            moved = origin + (point - start)
-            self.place(moved.x(), moved.y())
+        if self._drag_waiting:
+            return  # measured before the last step was shown: it would count that step twice. The next event after it has it all
+        self._drag_pending = local
+        self._drag_step()
+
+    def _drag_step(self) -> None:
+        """Move by the pointer's distance from where the widget was taken; then wait for that frame before the next step."""
+        if self._drag_waiting or self._drag_pending is None:
+            return
+        offset = self._drag_pending - self._grab_at
+        self._drag_pending = None
+        dx, dy = round(offset.x()), round(offset.y())
+        if not dx and not dy:
+            return
+        here = self.position()
+        self.place(here.x() + dx, here.y() + dy)
+        self._drag_waiting = True
+        handle = self.windowHandle()
+        if handle is not None:
+            handle.requestUpdate()  # an UpdateRequest comes back once the compositor has shown the moved surface
+        QTimer.singleShot(48, self._drag_frame)  # in case no frame comes (a hidden or blocked surface)
+
+    def _drag_frame(self) -> None:
+        if self._drag_waiting:
+            self._drag_waiting = False
+            self._drag_step()
 
     def mouseReleaseEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
-            dragged = self._press is None and self._drag_from is not None
+            dragged = self._dragging and self._drag_from is not None
+            if dragged and self.layered:  # the last bit of the way, from where it was let go
+                self._drag_waiting = False
+                self._drag_pending = event.position()
+                self._drag_step()
             self._drag_from = None
+            self._dragging = False
+            self._drag_pending = None
+            self._drag_waiting = False
+            self.unsetCursor()
             if self._press is not None:
                 self._press = None
                 self.act()
                 self.tick()
             elif dragged:
-                self.settle()
+                self.settle()  # snap only now, when it is let go
+
+    def hover(self, point: QPointF) -> None:
+        """The pointer over the widget with no button held: an open hand where dragging moves it (subclasses mark their controls)."""
+        if self.cursor().shape() != Qt.CursorShape.OpenHandCursor:
+            self.setCursor(Qt.CursorShape.OpenHandCursor)
 
     def contextMenuEvent(self, event) -> None:
         menu = QMenu(self)
@@ -494,10 +559,8 @@ class StripWidget(DesktopWidget):
     """The compact list of channels as a floating panel."""
 
     def __init__(self, manager, spec) -> None:
-        super().__init__(manager, spec)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
+        super().__init__(manager, spec)  # see-through like the others (0.11.7): it paints its own panel, solid but in Glass
         self.setObjectName("desktopstrip")
-        self.setAutoFillBackground(True)
         layout = QVBoxLayout(self)
         self._layout = layout
         self.strip = None
@@ -514,7 +577,7 @@ class StripWidget(DesktopWidget):
         from .ui_mini import MiniStrip
 
         tile = themes.current_look() == "tile"
-        self.setStyleSheet(themes.build_style(themes._current, themes.current_look()))
+        self.setStyleSheet(themes.build_style(themes._current, themes.current_look(), see=False))
         if self.strip is None or self.strip.tile != tile:
             mix = self.strip.mix_id if self.strip is not None else self.spec.get("mix")
             if self.strip is not None:
@@ -572,7 +635,8 @@ class StripWidget(DesktopWidget):
             super().mousePressEvent(event)
 
     def mouseReleaseEvent(self, event) -> None:
-        self._press = None
+        self._press = None  # a click on the panel itself does nothing; a drag still ends (and snaps) in the shared code
+        super().mouseReleaseEvent(event)
 
     def paintEvent(self, _event) -> None:
         if self.strip.tile:  # the list paints its own tray; the corners round it show the window's floor
@@ -582,10 +646,21 @@ class StripWidget(DesktopWidget):
             return
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        if themes.current_look() == "glass":
+            from . import depth
+            paint_glass(p, QRectF(self.rect()), 16, themes._current, depth.luminance(themes.color("panel")) >= depth.LIGHT_PANEL)
+            p.end()
+            return
         p.setPen(QPen(QColor(themes.color("border")), 1))
         p.setBrush(QColor(themes.color("bg")))
         p.drawRoundedRect(QRectF(0.5, 0.5, self.width() - 1, self.height() - 1), 12, 12)
         p.end()
+
+    def glass_shape(self):
+        from PySide6.QtGui import QPainterPath
+        path = QPainterPath()
+        path.addRoundedRect(QRectF(self.rect()), 16, 16)
+        return path
 
 
 # ----------------------------------------------------------------------------- one channel, one mix (0.11.5)
@@ -593,11 +668,15 @@ LANE_H = 30
 
 
 def glass_alpha(light: Optional[bool] = None) -> float:
-    """How solid a Glass pane is: enough to read on any wallpaper, see-through enough to be glass."""
+    """How solid a Glass pane is (0.11.7: more see-through, 0.46 dark and 0.56 light to start): enough to read on any wallpaper,
+    white or black (the readability guard raises it where the theme's text would not read), see-through enough to be glass."""
+    from . import depth
+    from .skin_glass import readable_alpha
     if light is None:
-        from . import depth
         light = depth.luminance(themes.color("panel")) >= depth.LIGHT_PANEL
-    return 0.66 if light else 0.58
+    # blurred by KWin, a wallpaper averages out (never pure white or black behind the text); unblurred it can be anything
+    behind = ["#c8c8c8", "#202020", "#808080"] if desktop_place.blur().available else ["#ffffff", "#000000", "#808080"]
+    return readable_alpha(themes.color("text"), themes.color("panel"), behind, 0.56 if light else 0.46)
 
 
 def paint_glass(p: QPainter, rect: QRectF, radius: float, colors: dict, light: bool) -> None:
@@ -802,6 +881,12 @@ class LaneWidget(DesktopWidget):
             self.tick()
             return
         super().mouseMoveEvent(event)
+
+    def hover(self, point: QPointF) -> None:
+        _mix, part, _groove = self._lane_at(point)
+        wanted = Qt.CursorShape.PointingHandCursor if part else Qt.CursorShape.OpenHandCursor
+        if self.cursor().shape() != wanted:
+            self.setCursor(wanted)
 
     def mouseReleaseEvent(self, event) -> None:
         if self._grab is not None:
@@ -1034,6 +1119,15 @@ class DesktopWidgetManager:
 
     def is_open(self, kind: str, mix=None, channel=None) -> bool:
         return (kind, mix, channel) in self.open_widgets
+
+    def reopen(self, spec: dict) -> bool:
+        """Open a widget again from its saved description, places on each screen included (Ctrl+Shift+W)."""
+        spec = clean_spec(spec)
+        if spec is None or _key(spec) in self.open_widgets or len(self.specs) >= MAX_WIDGETS:
+            return spec is not None and _key(spec) in self.open_widgets
+        self._show(spec)
+        self.specs.append(spec)
+        return True
 
     def open(self, kind: str, mix=None, channel=None, x=None, y=None) -> bool:
         spec = clean_spec({"kind": kind, "mix": mix, "channel": channel, "x": x, "y": y})

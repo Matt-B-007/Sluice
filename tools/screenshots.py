@@ -21,12 +21,12 @@ from PySide6.QtCore import Qt  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
 DOCS = (  # file, look, theme, layout, size
-    ("screenshot.png", "calm", "dark", "columns", (1456, 800)),
-    ("screenshot-light.png", "calm", "light", "columns", (1456, 800)),
-    ("screenshot-rows.png", "calm", "dark", "rows", (1456, 800)),
-    ("screenshot-tile.png", "tile", "dark", "columns", (1456, 860)),
-    ("screenshot-nexus.png", "nexus", "dark", "columns", (1456, 860)),
-    ("screenshot-glass.png", "glass", "dark", "columns", (1456, 860)),
+    ("screenshot.png", "calm", "dark", "columns", (1680, 860)),
+    ("screenshot-light.png", "calm", "light", "columns", (1680, 860)),
+    ("screenshot-rows.png", "calm", "dark", "rows", (1680, 860)),
+    ("screenshot-tile.png", "tile", "dark", "columns", (1680, 860)),
+    ("screenshot-nexus.png", "nexus", "dark", "columns", (1680, 860)),
+    ("screenshot-glass.png", "glass", "dark", "columns", (1680, 860)),
 )
 SOUND = {"game": 0.7, "chat": 0.45, "music": 0.55, "browser": 0.3, "mic": 0.6}
 

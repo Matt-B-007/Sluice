@@ -73,9 +73,11 @@ def test_choosing_a_look_restyles_the_window_and_is_remembered(rig, tmp_path):
     assert engine.mixer.look == "original" and sheet() != before
     assert sheet() == themes.build_style(themes.look_colors(win.current_theme(), "original"), "original")
     # menus and dialogs: Calm in the theme's own colours, narrowed so none of it reaches the mixer
-    assert win.styleSheet() == themes.shared_style(themes.look_colors(win.current_theme(), "calm"))
-    assert all(rule.startswith(("QDialog", "QMessageBox", "QMenu", "QToolTip", "QLabel#menuheading"))
-               for rule in win.styleSheet().splitlines() if "{" in rule)
+    from PySide6.QtWidgets import QApplication
+    shared = QApplication.instance().styleSheet()  # 0.11.7: on the application, so menus of other windows (tray, widgets) get it
+    assert shared == themes.shared_style(themes.look_colors(win.current_theme(), "calm"))
+    assert all(rule.startswith(("QDialog", "QMessageBox", "QMenu", "QToolTip", "QLabel#menuheading", "QFrame#menupanel"))
+               for rule in shared.splitlines() if "{" in rule)
     win.choose_look("nonsense")  # unknown: treated as the default look
     assert engine.mixer.look == "calm" and sheet() == before
     win.choose_look("original")

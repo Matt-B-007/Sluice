@@ -61,7 +61,7 @@ def test_the_settings_window_has_five_sections_and_opens_from_the_gear(qapp, tmp
         window = win.settings_window
         assert window.isVisible()
         assert [window.sections.item(i).text() for i in range(window.sections.count())] == list(SECTIONS)
-        assert SECTIONS == ("Themes and skins", "Audio", "Startup and background", "Controllers", "Updates")
+        assert SECTIONS == ("Themes and skins", "Audio", "Startup and background", "Controllers", "Updates", "Backup and reset")
         win.open_settings("Updates")
         assert window.pages.currentIndex() == SECTIONS.index("Updates")
         assert window is win.settings_window  # one window, kept

@@ -35,7 +35,7 @@ def test_glass_is_a_skin_with_see_through_panes_on_a_tinted_backdrop():
     assert themes.LOOKS["glass"] == "Glass"
     for theme in ("dark", "light"):
         sheet = themes.build_style(themes.look_colors(themes.BUILT_IN[theme], "glass"), "glass")
-        assert "qlineargradient" in sheet.split("QWidget#root")[-1].split("}")[0]  # the backdrop wash
+        assert "qlineargradient" in sheet.split("QWidget#root {")[1].split("}")[0]  # the backdrop wash (under the painted shapes)
         strip = sheet.split("QFrame#strip, QFrame#row, QFrame#mix {")[-1].split("}")[0]
         assert "rgba(" in strip and "border-top" in strip  # see-through, with a lit top edge
         assert "$" not in sheet  # every value filled in
@@ -125,14 +125,20 @@ class FakeBlurLibrary:
         setattr(self, desktop_place.BLUR_SYMBOL, function)
 
 
+KDE = {"XDG_CURRENT_DESKTOP": "KDE"}
+SYSTEM = ("6.12.0", "/usr/lib/qt6/plugins")
+
+
 def test_blur_behind_uses_kwindoweffects_on_kde_only():
     lib = FakeBlurLibrary()
-    blur = desktop_place.Blur(loader=lambda: lib, env={"XDG_CURRENT_DESKTOP": "KDE"})
+    paths = []
+    blur = desktop_place.Blur(loader=lambda: lib, env=KDE, qt_version="6.12.0", system=SYSTEM, add_path=paths.append)
     assert blur.available
     assert blur.set(object(), True, pointers=(0x1000, 0x2000))
     assert lib.calls == [(0x1000, True, 0x2000)]
+    assert paths == ["/usr/lib/qt6/plugins"]  # told where KDE keeps its plugins, before the first call
     assert not desktop_place.Blur(loader=lambda: lib, env={"XDG_CURRENT_DESKTOP": "GNOME"}).available
-    missing = desktop_place.Blur(loader=lambda: None, env={"XDG_CURRENT_DESKTOP": "KDE"})
+    missing = desktop_place.Blur(loader=lambda: None, env=KDE, qt_version="6.12.0", system=SYSTEM, add_path=paths.append)
     assert not missing.available and "KWindowSystem" in missing.reason
     assert not missing.set(object(), True)
 
@@ -148,3 +154,116 @@ def test_every_skin_draws_a_preview(qapp):
     for look in themes.LOOKS:
         assert look in BLURBS
         assert not draw_preview(look, themes.look_colors(themes.BUILT_IN["dark"], look)).isNull()
+
+
+def test_blur_is_not_tried_when_the_system_qt_is_another_version_or_has_no_plugins(tmp_path):
+    """0.11.6: Sluice's own Qt (PySide6) looked for KDE's window-system plugin in its own folder, found none ("Could not find any
+    platform plugin") and blurred nothing. Now the system's plugin folder is added, and only when the versions match."""
+    lib = FakeBlurLibrary()
+    other = desktop_place.Blur(loader=lambda: lib, env=KDE, qt_version="6.12.0", system=("6.9.2", "/usr/lib/qt6/plugins"),
+                               add_path=lambda p: None)
+    assert not other.available and "6.9.2" in other.reason and "6.12.0" in other.reason
+    none = desktop_place.Blur(loader=lambda: lib, env=KDE, qt_version="6.12.0", system=("", None), add_path=lambda p: None)
+    assert not none.available and "plugins" in none.reason
+    lib_dir = tmp_path / "lib"
+    (lib_dir / "qt6" / "plugins" / "kf6" / "kwindowsystem").mkdir(parents=True)
+    (lib_dir / "libQt6Core.so.6.12.1").write_text("")
+    assert desktop_place.system_qt((str(tmp_path / "nothing"), str(lib_dir))) == ("6.12.1", lib_dir / "qt6" / "plugins")
+    assert desktop_place.same_minor("6.12.1", "6.12.0") and not desktop_place.same_minor("6.11.0", "6.12.0")
+
+
+# ---------------------------------------------------------------- real Glass (0.11.7)
+@pytest.mark.parametrize("theme", ["dark", "light"])
+@pytest.mark.parametrize("see", [False, True])
+def test_text_on_glass_panes_reads_over_what_is_behind_them(theme, see):
+    """The readability guard: a pane is as see-through as it can be while the theme's text still reads at 4.5:1 over every colour
+    the backdrop puts behind it (and, for a see-through window, over a white, black or grey wallpaper through the window's tint)."""
+    from sluice import depth
+    from sluice.skin_glass import backdrop_colours, glass_values
+    values = dict(themes.look_colors(themes.BUILT_IN[theme], "glass"))
+    values.update(themes.mix_colors(values, "glass"))
+    glass = glass_values(values, see)
+    alpha = glass["glass_pane_alpha"]
+    assert alpha <= 0.6  # still glass: well under the 0.8 a solid-looking card would need
+    bg = values["bg"]
+    if see:
+        behind = [depth.mix(wall, bg, 0.45 if theme == "light" else 0.40) for wall in ("#ffffff", "#000000", "#808080")]
+    else:
+        behind = [depth.mix(bg, c, 0.55 if theme == "dark" else 0.35) for c in backdrop_colours(values)] + [bg]
+    for colour in behind:
+        assert depth.contrast(values["text"], depth.mix(colour, values["panel"], alpha)) >= 4.5, (theme, see, colour)
+
+
+def test_the_window_is_made_see_through_only_on_kde_with_blur_in_glass():
+    from sluice import ui_glass
+    mixer = Mixer.demo()
+    mixer.look = "glass"
+
+    class Blur:
+        available = True
+
+    kde = {"XDG_CURRENT_DESKTOP": "KDE"}
+    assert ui_glass.wants_see_through(mixer, kde, Blur())
+    assert not ui_glass.wants_see_through(mixer, {"XDG_CURRENT_DESKTOP": "GNOME"}, Blur())
+    Blur.available = False
+    assert not ui_glass.wants_see_through(mixer, kde, Blur())
+    Blur.available = True
+    mixer.see_through = False
+    assert not ui_glass.wants_see_through(mixer, kde, Blur())
+    mixer.see_through, mixer.reduce_effects = True, True
+    assert not ui_glass.wants_see_through(mixer, kde, Blur())
+    mixer.reduce_effects, mixer.look = False, "calm"
+    assert not ui_glass.wants_see_through(mixer, kde, Blur())
+
+
+def test_the_see_through_setting_is_saved(tmp_path):
+    mixer = Mixer.demo()
+    mixer.see_through = False
+    engine = Engine(mixer, MockSystem(), NullIO(realtime=False), NullLinker())
+    engine.save_config(tmp_path / "c.json")
+    assert Mixer.load(tmp_path / "c.json").see_through is False
+    import json
+    (tmp_path / "old.json").write_text(json.dumps({"look": "glass"}))
+    assert Mixer.load(tmp_path / "old.json").see_through is True  # on unless turned off
+
+
+def test_glass_paints_a_backdrop_behind_the_panes_unless_effects_are_reduced(qapp, tmp_path):
+    """Without a see-through window, Sluice paints soft shapes in the theme's colours behind the panes (the old flat gradient
+    was too close to the panes' own colour for them to look like glass)."""
+    from PySide6.QtGui import QColor
+    win, engine = make(qapp, tmp_path, look="glass")
+    try:
+        assert win.glass_backdrop.active()
+        picture = win.centralWidget().grab().toImage()
+        bg = QColor(themes.color("bg"))
+        corner = picture.pixelColor(10, 10)  # a shape's centre sits near the top left corner
+        assert abs(corner.red() - bg.red()) + abs(corner.green() - bg.green()) + abs(corner.blue() - bg.blue()) > 30
+        win.set_reduce_effects(True)
+        assert not win.glass_backdrop.active()
+    finally:
+        win.shutdown()
+        themes.set_reduce_effects(False)
+
+
+def test_choosing_glass_while_running_says_the_window_turns_see_through_at_the_next_start(qapp, tmp_path, monkeypatch):
+    from sluice import ui_glass
+    win, engine = make(qapp, tmp_path, look="calm")
+    try:
+        monkeypatch.setattr(ui_glass, "wants_see_through", lambda mixer, *a: mixer.look == "glass")
+        win.choose_look("glass")
+        assert "next time Sluice starts" in win.status_label.text()
+    finally:
+        win.shutdown()
+
+
+@pytest.mark.parametrize("look", [look for look in themes.LOOKS if look != "glass"])
+def test_a_see_through_window_in_a_solid_skin_shows_nothing_through(look):
+    """The window's see-through-ness is fixed at start; switching from Glass to another skin while it runs must leave the window
+    solid: the window's body and its status bar are painted in the theme's background in every other skin."""
+    colors = themes.look_colors(themes.BUILT_IN["dark"], look)
+    sheet = themes.build_style(colors, look, see=True)
+    status = sheet.split("QStatusBar {")[1].split("}")[0]
+    assert "background: #" in status and "rgba" not in status
+    assert "rgba" not in sheet.split("QWidget#root")[1].split("}")[0] if "QWidget#root" in sheet else True
+    glass = themes.build_style(themes.look_colors(themes.BUILT_IN["dark"], "glass"), "glass", see=True)
+    assert "rgba" in glass.split('QWidget#root[seethrough="true"] {')[1].split("}")[0]  # only Glass lets it through

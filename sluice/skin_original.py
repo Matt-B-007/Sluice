@@ -60,7 +60,7 @@ QToolButton#menu:hover { color: $strong; }
 QToolButton::menu-indicator { image: none; width: 0; }
 
 QComboBox {
-    background: $input; border: 1px solid $border; border-radius: 4px; padding: 3px 6px; min-height: 0; font-weight: 400; color: $text;
+    background: $input; border: 1px solid $border; border-radius: 4px; padding: 3px 6px;
 }
 QComboBox:hover { border-color: $hover; }
 QComboBox QAbstractItemView {

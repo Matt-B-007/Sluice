@@ -362,6 +362,49 @@ QLabel#menuheading { font-size: 11px; font-weight: 700; letter-spacing: 0.6px; c
     padding: 12px 24px 4px 24px; border-top: 1px solid $border; margin-top: 4px; }
 QLabel#menuheading[first="true"] { padding-top: 4px; border-top: none; margin-top: 0; }
 QMenu::separator { height: 1px; background: $border; margin: 8px 8px; }
+QFrame#menupanel { background: $popup; border: 1px solid $button_border; border-radius: 20px; }
+QFrame#menupanel QLabel { background: transparent; }
+QFrame#menupanel QLabel#panelsection { font-size: 11px; font-weight: 700; letter-spacing: 0.8px; color: $text_dim; padding: 10px 10px 4px 10px; }
+QFrame#menupanel QPushButton#panelrow, QFrame#menupanel QPushButton#panelfoot { background: transparent; border: 1px solid transparent;
+    border-radius: 10px; text-align: left; padding: 0; }
+QFrame#menupanel QPushButton#panelrow:hover, QFrame#menupanel QPushButton#panelrow:focus { background: $chip; border-color: $chip; }
+QFrame#menupanel QPushButton#panelrow:focus { border-color: $focus; }
+QFrame#menupanel QPushButton#panelfoot { background: $button; border-color: $button_border; border-radius: 12px; }
+QFrame#menupanel QPushButton#panelfoot:hover { background: $hover; }
+QFrame#menupanel QPushButton#panelfoot:focus { border-color: $focus; }
+QFrame#menupanel QLabel#panelname { font-size: 14px; color: $text; }
+QFrame#menupanel QPushButton#panelfoot QLabel#panelname { font-weight: 600; }
+QFrame#menupanel QLabel#keycap { font-size: 11px; color: $text_dim; background: $chip; border: 1px solid $button_border;
+    border-radius: 6px; padding: 1px 6px; }
+QFrame#menupanel QPushButton#paneltile { background: $button; border: 1px solid $button_border; border-radius: 14px; text-align: left; }
+QFrame#menupanel QPushButton#paneltile:hover { background: $hover; }
+QFrame#menupanel QPushButton#paneltile:focus { border-color: $focus; }
+QFrame#menupanel QPushButton#paneltile[on="true"] { background: $mute_bg; border-color: $mute; }
+QFrame#menupanel QLabel#tilename { font-size: 13px; font-weight: 600; color: $text; }
+QFrame#menupanel QLabel#tilekey { font-size: 11px; color: $text_dim; }
+QFrame#menupanel QLabel#tilename[on="true"] { color: $mute_fg; }
+QFrame#menupanel QLabel#panelname:disabled { color: $menu_off; }
+QFrame#menupanel QPushButton#panelchip { background: $button; border: 1px solid $button_border; border-radius: 12px; min-height: 36px;
+    font-size: 12px; font-weight: 600; color: $text; padding: 0 8px; }
+QFrame#menupanel QPushButton#panelchip:hover { background: $hover; }
+QFrame#menupanel QPushButton#panelchip:checked { background: $mute_bg; border-color: $mute; color: $mute_fg; }
+QFrame#menupanel QPushButton#panelchip:focus { border-color: $focus; }
+QFrame#menupanel QFrame#segmented { background: transparent; border: 1px solid $border; border-radius: 12px; }
+QFrame#menupanel QPushButton#segment { border: 1px solid transparent; background: transparent; min-height: 32px; border-radius: 9px;
+    font-size: 13px; font-weight: 600; color: $text2; }
+QFrame#menupanel QPushButton#segment:checked { background: $accent_bg; color: $accent_text; border-color: $accent; }
+QFrame#menupanel QPushButton#segment:focus { border-color: $focus; }
+QFrame#menupanel QPushButton#panellink { background: transparent; border: none; color: $link; font-size: 13px; padding: 2px 0; }
+QFrame#menupanel QPushButton#panellink:hover { text-decoration: underline; }
+QFrame#menupanel QPushButton#panellink:focus { color: $text; text-decoration: underline; }
+QFrame#menupanel QFrame#panelline { background: $border; border: none; }
+QDialog QFrame#settingsgroup { background: $panel; border: 1px solid $border; border-radius: 16px; }
+QDialog QFrame#settingsrow { background: transparent; border: none; border-top: 1px solid $border_soft; }
+QDialog QFrame#settingsrow[first="true"] { border-top: none; }
+QDialog QFrame#settingsrow QLabel#rowname { font-size: 14px; font-weight: 500; color: $text; background: transparent; }
+QDialog QFrame#settingsrow QLabel#rowhint { font-size: 12px; color: $text_dim; background: transparent; }
+QDialog QLabel#settingstitle { font-size: 22px; font-weight: 700; color: $text; }
+QDialog QLabel#grouphead { font-size: 11px; font-weight: 700; letter-spacing: 0.8px; color: $text_dim; padding: 4px 4px 0 4px; }
 QMenuBar { background: $bg; color: $button_text; }
 QMenuBar::item { padding: 8px 12px; border-radius: 8px; }
 QMenuBar::item:selected { background: $chip; }
@@ -563,7 +606,7 @@ def valid_look(look) -> str:
 @lru_cache(maxsize=16)
 def _style_for(items: tuple, look: str = DEFAULT_LOOK) -> str:
     values = dict(items)
-    values.update(mix_colors(values, look))
+    values.update(mix_colors(values, look.split("+")[0]))
     values["accent_edge"] = mix(values["panel"], values["accent"], 0.5)  # a thin neon outline for Nexus
     values["accent_soft"] = mix(values["panel"], values["accent"], 0.22)
     values["menu_off"] = mix(values["text_off"], values["text_dim"], 0.45)  # a greyed-out menu item: plainly off, still easy to read
@@ -579,20 +622,36 @@ def _style_for(items: tuple, look: str = DEFAULT_LOOK) -> str:
         from .skin_nexus import NEXUS_STYLE_EXTRA, glass_values
         values.update(glass_values(values))
         return STYLE_TEMPLATE.substitute(values) + NEXUS_STYLE_EXTRA.substitute(values)
-    if look == "glass":  # the Calm sheet with Glass's frosted panes after it (0.11.6)
+    if look in ("glass", "glass+see"):  # the Calm sheet with Glass's frosted panes after it (0.11.6; see-through window 0.11.7)
         from .skin_glass import GLASS_STYLE_EXTRA, glass_values as frosted
-        values.update(frosted(values))
+        values.update(frosted(values, look == "glass+see"))
         return STYLE_TEMPLATE.substitute(values) + GLASS_STYLE_EXTRA.substitute(values)
     return STYLE_TEMPLATE.substitute(values)
 
 
-def build_style(colors: dict, look: str = DEFAULT_LOOK) -> str:
-    """The window's style sheet for a complete colour set in a look (cached: switching back costs nothing)."""
-    return _style_for(tuple(sorted(colors.items())), valid_look(look))
+_see_through = False  # 0.11.7: the main window itself is see-through (Glass on KDE, blurred by KWin): see set_see_through
+
+
+def set_see_through(on: bool) -> None:
+    global _see_through
+    _see_through = bool(on)
+
+
+def see_through() -> bool:
+    return _see_through
+
+
+def build_style(colors: dict, look: str = DEFAULT_LOOK, see: Optional[bool] = None) -> str:
+    """The window's style sheet for a complete colour set in a look (cached: switching back costs nothing). Glass has a second
+    form for a see-through window (``see``; the window's own state when not given)."""
+    look = valid_look(look)
+    if look == "glass" and (_see_through if see is None else see):
+        look = "glass+see"
+    return _style_for(tuple(sorted(colors.items())), look)
 
 
 # Menus, tooltips and their headings are windows of their own: these rules reach them wherever they open.
-_EVERYWHERE = ("QMenu", "QToolTip", "QLabel#menuheading")
+_EVERYWHERE = ("QMenu", "QToolTip", "QLabel#menuheading", "QFrame#menupanel")  # (the ☰ panel is a popup of its own, 0.11.7)
 # The dialog itself (the rest of the rules reach only what is inside one).
 _DIALOGS = ("QDialog", "QMessageBox")
 

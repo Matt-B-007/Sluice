@@ -49,12 +49,12 @@ class LevelMeter(QWidget):
         self._peak_age = 0
         self._lit: Optional[QPixmap] = None  # the full-length coloured bar, drawn once per size and theme
         self._painted = None  # (bar length, peak line) as last drawn: nothing is repainted unless this changes
-        self._well = QColor(themes.color("well" if self.original else "meter_bg"))
+        self._well = _glass_well() or QColor(themes.color("well" if self.original else "meter_bg"))
         self._peak_color = QColor(themes.color("strong"))
 
     def refresh_theme(self) -> None:
         """Pick up the colours of the theme in use (the track behind the bar, the peak line)."""
-        self._well = QColor(themes.color("well" if self.original else "meter_bg"))
+        self._well = _glass_well() or QColor(themes.color("well" if self.original else "meter_bg"))
         self._peak_color = QColor(themes.color("strong"))
         self._lit = None
         self._rounded = None
@@ -196,6 +196,15 @@ class LevelMeter(QWidget):
                 p.drawLine(0, self.height() - peak, self.width(), self.height() - peak)
         p.end()
         self._painted = (fill, peak)
+
+
+def _glass_well():
+    """Glass (0.11.7): a track or meter well is a see-through shade, not a solid colour, so the frosted pane shows in it."""
+    if themes.current_look() != "glass":
+        return None
+    from . import depth
+    light = depth.luminance(themes.color("panel")) >= depth.LIGHT_PANEL
+    return QColor(0, 0, 0, 34 if light else 80)
 
 
 class Fader(QAbstractSlider):
@@ -353,7 +362,8 @@ class Fader(QAbstractSlider):
             thumb_rect = QRectF((self.width() - tw) / 2.0, centre - th / 2.0, tw, th)
         p.setPen(Qt.PenStyle.NoPen)
         groove = 3.0 if self.original else track / 2.0
-        p.setBrush(QColor(themes.color("well" if self.original else "track")))
+        glass = themes.current_look() == "glass"
+        p.setBrush(_glass_well() if glass else QColor(themes.color("well" if self.original else "track")))
         p.drawRoundedRect(track_rect, groove, groove)
         if not self.original and not self.tile:  # Calm and Nexus: the groove looks sunk in, a shade along its top inside edge
             p.save()
@@ -366,6 +376,12 @@ class Fader(QAbstractSlider):
             shade.setColorAt(1.0, QColor(0, 0, 0, 0))
             p.fillRect(track_rect, shade)
             p.restore()
+        if glass and not themes.reduce_effects() and fill_rect.height() > 0 and fill_rect.width() > 0:  # Glass: the fill glows softly
+            halo = QColor(self.fill_color)
+            for grow, alpha in ((5, 0.10), (3, 0.16), (1.5, 0.24)):
+                halo.setAlphaF(alpha)
+                p.setBrush(halo)
+                p.drawRoundedRect(fill_rect.adjusted(-grow, -grow, grow, grow), groove + grow, groove + grow)
         p.setBrush(QColor(themes.color("fill") if self.original else self.fill_color))
         p.drawRoundedRect(fill_rect, groove, groove)
         if self.tile:  # the Tile look: the track is a groove pressed into the key, the handle a raised white pill

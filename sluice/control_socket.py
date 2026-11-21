@@ -22,7 +22,7 @@ from typing import Callable, Optional
 from .engine import Engine
 from .model import MAX_DB, MIN_DB, clamp_db
 
-log = logging.getLogger("sluice.control")  # the name the log has always used
+log = logging.getLogger("sluice.control_socket")
 
 MAX_REQUEST = 64 * 1024
 WATCH_MS = 100       # how often a watching program gets the meters

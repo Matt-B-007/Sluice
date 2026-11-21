@@ -17,7 +17,7 @@ from PySide6.QtWidgets import QCheckBox, QLabel, QMenu, QMessageBox, QWidgetActi
 
 from . import __version__, themes
 from .model import BUFFER_CHOICES, MONITOR, STREAM
-from .ui_base import DEFAULT_SIZE, DISCORD_URL, ISSUES_URL, PROJECT_URL
+from .ui_base import DISCORD_URL, ISSUES_URL, PROJECT_URL, default_size
 
 log = logging.getLogger("sluice.ui")
 
@@ -91,30 +91,30 @@ class MenusMixin:
         bar = self.menuBar()
         # File: your settings and files, and Quit.
         file_menu = bar.addMenu("&File")
-        self._action(file_menu, "&Save settings", self.save_settings, "Ctrl+S")
+        self.save_settings_action = self._action(file_menu, "&Save settings", self.save_settings, "Ctrl+S")
         file_menu.addSeparator()
-        self._action(file_menu, "&Import settings\u2026", self.import_settings)
-        self._action(file_menu, "&Export settings\u2026", self.export_settings)
+        self.import_action = self._action(file_menu, "&Import settings\u2026", self.import_settings)
+        self.export_action = self._action(file_menu, "&Export settings\u2026", self.export_settings)
         self.restore_menu = file_menu.addMenu("&Restore earlier settings")
         self.restore_menu.aboutToShow.connect(self._fill_restore_menu)
         self._action(file_menu, "Reset all se&ttings to the defaults\u2026", self.reset_settings)
         file_menu.addSeparator()
-        folders = file_menu.addMenu("Open &folder")
+        self.folders_menu = folders = file_menu.addMenu("Open &folder")
         folders.addAction("&Settings", self.open_settings_folder)
         folders.addAction("&Logs", self.open_log_folder)
         folders.addAction("&Themes", self.open_theme_folder)
         file_menu.addSeparator()
-        self._action(file_menu, "&Quit", self.quit_app, "Ctrl+Q")
+        self.quit_action = self._action(file_menu, "&Quit", self.quit_app, "Ctrl+Q")
         file_menu.aboutToShow.connect(self._refresh_file_menu)
 
         # Mixer: what you do while mixing, in three groups.
         mixer_menu = bar.addMenu("&Mixer")
         heading(mixer_menu, "Channels")
-        self._action(mixer_menu, "&Add channel\u2026", self.add_channel, "Ctrl+N")
-        self._action(mixer_menu, "Re&fresh devices and apps", self.refresh_now, "F5")
+        self.add_channel_action = self._action(mixer_menu, "&Add channel\u2026", self.add_channel, "Ctrl+N")
+        self.refresh_action = self._action(mixer_menu, "Re&fresh devices and apps", self.refresh_now, "F5")
         heading(mixer_menu, "Mixes")
         self.recording_action = self._action(mixer_menu, "&Recording mix (a third mix)", self.toggle_recording_mix, checkable=True)
-        self._action(mixer_menu, "Recording &devices for OBS\u2026", self.show_own_devices)
+        self.own_devices_action = self._action(mixer_menu, "Recording &devices for OBS\u2026", self.show_own_devices)
         heading(mixer_menu, "Quick mutes")
         self.mic_action = self._action(mixer_menu, "Mute my &microphone", self.toggle_mic_mute, "Ctrl+M", checkable=True)
         self.mute_actions = {}
@@ -153,6 +153,10 @@ class MenusMixin:
         self.reduce_action = self._action(view_menu, "Re&duce effects", lambda: self.set_reduce_effects(self.reduce_action.isChecked()),
                                           checkable=True)
         self.nexus_section = self.reduce_action  # (0.11.5 had a Nexus heading here; the item shows only in Nexus)
+        self.see_through_action = self._action(view_menu, "S&ee-through window (Glass on KDE Plasma)",
+                                               lambda: self.set_see_through(self.see_through_action.isChecked()), checkable=True)
+        self.see_through_action.setToolTip("Your wallpaper shows through the window, blurred by KWin. Takes effect the next time "
+                                           "Sluice starts. Off, or on other desktops: Sluice paints a soft backdrop behind the panes.")
         self.reduce_action.setToolTip("For slow or busy computers: the Nexus rings stop shimmering and the cards do not glow")
         heading(view_menu, "Desktop")
         self.widgets_menu = view_menu.addMenu("Desktop wid&gets")
@@ -163,6 +167,7 @@ class MenusMixin:
         heading(view_menu, "Window")
         self.fullscreen_action = self._action(view_menu, "&Full screen", self.toggle_fullscreen, "F11", checkable=True)
         self.reset_size_action = self._action(view_menu, "Reset &window size", self.reset_window_size, "Ctrl+0")
+        self.hide_action = self._action(view_menu, "&Hide to tray", self.hide_to_tray, "Ctrl+W")
         view_menu.aboutToShow.connect(self._refresh_view_menu)
 
         # Settings (the menu bar of the Original skin): the same groups as the Settings window.
@@ -217,19 +222,19 @@ class MenusMixin:
         self.help_menu = bar.addMenu("&Help")
         self.help_menu.setToolTipsVisible(True)
         heading(self.help_menu, "Learn")
-        self._action(self.help_menu, "&Keyboard shortcuts", self.show_shortcuts, "F1")
-        self.help_menu.addAction("&What's new in this version", self.show_whats_new)
+        self.shortcuts_action = self._action(self.help_menu, "&Keyboard shortcuts", self.show_shortcuts, "F1")
+        self.whats_new_action = self.help_menu.addAction("&What's new in this version", self.show_whats_new)
         heading(self.help_menu, "Something wrong")
-        self._action(self.help_menu, "I heard a &glitch", self.mark_glitch, "Ctrl+Shift+G")
-        report_action = self.help_menu.addAction("Save bug &report\u2026", self.save_report)
+        self.glitch_action = self._action(self.help_menu, "I heard a &glitch", self.mark_glitch, "Ctrl+Shift+G")
+        self.report_action = report_action = self.help_menu.addAction("Save bug &report\u2026", self.save_report)
         report_action.setToolTip("Something wrong, or something looks wrong? Save this file and send it: it lists the window size, how the "
                                  "window was arranged and where each part is, as well as the audio setup.")
-        self.help_menu.addAction("Report a &problem", partial(self.open_link, ISSUES_URL))
+        self.problem_action = self.help_menu.addAction("Report a &problem", partial(self.open_link, ISSUES_URL))
         heading(self.help_menu, "Community")
-        self.help_menu.addAction("Join the &Discord", partial(self.open_link, DISCORD_URL))
-        self.help_menu.addAction("Project page on Git&Hub", partial(self.open_link, PROJECT_URL))
+        self.discord_action = self.help_menu.addAction("Join the &Discord", partial(self.open_link, DISCORD_URL))
+        self.github_action = self.help_menu.addAction("Project page on Git&Hub", partial(self.open_link, PROJECT_URL))
         heading(self.help_menu, "About")
-        self.help_menu.addAction(f"&About Sluice {__version__}", self.show_about)
+        self.about_action = self.help_menu.addAction(f"&About Sluice {__version__}", self.show_about)
         self.help_menu.addSeparator()  # kept apart, so it is not clicked by mistake
         self.uninstall_action = self.help_menu.addAction("&Uninstall Sluice\u2026", self.uninstall_app)
 
@@ -245,6 +250,7 @@ class MenusMixin:
         heading(self.window_menu, "Window")
         self.window_menu.addAction(self.fullscreen_action)
         self.window_menu.addAction(self.reset_size_action)
+        self.window_menu.addAction(self.hide_action)
         self.window_menu.aboutToShow.connect(self._refresh_view_menu)
         self.main_menu = QMenu(self)
         for menu in (file_menu, mixer_menu, self.window_menu, self.help_menu):
@@ -256,20 +262,28 @@ class MenusMixin:
         bar.setVisible(False)
 
     def toggle_my_widgets(self) -> None:
-        """Ctrl+Shift+W: close the open desktop widgets (remembering them), or open again the ones you had."""
-        desktop = self.desktop
+        """Ctrl+Shift+W: put the open desktop widgets away (remembered with the settings, so this survives a restart or an update),
+        or bring the same ones back where they were."""
+        desktop, mixer = self.desktop, self.engine.mixer
         if desktop.open_widgets:
-            self._hidden_widgets = [dict(spec) for spec in self.engine.mixer.desktop_widgets]
+            mixer.hidden_widgets = [dict(spec) for spec in mixer.desktop_widgets]
             desktop.close_all(forget=True)
-            self.say("Desktop widgets closed. Ctrl+Shift+W opens them again.")
+            self.say("Desktop widgets put away. Ctrl+Shift+W brings them back.")
             return
-        specs = getattr(self, "_hidden_widgets", None) or []
+        specs, mixer.hidden_widgets = list(mixer.hidden_widgets), []
         if not specs:
-            self.say("No desktop widgets to open again. Choose some in View > Desktop widgets.")
+            self.say("No desktop widgets to bring back. Choose some in View > Desktop widgets.")
             return
         for spec in specs:
-            desktop.open(spec["kind"], spec.get("mix"), spec.get("channel"))
-        self._hidden_widgets = []
+            desktop.reopen(spec)
+
+    def show_panel(self) -> None:
+        """The ☰ button: the panel (0.11.7), built once from the actions. (The Original skin shows the classic menu bar instead.)"""
+        from .ui_panel import MenuPanel
+
+        if getattr(self, "menu_panel", None) is None:
+            self.menu_panel = MenuPanel(self)
+        self.menu_panel.popup_under(self.menu_button)
 
     def open_settings(self, section: str = "") -> None:
         """The Settings window (one, kept): Appearance, Audio, Startup and background, Controllers and Updates."""
@@ -281,6 +295,9 @@ class MenusMixin:
 
     def _refresh_view_menu(self) -> None:
         self.fullscreen_action.setChecked(self.isFullScreen())
+        self.see_through_action.setChecked(self.engine.mixer.see_through)
+        from . import desktop_place
+        self.see_through_action.setVisible(desktop_place.kde() and themes.valid_look(self.engine.mixer.look) == "glass")
         self.reduce_action.setChecked(self.engine.mixer.reduce_effects)
         self.look_colors_action.setChecked(self.engine.mixer.look_colors)
         self._show_look_items()
@@ -322,9 +339,8 @@ class MenusMixin:
             self.say("That is as many widgets as Sluice keeps. Close one first.")
 
     def _show_look_items(self) -> None:
-        """The View items that only mean something in the Nexus look are shown only there."""
-        nexus = themes.current_look() == "nexus"
-        self.reduce_action.setVisible(nexus)
+        """The View items that only mean something in some skins are shown only there (Reduce effects: Nexus and, 0.11.7, Glass)."""
+        self.reduce_action.setVisible(themes.current_look() in ("nexus", "glass"))
         self.look_colors_action.setVisible(themes.current_look() in ("nexus", "tile"))
 
     def uninstall_app(self) -> None:
@@ -473,7 +489,7 @@ class MenusMixin:
     def reset_window_size(self) -> None:
         if self.isFullScreen():
             self.showNormal()
-        self.resize(*DEFAULT_SIZE)
+        self.resize(*default_size(self._screen_area()))
 
     def shortcut_rows(self) -> list:
         """[(keys, what it does)] taken from the menu items themselves, so this list can never disagree with the menus."""

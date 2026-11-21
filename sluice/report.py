@@ -359,6 +359,41 @@ def _section(title: str, body: str) -> str:
     return f"\n===== {title} =====\n{body.rstrip()}\n"
 
 
+_UPDATED = re.compile(r"^(\d{4}-\d\d-\d\d \d\d:\d\d)(?::\d\d)?\S*\s+INFO\s+sluice\.(?:selfupdate|update_install): updated (\S+) -> (\S+)",
+                      re.MULTILINE)
+
+
+def update_history(log_text: str) -> str:
+    """0.11.7: one line on the last update, from the log ("Updated 0.11.5 -> 0.11.6 on 2026-11-20 19:40"), or ""."""
+    found = _UPDATED.findall(log_text or "")
+    if not found:
+        return ""
+    when, old, new = found[-1]
+    more = f" ({len(found)} updates in the log)" if len(found) > 1 else ""
+    return f"Last update: {old} -> {new} on {when}{more}.\n"
+
+
+def engine_summary(version: Optional[str] = None, expected: Optional[str] = None, older: Optional[bool] = None,
+                   error: Optional[str] = None, rebuild: Optional[dict] = "unset") -> str:
+    """0.11.7: one line on the Rust engine: which, whether this Sluice ships a newer one, and the last rebuild and how it went."""
+    from . import spectral, update_install
+    version = spectral.RUST_VERSION if version is None else version
+    expected = spectral.RUST_EXPECTED if expected is None else expected
+    older = spectral.rust_is_older() if older is None else older
+    error = spectral.RUST_ERROR if error is None else error
+    rebuild = update_install.last_rebuild() if rebuild == "unset" else rebuild
+    if version:
+        line = f"Audio engine: Rust {version}" + (f" (this Sluice comes with {expected}: rebuild it for the fixes since)" if older else "")
+    elif error:
+        line = f"Audio engine: Python (the Rust build could not be used: {error})"
+    else:
+        line = "Audio engine: Python (the Rust engine is not installed)"
+    if rebuild:
+        when = time.strftime("%Y-%m-%d %H:%M", time.localtime(rebuild["at"]))
+        line += f". Last rebuild: {when}, {'worked' if rebuild['result'] == 'ok' else rebuild['result']}"
+    return line + ".\n"
+
+
 def look_summary() -> str:
     """One line on what is on screen: the look, the layout shown (a saved Free, gone in 0.11.5, shows Columns) and whether effects are reduced."""
     from . import themes
@@ -403,13 +438,22 @@ def window_summary() -> str:
             f"{'' if info['mode'] == 'mini' else ', ' + dock.get(info['dock'], info['dock'])} (chosen: {info['chosen']}; "
             f"switched by the window's size: {automatic}). Rearranged {info['relayouts']} times this session. "
             f"Skin's own colours: {'on' if info.get('look_colors', True) else 'off'}.\n"
-            f"Desktop widgets: {info.get('widgets', 'none open')}.\n")
+            f"Desktop widgets: {info.get('widgets', 'none open')}.\n"
+            + (f"Minimizing: {info['minimize']}.\n" if info.get("minimize") else ""))
 
 
 def window_layout() -> str:
     """The sizes of the main parts of the window, so a layout problem can be seen without a screenshot."""
     info = _window_info()
     return info.get("layout", "") if info else ""
+
+
+def _safe(make) -> str:
+    """A summary line that must never stop the report being written."""
+    try:
+        return make()
+    except Exception as exc:
+        return f"({type(exc).__name__} while writing a summary line: {exc})\n"
 
 
 def build_report(log_lines: int = LOG_LINES) -> str:
@@ -426,6 +470,8 @@ def build_report(log_lines: int = LOG_LINES) -> str:
         f"Created: {time.strftime('%Y-%m-%d %H:%M:%S %Z')} by Sluice {__version__}\n"
         + look_summary()
         + window_summary()
+        + _safe(engine_summary)
+        + _safe(lambda: update_history(logs.log_path().read_text(encoding="utf-8", errors="replace")))
         + efficiency.summary_line(efficiency_data)
     ]
     parts.append(_section("sluice", f"version {__version__}\nPython {platform.python_version()}\n{platform.platform()}"))

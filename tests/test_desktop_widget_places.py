@@ -124,6 +124,9 @@ def test_the_kwin_rule_keeps_the_widgets_above_and_is_found_by_title():
     pairs = {c[-2]: c[-1] for c in commands}
     assert pairs["title"] == desktop_place.RULE_TITLE and pairs["above"] == "true" and pairs["aboverule"] == "2"
     assert all(c[:3] == ["kwriteconfig6", "--file", "kwinrulesrc"] for c in commands)
+    # 0.11.7: and out of the taskbar, the pager and Alt-Tab
+    for key in ("skiptaskbar", "skippager", "skipswitcher"):
+        assert pairs[key] == "true" and pairs[key + "rule"] == "2"
 
 
 # ---------------------------------------------------------------- the widgets in the window
@@ -255,3 +258,70 @@ def test_the_bug_report_says_how_widgets_are_shown(monkeypatch):
     assert desktop_place.status().startswith("ordinary windows (not KDE Plasma on Wayland")
     monkeypatch.setattr(desktop_place, "_shell", desktop_place.LayerShell(loader=FakeLibrary, env=KDE, platform="wayland"))
     assert desktop_place.status().startswith("KDE layer-shell")
+
+
+# ---------------------------------------------------------------- dragging a layer-shell widget (0.11.7)
+def test_a_layer_shell_widget_follows_the_pointer_without_lag_or_jumps(qapp, tmp_path, monkeypatch):
+    """On KDE Wayland Sluice moves layer-shell widgets itself. Qt's screen position for the pointer is out of date there, so moving
+    by it lagged and jumped. The widget now moves by the pointer's distance from where it was taken, inside the widget, one step
+    per frame; this drives it with a compositor that applies each move only when the frame comes, and stale screen positions."""
+    import os
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import QEvent, QPointF, Qt
+    from PySide6.QtGui import QMouseEvent
+    from sluice import desktop_place
+    from sluice.audio_io import NullIO
+    from sluice.backend import MockSystem
+    from sluice.engine import Engine
+    from sluice.linker import NullLinker
+    from sluice.model import Mixer
+    from sluice.ui import MainWindow
+
+    engine = Engine(Mixer.demo(), MockSystem(), NullIO(realtime=False), NullLinker())
+    engine.start()
+    win = MainWindow(engine, config_file=tmp_path / "c.json")
+    try:
+        win.desktop.open("channel", channel="mic", x=500, y=300)
+        widget = win.desktop.open_widgets[("channel", None, "mic")]
+        widget.layered = True
+        widget.spec["x"], widget.spec["y"] = 500, 300
+        shown = {"at": (500, 300)}  # where the compositor shows the surface (it lags one frame behind each move)
+        asked = []
+
+        class FakeShell:
+            available = True
+
+            def place(self, _window, x, y, _origin, _screen=None):
+                asked.append((x, y))
+
+            def forget(self, _window):
+                pass
+
+        monkeypatch.setattr(desktop_place, "layer_shell", lambda: FakeShell())
+
+        def mouse(kind, pointer, buttons=Qt.MouseButton.LeftButton):
+            local = QPointF(pointer[0] - shown["at"][0], pointer[1] - shown["at"][1])
+            stale = QPointF(local)  # Qt's "screen" position: wrong for a layer-shell surface, and must not be used
+            return QMouseEvent(kind, local, stale, Qt.MouseButton.LeftButton, buttons, Qt.KeyboardModifier.NoModifier)
+
+        def frame():  # the compositor shows the last move, then Qt says the frame is done
+            if asked:
+                shown["at"] = asked[-1]
+            widget.event(QEvent(QEvent.Type.UpdateRequest))
+
+        grab = (540, 320)  # pressed 40, 20 inside the widget
+        widget.mousePressEvent(mouse(QEvent.Type.MouseButtonPress, grab))
+        for step in range(1, 41):  # a steady drag 5 px right and 2 px down per event, two events per frame
+            widget.mouseMoveEvent(mouse(QEvent.Type.MouseMove, (grab[0] + 5 * step, grab[1] + 2 * step)))
+            if step % 2 == 0:
+                frame()
+        frame()
+        widget.mouseMoveEvent(mouse(QEvent.Type.MouseMove, (grab[0] + 200, grab[1] + 80)))
+        frame()
+        assert shown["at"] == (700, 380)  # exactly under the pointer: 40, 20 from where it was taken
+        xs = [x for x, _y in asked]
+        assert xs == sorted(xs) and all(b - a <= 20 for a, b in zip(xs, xs[1:]))  # always forward, never a jump
+        widget.mouseReleaseEvent(mouse(QEvent.Type.MouseButtonRelease, (grab[0] + 200, grab[1] + 80), Qt.MouseButton.NoButton))
+        assert not widget._dragging
+    finally:
+        win.shutdown()

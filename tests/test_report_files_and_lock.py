@@ -143,3 +143,25 @@ def test_a_test_double_without_a_context_is_passed_through():
 
     guarded = _LiveCheck(SimpleNamespace(source_list=lambda: [1], loaded=[]))
     assert guarded.source_list() == [1] and guarded.loaded == []
+
+
+# ---------------------------------------------------------------- summary lines at the top (0.11.7)
+def test_the_report_says_which_engine_and_how_the_last_rebuild_went():
+    from sluice import report
+    line = report.engine_summary("0.9.6", "0.10.1", True, "", {"at": 0.0, "result": "the build failed (pip not found)"})
+    assert line.startswith("Audio engine: Rust 0.9.6 (this Sluice comes with 0.10.1")
+    assert "Last rebuild:" in line and "the build failed (pip not found)" in line
+    assert report.engine_summary("0.10.1", "0.10.1", False, "", None) == "Audio engine: Rust 0.10.1.\n"
+    assert "worked" in report.engine_summary("0.10.1", "0.10.1", False, "", {"at": 0.0, "result": "ok"})
+    assert "Python" in report.engine_summary("", "0.10.1", False, "ImportError: wrong CPU", None)
+
+
+def test_the_report_names_the_last_update_from_the_log():
+    from sluice import report
+    log = ("2026-11-12 18:00:01,000 INFO    sluice.selfupdate: updated 0.11.4 -> 0.11.5\n"
+           "2026-11-20 19:40:40,533 INFO    sluice.selfupdate: updated 0.11.5 -> 0.11.6\n"
+           "2026-11-20 19:40:40,533 INFO    sluice.reconnect: restarting\n")
+    assert report.update_history(log) == "Last update: 0.11.5 -> 0.11.6 on 2026-11-20 19:40 (2 updates in the log).\n"
+    assert report.update_history("2026-12-01 10:00:00,1 INFO    sluice.update_install: updated 0.11.6 -> 0.11.7\n") == \
+        "Last update: 0.11.6 -> 0.11.7 on 2026-12-01 10:00.\n"
+    assert report.update_history("nothing here") == ""

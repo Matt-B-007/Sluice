@@ -17,31 +17,60 @@ def rgba(color: str, alpha: float) -> str:
     return f"rgba({r}, {g}, {b}, {round(alpha * 255)})"
 
 
-def glass_values(values: dict) -> dict:
-    """The see-through colours of the panes and the tints of the backdrop, for a theme (light or dark)."""
+def readable_alpha(text: str, panel: str, behind: list, start: float, need: float = 4.5) -> float:
+    """The least opacity (from ``start`` up) at which ``text`` on ``panel`` laid over every colour in ``behind`` reads at ``need``:1
+    (0.11.7: the readability guard; a pane gets more solid where a see-through one would not read)."""
+    from . import depth
+    alpha = start
+    while alpha < 0.96:
+        if all(depth.contrast(text, depth.mix(colour, panel, alpha)) >= need for colour in behind):
+            return round(alpha, 2)
+        alpha += 0.04
+    return 0.96
+
+
+def backdrop_colours(values: dict) -> list:
+    """The soft shapes Sluice paints behind Glass panes (when the wallpaper does not show through): the theme's own colours."""
+    return [values.get("listen", values["accent"]), values["accent"], values.get("broadcast", values["code"]), values["code"],
+            values.get("mute", values["accent"])]
+
+
+def glass_values(values: dict, see_through: bool = False) -> dict:
+    """The see-through colours of the panes and the tints of the backdrop, for a theme (light or dark). ``see_through``: the window
+    itself is see-through (KDE, blurred by KWin), so what is behind can be any wallpaper, white or black."""
     from . import depth
     light = depth.luminance(values["panel"]) >= depth.LIGHT_PANEL
     listen, broadcast = values.get("listen", values["accent"]), values.get("broadcast", values["code"])
-    bg = values["bg"]
+    bg, panel = values["bg"], values["panel"]
+    if see_through:
+        tint = 0.45 if light else 0.40  # the window's own tint over the blurred wallpaper
+        behind = [depth.mix(wall, bg, tint) for wall in ("#ffffff", "#000000", "#808080")]
+    else:
+        behind = [depth.mix(bg, depth.mix(bg, colour, 0.55 if not light else 0.35), 1.0) for colour in backdrop_colours(values)] + [bg]
+    pane = readable_alpha(values["text"], panel, behind, 0.52 if light else 0.38)
+    glow = depth.mix(panel, "#ffffff", 0.10 if not light else 0.30)
     return {
-        # the backdrop: the theme's background, tinted towards the two mix colours at opposite corners
+        "glass_see_through": rgba(bg, 0.45 if light else 0.40),
+        # the backdrop (a fallback: Sluice paints soft shapes over it, see ui_glass.GlassBackdrop)
         "glass_wash_a": depth.mix(bg, listen, 0.16 if light else 0.20),
         "glass_wash_b": depth.mix(bg, broadcast, 0.12 if light else 0.16),
         "glass_wash_mid": bg,
-        # the panes: the panel colour, see-through, and white hairlines (brighter along the top, where the light catches)
-        "glass_pane": rgba(values["panel"], 0.62 if light else 0.50),
-        "glass_pane_strong": rgba(values["panel"], 0.80 if light else 0.70),
-        "glass_edge": rgba("#ffffff", 0.75 if light else 0.09),
-        "glass_edge_top": rgba("#ffffff", 0.95 if light else 0.22),
-        "glass_button": rgba("#ffffff", 0.55 if light else 0.06),
-        "glass_button_hover": rgba("#ffffff", 0.80 if light else 0.11),
-        "glass_button_edge": rgba("#000000", 0.08) if light else rgba("#ffffff", 0.10),
-        "glass_well": rgba("#000000", 0.05 if light else 0.28),
-        "glass_listen": rgba(listen, 0.14 if light else 0.12),
-        "glass_listen_edge": rgba(listen, 0.45),
-        "glass_broadcast": rgba(broadcast, 0.14 if light else 0.12),
-        "glass_broadcast_edge": rgba(broadcast, 0.45),
-        "glass_accent": rgba(values["accent"], 0.22 if light else 0.20),
+        # the panes: see-through panel colour, a faint glow from the top, white hairlines (brighter along the top edge)
+        "glass_pane": rgba(panel, pane),
+        "glass_pane_top": rgba(glow, min(0.96, pane + 0.08)),
+        "glass_pane_strong": rgba(panel, min(0.96, pane + 0.25)),
+        "glass_edge": rgba("#ffffff", 0.60 if light else 0.10),
+        "glass_edge_top": rgba("#ffffff", 0.95 if light else 0.30),
+        "glass_button": rgba("#ffffff", 0.45 if light else 0.07),
+        "glass_button_hover": rgba("#ffffff", 0.70 if light else 0.13),
+        "glass_button_edge": rgba("#ffffff", 0.70) if light else rgba("#ffffff", 0.12),
+        "glass_well": rgba("#000000", 0.06 if light else 0.26),
+        "glass_listen": rgba(listen, 0.16 if light else 0.14),
+        "glass_listen_edge": rgba(listen, 0.50),
+        "glass_broadcast": rgba(broadcast, 0.16 if light else 0.14),
+        "glass_broadcast_edge": rgba(broadcast, 0.50),
+        "glass_accent": rgba(values["accent"], 0.24 if light else 0.22),
+        "glass_pane_alpha": pane,
     }
 
 
@@ -49,10 +78,12 @@ GLASS_EXTRA = """
 /* Glass: frosted panes on a tinted backdrop. */
 QWidget#root { background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 $glass_wash_a, stop:0.55 $glass_wash_mid,
     stop:1 $glass_wash_b); }
+QWidget#root[seethrough="true"] { background: $glass_see_through; }
+QStatusBar[seethrough="true"] { background: $glass_see_through; }
 QScrollArea, QScrollArea > QWidget > QWidget, QWidget#channels, QWidget#masters, QWidget#sources { background: transparent; }
 QStatusBar { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 $glass_wash_mid, stop:1 $glass_wash_b); }
-QFrame#strip, QFrame#row, QFrame#mix { background: $glass_pane; border: 1px solid $glass_edge; border-top: 1px solid $glass_edge_top;
-    border-radius: 22px; }
+QFrame#strip, QFrame#row, QFrame#mix { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 $glass_pane_top, stop:0.35 $glass_pane,
+    stop:1 $glass_pane); border: 1px solid $glass_edge; border-top: 1px solid $glass_edge_top; border-radius: 24px; }
 QFrame#strip[empty="true"], QFrame#empty { background: transparent; border: 2px dashed $glass_button_edge; }
 QFrame#mix[mix="monitor"] { border-color: $glass_listen_edge; border-top-color: $glass_edge_top; }
 QFrame#mix[mix="stream"] { border-color: $glass_broadcast_edge; border-top-color: $glass_edge_top; }

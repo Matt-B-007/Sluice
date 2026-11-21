@@ -457,7 +457,8 @@ def test_rebuilding_the_engine_runs_maturin_in_the_engine_folder(tmp_path):
         calls.append((command, cwd, env["VIRTUAL_ENV"]))
         return subprocess.CompletedProcess(command, 0, "", "")
 
-    assert update_install.rebuild_engine(tmp_path, run=run, python=str(python)) == ""
+    # (prefix and base as when not inside a venv: else the venv running the tests would be the answer, rightly)
+    assert update_install.rebuild_engine(tmp_path, run=run, python=str(python), prefix="/usr", base="/usr", remember=lambda r: None) == ""
     assert calls[0][0][1:4] == ["-m", "pip", "install"]  # maturin first, when it is not there
     assert calls[1][0][1:] == ["develop", "--release"] and calls[1][1] == str(tmp_path / "rust" / "sluice_dsp")
     assert calls[1][2] == str((tmp_path / "venv").resolve())
@@ -466,7 +467,8 @@ def test_rebuilding_the_engine_runs_maturin_in_the_engine_folder(tmp_path):
         return subprocess.CompletedProcess(command, 1, "", "error: linker cc not found")
 
     (bin_dir / "maturin").write_text("")
-    assert "failed" in update_install.rebuild_engine(tmp_path, run=failing, python=str(python))
+    problem = update_install.rebuild_engine(tmp_path, run=failing, python=str(python), prefix="/usr", base="/usr", remember=lambda r: None)
+    assert "failed" in problem and "linker cc not found" in problem  # the build's last line, said where you see it
 
 
 def test_the_start_up_check_names_only_modules_every_version_has():
@@ -482,3 +484,52 @@ def test_the_start_up_check_names_only_modules_every_version_has():
     old = importlib.import_module("sluice.updates")  # what Sluice 0.11.5's updater asks the new files for
     assert old.check is not None and old.UpdateResult is not None
     assert not re.search(r"\bsluice\.updates\b", update_install._CHECK)
+
+
+def test_the_rebuild_never_follows_the_link_a_venv_python_is(tmp_path):
+    """0.11.6 on CachyOS: .venv/bin/python links to /usr/bin/python, and following it told maturin the environment was /usr
+    (no pip there: "Failed to find pip")."""
+    import subprocess
+    from sluice import update_install
+    system = tmp_path / "usr" / "bin"
+    system.mkdir(parents=True)
+    (system / "python").write_text("")
+    venv_bin = tmp_path / "Sluice" / ".venv" / "bin"
+    venv_bin.mkdir(parents=True)
+    (venv_bin / "python").symlink_to(system / "python")
+    seen = []
+
+    def run(command, cwd, env, **_kw):
+        seen.append((command, env["VIRTUAL_ENV"], env["PATH"].split(":")[0]))
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    root = tmp_path / "Sluice"
+    # not running inside the venv (as the tests are): the folder's .venv, not /usr
+    assert update_install.venv_for(str(venv_bin / "python"), None, "/usr", "/usr") == root / ".venv"
+    assert update_install.venv_for(str(venv_bin / "python"), root, "/usr", "/usr") == root / ".venv"
+    # running inside it: Python says which
+    assert update_install.venv_for("/usr/bin/python", None, str(root / ".venv"), "/usr") == root / ".venv"
+    update_install.rebuild_engine(root, run=run, python=str(venv_bin / "python"), prefix="/usr", base="/usr", remember=lambda r: None)
+    assert all(venv == str(root / ".venv") for _c, venv, _p in seen)
+    assert seen[0][0][0] == str(venv_bin / "python") and seen[0][2] == str(venv_bin)  # its own python and pip come first
+
+
+def test_the_last_rebuild_is_remembered_for_the_bug_report(tmp_path):
+    from sluice import update_install
+    path = tmp_path / "engine-rebuild.json"
+    update_install.remember_rebuild("the build failed (pip)", path, when=1000.0)
+    assert update_install.last_rebuild(path) == {"at": 1000.0, "result": "the build failed (pip)"}
+    update_install.remember_rebuild("", path, when=2000.0)
+    assert update_install.last_rebuild(path)["result"] == "ok"
+    assert update_install.last_rebuild(tmp_path / "missing.json") is None
+
+
+def test_files_a_new_version_dropped_from_the_program_folder_do_not_linger(tmp_path):
+    """0.11.6 renamed many modules (selfupdate.py became update_install.py and so on). The updater swaps the whole sluice/ folder,
+    so a module the new version no longer has goes with the old folder into .previous instead of lingering beside the new ones."""
+    root = make_root(tmp_path)
+    (root / "sluice" / "selfupdate.py").write_text("# the old name\n")
+    stage_it(root, FakeNet(tmp_path, files=tree_files("1.1.0", extra={"sluice/update_install.py": "# the new name\n"})))
+    assert update_install.apply_staged(root, run=fake_run_ok("1.1.0")) == "1.1.0"
+    assert not (root / "sluice" / "selfupdate.py").exists() and (root / "sluice" / "update_install.py").is_file()
+    assert (root / ".previous" / "sluice" / "selfupdate.py").is_file()  # kept with the old version, for going back

@@ -584,3 +584,19 @@ def test_original_look_fits_in_a_wider_fallback_font(qapp, tmp_path):
         assert found == [], "\n".join(map(str, found[:8]))
     finally:
         qapp.setFont(saved)
+
+
+@pytest.mark.parametrize("look", ["calm", "glass", "nexus", "original"])
+def test_the_default_window_shows_five_channels_in_one_row(qapp, tmp_path, look):
+    """0.11.7: the default window was meant to fit five channels beside Listen and Broadcast; from 0.11.5 it fitted four, and a
+    report showed System pushed to a second row with the channel area scrolling."""
+    from sluice.ui_base import DEFAULT_SIZE, default_size
+    win, _ = make(qapp, tmp_path, look, "columns", DEFAULT_SIZE)
+    try:
+        tops = {strip.mapTo(win, strip.rect().topLeft()).y() for strip in win.strips[:5]}
+        assert len(win.strips) >= 5 and len(tops) == 1, (look, sorted(tops))
+        assert win._dock == "right"
+    finally:
+        win.shutdown()
+    assert default_size((1366, 728)) == (1326, 688)  # a smaller screen: it fits the screen instead
+    assert default_size(None) == DEFAULT_SIZE

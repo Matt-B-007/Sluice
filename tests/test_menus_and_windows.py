@@ -114,6 +114,34 @@ def test_ctrl_shift_w_closes_and_reopens_the_widgets_you_had(qapp, tmp_path):
         win.shutdown()
 
 
+def test_widgets_put_away_come_back_after_a_restart(qapp, tmp_path):
+    """0.11.7: Ctrl+Shift+W remembered the widgets only while Sluice ran; quitting (or an update's restart) lost them."""
+    from sluice.model import Mixer
+    win, engine = make(qapp, tmp_path, "calm")
+    try:
+        win.desktop.open("channel", channel="mic", x=300, y=200)
+        win.toggle_my_widgets()
+        assert not win.desktop.open_widgets and engine.mixer.hidden_widgets
+        engine.save_config(tmp_path / "saved.json")
+    finally:
+        win.shutdown()
+    mixer = Mixer.load(tmp_path / "saved.json")
+    assert [w["channel"] for w in mixer.hidden_widgets] == ["mic"] and not mixer.desktop_widgets
+    mixer.look = "calm"
+    from sluice.audio_io import NullIO
+    from sluice.backend import MockSystem
+    from sluice.engine import Engine
+    from sluice.linker import NullLinker
+    engine2 = Engine(mixer, MockSystem(), NullIO(realtime=False), NullLinker())
+    engine2.start()
+    win2 = MainWindow(engine2, tmp_path / "config2.json")
+    try:
+        win2.toggle_my_widgets()
+        assert win2.desktop.is_open("channel", None, "mic") and not engine2.mixer.hidden_widgets
+    finally:
+        win2.shutdown()
+
+
 @pytest.mark.parametrize("skin", SKINS)
 def test_windows_opened_from_the_menus_have_nothing_cut_off_or_overlapping(qapp, tmp_path, skin):
     from sluice.ui_channel import OwnDevicesDialog
@@ -168,4 +196,39 @@ def test_settings_window_can_be_used_from_the_keyboard(qapp, tmp_path):
         assert engine.mixer.look == list(themes.LOOKS)[1]
         assert window.sections.accessibleName() == "Settings sections"
     finally:
+        win.shutdown()
+
+
+def test_a_suspended_window_hides_into_the_tray_on_wayland(qapp, tmp_path):
+    """0.11.7: Wayland never says a window was minimized, so Sluice stayed in the taskbar. KWin marks a minimized window suspended
+    (Qt: not exposed); when that comes right after the window was in use and the tray is on, Sluice hides into the tray."""
+    from sluice.ui_tray import SuspendWatcher
+    win, engine = make(qapp, tmp_path, "calm")
+    try:
+        watcher = SuspendWatcher(win)
+        win._tray = type("Tray", (), {"isVisible": lambda self: True, "hide": lambda self: None})()
+        watcher.note_active()
+        now = watcher.last_active + 0.3
+        assert not watcher.check(now=now, exposed=True) and win.isVisible()  # still shown: nothing to do
+        assert not watcher.check(now=watcher.last_active + 5, exposed=False)  # not in use just before (another desktop, say)
+        assert watcher.check(now=now, exposed=False) and not win.isVisible() and watcher.seen == 1
+        win.show()
+        win._tray = None  # no tray: never hide (nothing would bring it back)
+        watcher.note_active()
+        assert not watcher.check(now=watcher.last_active + 0.3, exposed=False) and win.isVisible()
+    finally:
+        win._tray = None
+        win.shutdown()
+
+
+def test_ctrl_w_hides_into_the_tray_or_minimizes(qapp, tmp_path):
+    win, engine = make(qapp, tmp_path, "calm")
+    try:
+        assert win.hide_action.shortcut().toString() == "Ctrl+W"
+        win._update_tray = lambda: None
+        win._tray = type("Tray", (), {"isVisible": lambda self: True, "hide": lambda self: None})()
+        win.hide_action.trigger()
+        assert not win.isVisible()
+    finally:
+        win._tray = None
         win.shutdown()

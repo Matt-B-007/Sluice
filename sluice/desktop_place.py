@@ -17,9 +17,10 @@ import logging
 import os
 import shutil
 import subprocess
-from typing import Optional
+from pathlib import Path
+from typing import Callable, Optional
 
-log = logging.getLogger("sluice.desktop")
+log = logging.getLogger("sluice.desktop_place")
 
 SNAP = 16          # pixels: an edge this close to a screen edge or another widget's edge snaps to it
 GAP = 8            # widgets snapped beside each other keep this gap
@@ -341,17 +342,54 @@ BLUR_LIBRARIES = ("libKF6WindowSystem.so.6", "libKF5WindowSystem.so.5")
 BLUR_SYMBOL = "_ZN14KWindowEffects16enableBlurBehindEP7QWindowbRK7QRegion"
 
 
+LIB_DIRS = ("/usr/lib", "/usr/lib64", "/usr/lib/x86_64-linux-gnu", "/usr/lib/aarch64-linux-gnu")
+
+
+def system_qt(lib_dirs=LIB_DIRS) -> tuple:
+    """(the system's Qt version, its plugin folder) when KDE's window-system plugins are installed there, else ("", None).
+    Sluice runs PySide6's own Qt, so KDE's library looks for its plugins in PySide6's folder unless told where the system keeps
+    them: then it finds none, prints "Could not find any platform plugin" and blurs nothing (0.11.6 on Plasma)."""
+    import glob
+    for folder in lib_dirs:
+        plugins = Path(folder) / "qt6" / "plugins"
+        if not (plugins / "kf6" / "kwindowsystem").is_dir():
+            continue
+        cores = sorted(glob.glob(os.path.join(folder, "libQt6Core.so.6.*")))
+        version = cores[-1].rsplit(".so.", 1)[-1] if cores else ""
+        return version, plugins
+    return "", None
+
+
+def same_minor(a: str, b: str) -> bool:
+    return bool(a) and bool(b) and a.split(".")[:2] == b.split(".")[:2]
+
+
 class Blur:
     """KDE's KWindowEffects, if it can be used: ``available`` says so. ``set(window, on, region)`` asks KWin to blur what is behind
-    ``window`` inside ``region`` (the Glass skin's widgets). Elsewhere, or without the library, the widgets are see-through and
-    nothing is blurred."""
+    ``window`` inside ``region`` (the Glass skin). Elsewhere, or when it cannot work in this Qt, nothing is blurred and ``reason``
+    says why (the bug report shows it)."""
 
-    def __init__(self, loader=None, env=None) -> None:
+    def __init__(self, loader=None, env=None, qt_version: Optional[str] = None, system: Optional[tuple] = None,
+                 add_path: Optional[Callable] = None) -> None:
         self.function = None
         self.reason = ""
         if not kde(env):
             self.reason = "not KDE Plasma"
             return
+        version, plugins = system if system is not None else system_qt()
+        if plugins is None:
+            self.reason = "KDE's window-system plugins were not found"
+            return
+        if qt_version is None:
+            from PySide6.QtCore import qVersion
+            qt_version = qVersion()
+        if version and not same_minor(version, qt_version):  # a plugin built for another Qt would not load (or worse)
+            self.reason = f"the system's Qt is {version} and Sluice's is {qt_version}; KDE's blur only works in the same version"
+            return
+        if add_path is None:
+            from PySide6.QtCore import QCoreApplication
+            add_path = QCoreApplication.addLibraryPath
+        add_path(str(plugins))  # before KWindowSystem looks for its platform plugin (on its first call)
         lib = (loader or self._load)()
         if lib is None:
             self.reason = "KDE's window system library (KWindowSystem) is not installed"
@@ -413,11 +451,12 @@ RULE_TITLE = "Sluice widget"  # every widget window's title starts with this
 
 
 def kwin_rule_commands(writer: str) -> list:
-    """The kwriteconfig commands that add a KWin rule keeping Sluice's widget windows above other windows, in KWin's own rules
-    file."""
+    """The kwriteconfig commands that add a KWin rule keeping Sluice's widget windows above other windows and (0.11.7) out of the
+    taskbar, the pager and Alt-Tab, in KWin's own rules file. ("2": force the setting.)"""
     base = [writer, "--file", "kwinrulesrc", "--group", RULE_GROUP, "--key"]
     entries = [("Description", "Sluice desktop widgets"), ("title", RULE_TITLE), ("titlematch", "2"),
-               ("above", "true"), ("aboverule", "2")]
+               ("above", "true"), ("aboverule", "2"), ("skiptaskbar", "true"), ("skiptaskbarrule", "2"),
+               ("skippager", "true"), ("skippagerrule", "2"), ("skipswitcher", "true"), ("skipswitcherrule", "2")]
     commands = [base + [key, value] for key, value in entries]
     return commands
 
@@ -427,9 +466,11 @@ def kwin_rule_present(reader: Optional[str] = None) -> bool:
     if not reader:
         return False
     try:
-        out = subprocess.run([reader, "--file", "kwinrulesrc", "--group", RULE_GROUP, "--key", "title"], capture_output=True,
-                             text=True, timeout=5).stdout.strip()
-        return out == RULE_TITLE
+        def read(key):
+            return subprocess.run([reader, "--file", "kwinrulesrc", "--group", RULE_GROUP, "--key", key], capture_output=True,
+                                  text=True, timeout=5).stdout.strip()
+        # a rule from before 0.11.7 only kept them above: it counts as missing, so Sluice offers it again (and writes the rest)
+        return read("title") == RULE_TITLE and read("skiptaskbar") == "true"
     except (OSError, subprocess.SubprocessError):
         return False
 

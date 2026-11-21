@@ -36,6 +36,7 @@ log = logging.getLogger("sluice.engine")
 
 REFRESH_SECONDS = 2.0
 GUARD_STREAK_LOST = 6  # this many failed audio-server calls in a row, with no success between, means the server is gone
+RAW_SAFETY_SECONDS = 60.0  # with a graph watcher: the raw-microphone check runs at least this often (0.11.7)
 RELINK_EVERY = 5  # without a graph watcher: re-check the connections every 5th device refresh (10 s) unless something changed sooner
 RELINK_SAFETY = 30  # with one (0.11.5): only when the graph changed, and once a minute in case a change was missed
 XRUN_LOG_SECONDS = 10.0  # dropouts are summed up into one log line per this many seconds
@@ -116,6 +117,9 @@ class Engine:
         self._prev_default_source: Optional[str] = None
         self._prev_streams: Optional[dict] = None
         self._load_total, self._load_blocks, self._load_worst = 0.0, 0, 0.0  # the whole session, for the bug report
+        self._load_worst_at: Optional[float] = None  # 0.11.7: when the worst block was (wall clock), and seconds after the start
+        self._load_worst_after = 0.0
+        self._born = time.monotonic()
         self.tap_open = False  # the Effects window is showing the live voice display
         self._load = (0.0, 0.0)           # (average, worst) share of a block that Sluice's own work uses, recently
         self._known_inputs: Optional[set] = None
@@ -566,14 +570,16 @@ class Engine:
                 changed.add("streams")
         if relink or self._link_retry:
             self.apply_links()
-        if relink or now - self._last_raw_check >= rawmic.CHECK_SECONDS:
+        if relink or self._raw_check_due(now, watcher):
             self.check_raw_mic(now)
         xruns = self.io.xruns
         average, worst = self.io.take_load()
         if average or worst:
             self._load_total += average
             self._load_blocks += 1
-            self._load_worst = max(self._load_worst, worst)
+            if worst > self._load_worst:
+                self._load_worst = worst
+                self._load_worst_at, self._load_worst_after = time.time(), time.monotonic() - self._born
             self._load = (0.7 * self._load[0] + 0.3 * average if self._load[0] else average, max(worst, self._load[1] * 0.9))
         if now < self._quiet_until:
             self._xrun_base = xruns
@@ -587,10 +593,25 @@ class Engine:
             self._log_dropouts(now)
         return changed
 
+    def worst_block(self) -> tuple:
+        """(wall-clock time, seconds after Sluice started) of the session's worst audio block, or (None, 0.0)."""
+        return self._load_worst_at, self._load_worst_after
+
     def load_stats(self) -> tuple:
         """(average, worst, samples): the share of a block's time Sluice's own audio work used over the whole session."""
         average = self._load_total / self._load_blocks if self._load_blocks else 0.0
         return average, self._load_worst, self._load_blocks
+
+    def _raw_check_due(self, now: float, watcher) -> bool:
+        """Whether to look for apps on the raw microphone now. Without a graph watcher: every CHECK_SECONDS. With one (0.11.7), only
+        after PipeWire changed (that is ``relink``), while an app seen on it waits out its grace time, and once a minute to be safe:
+        the check costs a pw-link process, and every 5 seconds made Sluice start about 15 a minute while nothing changed."""
+        since = now - self._last_raw_check
+        if watcher is None or not watcher.running():
+            return since >= rawmic.CHECK_SECONDS
+        if self._raw_first_seen and since >= rawmic.CHECK_SECONDS:
+            return True
+        return since >= RAW_SAFETY_SECONDS
 
     def check_raw_mic(self, now: float) -> None:
         """Note apps that listen to a microphone straight from the device while a channel has effects on it."""

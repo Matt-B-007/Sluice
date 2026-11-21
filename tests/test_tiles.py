@@ -45,7 +45,7 @@ def tile(win, channel_id):
     return next(s for s in win.strips if s.channel.id == channel_id)
 
 
-def test_a_folded_tile_is_264_by_232_with_its_header_lanes_and_footer(qapp, tmp_path):
+def test_a_folded_tile_is_264_by_192_with_its_header_lanes_and_footer(qapp, tmp_path):
     from sluice.ui_tile import SHADOW, TILE_H, TILE_W, TileLane, TileStrip
     win, engine = make(qapp, tmp_path)
     try:

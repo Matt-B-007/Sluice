@@ -284,3 +284,15 @@ def test_frequent_helper_launches_are_flagged_and_a_normal_rate_is_not():
     assert "helper programs (pw-link) started a minute" in notes
     heavy = " ".join(efficiency.flags(dict(base, helper_launches=10, helper_cpu_seconds=8.0)))
     assert "Helper programs used 67%" in heavy
+
+
+def test_sluice_keeps_the_maths_libraries_to_one_worker_thread():
+    """0.11.7: OpenBLAS started a thread per processor thread (31 idle ones on a 32-thread Ryzen). A value set by hand is kept."""
+    import os
+    import subprocess
+    import sys
+    code = "import sluice, os; print(os.environ['OPENBLAS_NUM_THREADS'], os.environ['OMP_NUM_THREADS'])"
+    env = {k: v for k, v in os.environ.items() if k not in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS")}
+    assert subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True).stdout.split() == ["1", "1"]
+    env["OPENBLAS_NUM_THREADS"] = "4"
+    assert subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True).stdout.split() == ["4", "1"]

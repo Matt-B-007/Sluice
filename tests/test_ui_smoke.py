@@ -500,12 +500,12 @@ def test_menu_bar_has_the_usual_menus_in_the_usual_order(ui):
         "Updates", "Update automatically when a new version is found", "Check for updates…", "Go back to the previous version…"]
     assert _texts(_menu(win, "View")) == ["Layout", "Columns (a card for each channel)", "Rows (a line for each channel)",
                                           "Themes and skins", "Skin", "Theme", "Skin's own colours on Dark and Light",
-                                          "Reduce effects", "Desktop", "Desktop widgets", "Show or hide my widgets", "Window",
-                                          "Full screen", "Reset window size"]
+                                          "Reduce effects", "See-through window (Glass on KDE Plasma)", "Desktop", "Desktop widgets",
+                                          "Show or hide my widgets", "Window", "Full screen", "Reset window size", "Hide to tray"]
     # the ☰ button: File, Mixer, a View with what you do with the window, Help, and the Settings window at the bottom
     assert [a.text().replace("&", "") for a in win.main_menu.actions() if a.text()] == ["File", "Mixer", "View", "Help", "Settings…"]
     assert _texts(win.window_menu) == ["Layout", "Columns (a card for each channel)", "Rows (a line for each channel)", "Desktop",
-                                       "Desktop widgets", "Show or hide my widgets", "Window", "Full screen", "Reset window size"]
+                                       "Desktop widgets", "Show or hide my widgets", "Window", "Full screen", "Reset window size", "Hide to tray"]
     # a heading is words over a group, never a blank band: the first thing in a menu with groups is a heading
     from sluice.ui_menus import MENU_HEADING
     for name in ("Mixer", "View", "Settings", "Help"):

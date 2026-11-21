@@ -35,7 +35,7 @@ import zipfile
 from pathlib import Path
 from typing import Callable, Optional
 
-log = logging.getLogger("sluice.selfupdate")  # the name the log has always used
+log = logging.getLogger("sluice.update_install")
 
 WORK = ".update"          # where a downloaded release waits (inside the Sluice folder: same disk, so renames are instant)
 PREVIOUS = ".previous"    # the files of the version before the last update
@@ -476,23 +476,78 @@ def engine_rebuild_offer(root: Optional[Path], installed: str, shipped: str, old
             "made since are only in the new one. Rebuilding it takes a minute or two; restart Sluice afterwards to use it.")
 
 
-def rebuild_engine(root: Path, run: Callable = subprocess.run, python: str = sys.executable) -> str:
+def venv_for(python: str, root: Optional[Path] = None, prefix: Optional[str] = None, base: Optional[str] = None) -> Path:
+    """The environment Sluice runs in, as maturin must be told it (VIRTUAL_ENV). 0.11.7: never follow the link a venv's python is
+    (``.venv/bin/python`` is usually a link to ``/usr/bin/python``): following it named ``/usr``, where there is no pip."""
+    prefix = sys.prefix if prefix is None else prefix
+    base = getattr(sys, "base_prefix", prefix) if base is None else base
+    if prefix and prefix != base:  # running inside a venv: Python knows which
+        return Path(prefix)
+    if root is not None and (root / ".venv" / "bin" / "python").exists():
+        return root / ".venv"
+    return Path(os.path.abspath(python)).parent.parent  # the folder above bin/, the link itself left alone
+
+
+def rebuild_state_path() -> Optional[Path]:
+    try:
+        from .logs import log_path
+        return log_path().parent / "engine-rebuild.json"
+    except Exception:  # no log folder: nothing remembered
+        return None
+
+
+def remember_rebuild(result: str, path: Optional[Path] = None, when: Optional[float] = None) -> None:
+    """Keep the last rebuild attempt for the bug report: when, and "ok" or what went wrong."""
+    import time
+    path = path or rebuild_state_path()
+    if path is None:
+        return
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"at": time.time() if when is None else when, "result": result or "ok"}))
+    except OSError:
+        pass
+
+
+def last_rebuild(path: Optional[Path] = None) -> Optional[dict]:
+    path = path or rebuild_state_path()
+    try:
+        data = json.loads(path.read_text()) if path is not None else None
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) and "at" in data and "result" in data else None
+
+
+def rebuild_engine(root: Path, run: Callable = subprocess.run, python: str = sys.executable, prefix: Optional[str] = None,
+                   base: Optional[str] = None, remember: Optional[Callable] = None) -> str:
     """Build the Rust engine again, as ./install.sh does (maturin, into the environment Sluice runs in). Returns "" when it worked,
-    else what went wrong (the build's last lines are in the log)."""
-    env = dict(os.environ, VIRTUAL_ENV=str(Path(python).resolve().parent.parent))
-    maturin = Path(python).parent / "maturin"
+    else what went wrong, ending with the build's last lines (all of them are in the log)."""
+    remember_rebuild_ = remember or remember_rebuild
+    venv = venv_for(python, root, prefix, base)
+    bin_dir = venv / "bin"
+    env = dict(os.environ, VIRTUAL_ENV=str(venv), PATH=f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}")
+    env.pop("PYTHONHOME", None)
+    venv_python = bin_dir / "python" if (bin_dir / "python").exists() else Path(python)
+    maturin = bin_dir / "maturin"
     steps = []
     if not maturin.exists():
-        steps.append([python, "-m", "pip", "install", "--quiet", "--disable-pip-version-check", "maturin"])
+        steps.append([str(venv_python), "-m", "pip", "install", "--quiet", "--disable-pip-version-check", "maturin"])
     steps.append([str(maturin), "develop", "--release"])
     for command in steps:
         try:
             done = run(command, cwd=str(root / "rust" / "sluice_dsp"), env=env, capture_output=True, text=True, timeout=1800)
         except (OSError, subprocess.SubprocessError) as error:
-            return f"{Path(command[0]).name} could not run ({error})"
+            problem = f"{Path(command[0]).name} could not run ({error})"
+            remember_rebuild_(problem)
+            return problem
         if done.returncode != 0:
-            tail = "\n".join((done.stderr or done.stdout or "").strip().splitlines()[-12:])
-            log.warning("rebuilding the Rust engine failed (%s):\n%s", " ".join(command[-2:]), tail)
-            return "the build failed; the details are in the log (Help > Save bug report)"
-    log.info("rebuilt the Rust engine")
+            lines = (done.stderr or done.stdout or "").strip().splitlines()
+            log.warning("rebuilding the Rust engine failed (%s, VIRTUAL_ENV=%s):\n%s", " ".join(command[-2:]), venv,
+                        "\n".join(lines[-12:]))
+            last = [line.strip() for line in lines if line.strip()][-2:]
+            problem = "the build failed" + (f" ({' / '.join(last)})" if last else "") + "; the rest is in the log"
+            remember_rebuild_(problem)
+            return problem
+    log.info("rebuilt the Rust engine (VIRTUAL_ENV=%s)", venv)
+    remember_rebuild_("")
     return ""

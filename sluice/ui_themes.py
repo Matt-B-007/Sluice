@@ -67,10 +67,20 @@ class ThemesMixin:
         themes.set_current(colors)
         # The skin dresses the mixer (the window's content and its status bar); menus, the Settings window and the other windows
         # opened from it keep the shared style in every skin, in the theme's colours (0.11.6).
-        # Calm, narrowed to dialogs, menus and tooltips, in the theme's own colours (not a skin's own), so they match in every skin
-        self.setStyleSheet(themes.shared_style(themes.look_colors(theme, "calm")))
-        self.dress_skin()
+        # Calm, narrowed to dialogs, menus and tooltips, in the theme's own colours (not a skin's own), so they match in every skin.
+        # 0.11.7: on the whole application, not the window: the tray's menu, a desktop widget's menu and a message box with no
+        # parent are windows of their own, which a sheet on the main window never reached. Narrowed as it is, none of it reaches
+        # the mixer (that has only its skin's sheet).
+        shared = themes.shared_style(themes.look_colors(theme, "calm"))
         app = QGuiApplication.instance()
+        if app is not None and hasattr(app, "setStyleSheet"):
+            if app.styleSheet() != shared:
+                app.setStyleSheet(shared)
+            if self.styleSheet():
+                self.setStyleSheet("")
+        else:
+            self.setStyleSheet(shared)
+        self.dress_skin()
         if app is not None:
             app.setPalette(_palette_for(colors))
         self.refresh_theme_widgets()
@@ -110,7 +120,20 @@ class ThemesMixin:
         self.apply_theme()
         if hasattr(self, "_restructure_for_look"):
             self._restructure_for_look()
-        self.say(f"Skin: {themes.LOOKS[look_id]}.")
+        from . import ui_glass
+        later = look_id == "glass" and ui_glass.wants_see_through(self.engine.mixer) and not themes.see_through()
+        self.say(f"Skin: {themes.LOOKS[look_id]}." + (" The window becomes see-through the next time Sluice starts." if later else ""))
+
+    def set_see_through(self, on: bool) -> None:
+        """Settings > Themes and skins > See-through window (Glass on KDE). The window's see-through-ness is fixed when it first
+        appears, so this takes effect at the next start."""
+        self.engine.mixer.see_through = bool(on)
+        from . import ui_glass
+        now = themes.see_through()
+        if ui_glass.wants_see_through(self.engine.mixer) != now:
+            self.say("See-through window: " + ("on" if on else "off") + " the next time Sluice starts.")
+        else:
+            self.say("See-through window: " + ("on." if on else "off."))
 
     def set_look_colors(self, on: bool) -> None:
         """Nexus's and Tile's own colours on Dark (and Tile's white keys on Light), or every theme's own colours everywhere."""
@@ -122,6 +145,9 @@ class ThemesMixin:
         """Nexus: no shimmer on the rings and no waveform on the faders."""
         self.engine.mixer.reduce_effects = bool(on)
         themes.set_reduce_effects(on)
+        root = self.centralWidget()
+        if root is not None:
+            root.update()  # Glass: the backdrop goes or comes back
         for strip in self.strips:
             for fader in strip.faders.values():
                 fader._update_reveal()

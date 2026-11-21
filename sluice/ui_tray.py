@@ -8,7 +8,7 @@ import logging
 import time
 from functools import partial
 
-from PySide6.QtCore import QUrl
+from PySide6.QtCore import QEvent, QObject, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QMessageBox
 
@@ -20,6 +20,56 @@ from .ui_base import TALKING_HOLD, TALKING_LEVEL, TRAY_WATCH_MS
 HIDDEN_REFRESH_SECONDS = 4.0
 
 log = logging.getLogger("sluice.ui")
+
+
+SUSPEND_GRACE_MS = 250   # 0.11.7: the window must stay suspended this long before it counts as minimized
+ACTIVE_WITHIN = 1.0      # ...and have been the active window this recently (a minimize is clicked on the window in use)
+
+
+def is_wayland() -> bool:
+    from PySide6.QtGui import QGuiApplication
+    return (QGuiApplication.platformName() or "").startswith("wayland")
+
+
+class SuspendWatcher(QObject):
+    """Wayland never tells an app it was minimized (xdg-shell has no such state), so with "keep running in the tray" Sluice stayed
+    in the taskbar as a minimized window. KWin does mark a minimized window suspended, and Qt then stops calling it exposed: this
+    watches the window for that and, when it lasts and the window was in use just before, hides it into the tray (0.11.7)."""
+
+    def __init__(self, window) -> None:
+        super().__init__(window)
+        self.window = window
+        self.seen = 0       # times a suspension counted as a minimize (for the bug report)
+        self.last_active = 0.0
+        self.timer = QTimer(self)
+        self.timer.setSingleShot(True)
+        self.timer.setInterval(SUSPEND_GRACE_MS)
+        self.timer.timeout.connect(self.check)
+
+    def watch(self, handle) -> None:
+        if handle is not None:
+            handle.installEventFilter(self)
+
+    def eventFilter(self, obj, event) -> bool:
+        if event.type() == QEvent.Type.Expose and not obj.isExposed():
+            self.timer.start()
+        return False
+
+    def note_active(self) -> None:
+        self.last_active = time.monotonic()
+
+    def check(self, now=None, exposed=None) -> bool:
+        """Hide into the tray if the window is still unexposed, was in use a moment ago and the tray is there. Returns whether."""
+        w = self.window
+        handle = w.windowHandle()
+        exposed = (handle.isExposed() if handle is not None else True) if exposed is None else exposed
+        now = time.monotonic() if now is None else now
+        if exposed or not w.isVisible() or w._closed or not w.tray_active or now - self.last_active > ACTIVE_WITHIN + SUSPEND_GRACE_MS / 1000:
+            return False
+        self.seen += 1
+        log.info("the window was suspended right after being in use (minimized on Wayland): hiding it into the tray")
+        w.hide()
+        return True
 
 
 class TrayMixin:
@@ -123,6 +173,24 @@ class TrayMixin:
                 self.hide()
             else:
                 self.bring_to_front()
+
+    def hide_to_tray(self) -> None:
+        """Ctrl+W, or Hide to tray in the ☰ panel: into the tray when it is there, else minimized to the taskbar."""
+        self._update_tray()
+        if self.tray_active:
+            self.hide()
+            self.say("Sluice is running in the system tray.")
+        else:
+            self.showMinimized()
+
+    def minimize_detection(self) -> str:
+        """For the bug report: whether this desktop tells Sluice it was minimized, and what Sluice does then."""
+        if not is_wayland():
+            return "the desktop says so (X11): minimizing hides Sluice into the tray when the tray is on"
+        watcher = getattr(self, "suspend_watcher", None)
+        seen = watcher.seen if watcher is not None else 0
+        return (f"Wayland says nothing; Sluice watches for KWin suspending the window ({seen} time{'s' if seen != 1 else ''} this "
+                "session). Ctrl+W always hides into the tray")
 
     def start_minimized(self) -> None:
         """Start without showing the window: into the tray if that is how Sluice is set to run, else to the taskbar."""

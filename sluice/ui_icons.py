@@ -17,7 +17,10 @@ from PySide6.QtCore import QPointF, QRectF, QSize, Qt
 from PySide6.QtGui import QColor, QIcon, QIconEngine, QPainter, QPainterPath, QPen, QPixmap
 
 NAMES = ("speaker", "speaker_off", "mic", "mic_off", "link", "sliders", "plus", "menu", "gear", "more", "chevron_down", "headphones",
-         "broadcast", "chevron_up", "gamepad", "chat", "globe", "note", "bell")
+         "broadcast", "chevron_up", "gamepad", "chat", "globe", "note", "bell",
+         # 0.11.7: the ☰ panel and the Settings window
+         "refresh", "columns", "rows", "widgets", "eye", "record", "camera", "fullscreen", "tray", "keyboard", "star", "pulse", "bug",
+         "palette", "power", "save", "close", "chevron_right", "wave", "folder", "info", "quit")
 
 
 class _Grid:
@@ -142,6 +145,89 @@ def _draw(name: str, g: _Grid) -> None:
         g.arc(7, 7, 10, 10, -45, 90)
         g.arc(3, 3, 18, 18, 135, 90)
         g.arc(3, 3, 18, 18, -45, 90)
+    elif name == "refresh":
+        g.arc(4, 4, 16, 16, 30, 300)
+        g.poly([(20, 4), (20, 9), (15, 9)])
+    elif name == "columns":
+        for x, w in ((3, 5), (10, 5), (17, 4)):
+            g.rrect(x, 4, w, 16, 1.5)
+    elif name == "rows":
+        for y, h in ((4, 4.5), (10, 4.5), (16, 4)):
+            g.rrect(3, y, 18, h, 1.5)
+    elif name == "widgets":
+        g.rrect(3, 3, 7, 7, 2)
+        g.rrect(14, 3, 7, 7, 2)
+        g.rrect(3, 14, 7, 7, 2)
+        g.line(17.5, 14, 17.5, 21)
+        g.line(14, 17.5, 21, 17.5)
+    elif name == "eye":
+        g.arc(2, 5, 20, 14, 20, 140)
+        g.arc(2, 5, 20, 14, 200, 140)
+        g.circle(12, 12, 3)
+    elif name == "record":
+        g.circle(12, 12, 8)
+        g.circle(12, 12, 3, filled=True)
+    elif name == "camera":
+        g.rrect(2, 6, 14, 12, 2)
+        g.poly([(16, 10), (22, 7), (22, 17), (16, 14)])
+    elif name == "fullscreen":
+        g.poly([(3, 8), (3, 3), (8, 3)])
+        g.poly([(16, 3), (21, 3), (21, 8)])
+        g.poly([(3, 16), (3, 21), (8, 21)])
+        g.poly([(16, 21), (21, 21), (21, 16)])
+    elif name == "tray":
+        g.poly([(3, 13), (8, 13), (10, 16), (14, 16), (16, 13), (21, 13)])
+        g.rrect(3, 5, 18, 15, 2)
+    elif name == "keyboard":
+        g.rrect(2, 6, 20, 12, 2)
+        for x in (6, 10, 14, 18):
+            g.circle(x, 10, 0.6, filled=True)
+        g.line(7, 14, 17, 14)
+    elif name == "star":
+        points = []
+        for i in range(10):
+            a = math.radians(-90 + 36 * i)
+            r = 9 if i % 2 == 0 else 4
+            points.append((12 + r * math.cos(a), 12.5 + r * math.sin(a)))
+        g.poly(points, closed=True)
+    elif name == "pulse":
+        g.poly([(3, 12), (7, 12), (10, 5), (14, 19), (17, 12), (21, 12)])
+    elif name == "bug":
+        g.rrect(7, 7, 10, 13, 5)
+        g.line(12, 11, 12, 20)
+        g.line(3, 13, 7, 13)
+        g.line(17, 13, 21, 13)
+        g.line(9, 7, 7.5, 4)
+        g.line(15, 7, 16.5, 4)
+    elif name == "palette":
+        g.arc(3, 3, 18, 18, 0, 300)
+        g.poly([(21, 12), (16, 13), (15, 16), (16.5, 20.5)])
+        for x, y in ((8, 10), (12, 7), (16, 9)):
+            g.circle(x, y, 1.2, filled=True)
+    elif name == "power":
+        g.line(12, 3, 12, 11)
+        g.arc(4, 5, 16, 16, 120, 300)
+    elif name == "save":
+        g.poly([(4, 4), (16, 4), (20, 8), (20, 20), (4, 20)], closed=True)
+        g.poly([(8, 4), (8, 9), (15, 9), (15, 4)])
+        g.rrect(8, 14, 8, 6, 0.5)
+    elif name == "close":
+        g.line(6, 6, 18, 18)
+        g.line(18, 6, 6, 18)
+    elif name == "chevron_right":
+        g.poly([(9, 6), (15, 12), (9, 18)])
+    elif name == "wave":
+        g.poly([(3, 12), (6, 12), (8, 7), (11, 17), (13, 9), (15, 15), (17, 12), (21, 12)])
+    elif name == "folder":
+        g.poly([(3, 6), (9, 6), (11, 8), (21, 8), (21, 19), (3, 19)], closed=True)
+    elif name == "info":
+        g.circle(12, 12, 9)
+        g.line(12, 11, 12, 17)
+        g.circle(12, 7.5, 0.8, filled=True)
+    elif name == "quit":
+        g.poly([(14, 4), (5, 4), (5, 20), (14, 20)])
+        g.line(10, 12, 21, 12)
+        g.poly([(17, 8), (21, 12), (17, 16)])
     else:
         raise ValueError(f"no icon called {name}")
 

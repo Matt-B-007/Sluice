@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The Tile look's channel tiles (chosen direction, 2026-11-19).
 
-A folded tile is 264 x 232: a header (tinted icon well, name, source line, link toggle, overflow menu), one lane for each mix
+A folded tile is 264 x 192: a header (tinted icon well, name, source line, link toggle, overflow menu), one lane for each mix
 (Listen with headphones, Broadcast with waves: a mute button, one track that is both the fader and the meter, and the value in
 dB) and a footer (the effects button and the fold-out chevron). Every main control works while the tile is folded; folding it
 out adds detail and never repeats a control: bigger lanes with a dB scale, the effects as chips in chain order that switch on and
@@ -39,7 +39,7 @@ from .ui_tile_paint import (
 )
 
 
-TILE_W, TILE_H = 264, 232      # a folded tile
+TILE_W, TILE_H = 264, 192      # a folded tile (0.11.7: 40 px shorter, no empty band above the footer)
 
 
 # ----------------------------------------------------------------------------- the track: fader and meter in one
@@ -671,8 +671,11 @@ class TileStrip(ChannelStrip):
             height = self.layout_root.totalHeightForWidth(width) if self.layout_root.hasHeightForWidth() \
                 else self.layout_root.totalSizeHint().height()
             height = max(height, TILE_H + top + bottom)
-        else:
-            height = TILE_H + LANE_EXTRA_H * max(0, len(self.engine.mixer.mixes) - 2) + top + bottom
+        else:  # 0.11.7: as tall as the header, the lanes and the footer need (TILE_H kept 40 px of empty band above the footer)
+            self.layout_root.activate()
+            height = self.layout_root.totalMinimumSize().height()
+            if height <= top + bottom:  # not laid out yet
+                height = TILE_H + LANE_EXTRA_H * max(0, len(self.engine.mixer.mixes) - 2) + top + bottom
         self.setFixedSize(width, height)
 
     def _clear_details(self) -> None:

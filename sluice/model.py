@@ -257,8 +257,10 @@ class Mixer:
         self.widget_look = ""   # 0.11.6: the desktop widgets' own skin; "" is the same as the window
         self.widget_theme = ""  # ...and their own theme; "" is the same as the window
         self.look_colors = True  # Nexus and Tile show their own colours on Dark (Tile on Light too); off: every theme keeps its own
+        self.see_through = True  # 0.11.7: Glass on KDE makes the window itself see-through (KWin blurs the wallpaper behind it)
         self.reduce_effects = False  # Nexus: no shimmer on the rings and no waveform on the faders (for slow or busy machines)
         self.desktop_widgets: list = []  # widgets left on the desktop: [{kind, mix, channel, x, y}], see ui_widgets
+        self.hidden_widgets: list = []  # 0.11.7: the ones Ctrl+Shift+W put away, kept so the same key brings them back after a restart
         self.look = "calm"  # the shapes and sizes of the window ("calm", "original", "nexus", "tile" or "glass"), apart from the colour theme
         self.theme = "dark"  # a theme id: dark, light, contrast, purple, system, or custom:<name> (an imported file)
         self.close_action = DEFAULT_CLOSE  # "quit", "minimize" (keep running in the taskbar) or "tray" (keep running in the system tray)
@@ -422,7 +424,9 @@ class Mixer:
             "widget_look": self.widget_look,
             "widget_theme": self.widget_theme,
             "reduce_effects": self.reduce_effects,
+            "see_through": self.see_through,
             "desktop_widgets": [dict(w) for w in self.desktop_widgets],
+            "hidden_widgets": [dict(w) for w in self.hidden_widgets],
             "channels": [
                 {
                     "id": c.id,
@@ -488,15 +492,18 @@ class Mixer:
         else:  # settings from before 0.11.5 had one switch for Nexus and one for Tile: off only if both were switched off
             mixer.look_colors = not (data.get("nexus_colors") is False and data.get("tile_colors") is False)
         mixer.reduce_effects = data.get("reduce_effects") is True
-        widgets = data.get("desktop_widgets")
-        if isinstance(widgets, list):
-            seen = set()
+        mixer.see_through = data.get("see_through") is not False
+        for key_name in ("desktop_widgets", "hidden_widgets"):
+            widgets = data.get(key_name)
+            if not isinstance(widgets, list):
+                continue
+            seen, into = set(), getattr(mixer, key_name)
             for item in widgets:
                 spec = clean_widget_spec(item)
                 key = (spec["kind"], spec["mix"], spec["channel"]) if spec else None
-                if spec is not None and key not in seen and len(mixer.desktop_widgets) < MAX_DESKTOP_WIDGETS:
+                if spec is not None and key not in seen and len(into) < MAX_DESKTOP_WIDGETS:
                     seen.add(key)
-                    mixer.desktop_widgets.append(spec)
+                    into.append(spec)
         seen_hints = data.get("hints_seen")
         if isinstance(seen_hints, list):
             mixer.hints_seen = [h for h in seen_hints if isinstance(h, str)][:50]
