@@ -139,11 +139,11 @@ def _engine() -> tuple:
 
 
 def _launcher() -> tuple:
-    from . import desktop
+    from . import launcher
 
-    if not desktop.is_installed():
+    if not launcher.is_installed():
         return True, "not in the applications menu (add it with: sluice --install-desktop)"
-    problem = desktop.launcher_problem()
+    problem = launcher.launcher_problem()
     if problem:
         return False, problem
     return True, "in the applications menu; if clicking it does nothing, read ~/.local/state/sluice/launcher.log"

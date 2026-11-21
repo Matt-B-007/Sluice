@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from sluice import desktop, logs, uninstall
+from sluice import launcher, logs, uninstall
 from sluice.model import config_path
 
 
@@ -28,10 +28,10 @@ def make_folder(base: Path) -> Path:
 
 def lived_in(home: Path) -> Path:
     root = make_folder(home)
-    desktop.launcher_path().parent.mkdir(parents=True, exist_ok=True)
-    desktop.launcher_path().write_text("x")
-    desktop.script_path().parent.mkdir(parents=True, exist_ok=True)
-    desktop.script_path().write_text("x")
+    launcher.launcher_path().parent.mkdir(parents=True, exist_ok=True)
+    launcher.launcher_path().write_text("x")
+    launcher.script_path().parent.mkdir(parents=True, exist_ok=True)
+    launcher.script_path().write_text("x")
     config_path().parent.mkdir(parents=True, exist_ok=True)
     config_path().write_text("{}")
     logs.state_dir().mkdir(parents=True, exist_ok=True)
@@ -43,8 +43,8 @@ def test_the_plan_lists_what_exists_and_nothing_else(home):
     root = lived_in(home)
     result = uninstall.plan(root=root)
     paths = {i.path for i in result.items}
-    assert {desktop.launcher_path(), desktop.script_path(), config_path().parent, logs.state_dir(), root} <= paths
-    assert desktop.autostart_path() not in paths  # it was never created
+    assert {launcher.launcher_path(), launcher.script_path(), config_path().parent, logs.state_dir(), root} <= paths
+    assert launcher.autostart_path() not in paths  # it was never created
     text = uninstall.describe(result)
     assert "~" in text and str(home) not in text.replace("~", "")  # no personal path is printed
 
@@ -56,7 +56,7 @@ def test_keeping_settings_leaves_only_that_folder(home):
     assert any(p == config_path().parent for p, _ in result.kept)
     assert uninstall.execute(result) == 0
     assert config_path().exists() and not root.exists() and not logs.state_dir().exists()
-    assert not desktop.launcher_path().exists()
+    assert not launcher.launcher_path().exists()
 
 
 def test_everything_listed_is_removed(home):
@@ -97,7 +97,7 @@ def test_keeping_settings_never_removes_a_git_clone_even_if_asked(home):
 def test_the_git_question_is_asked_on_the_command_line(home, monkeypatch):
     root = lived_in(home)
     (root / ".git").mkdir()
-    monkeypatch.setattr(uninstall.selfupdate, "install_root", lambda *a: root)
+    monkeypatch.setattr(uninstall.update_install, "install_root", lambda *a: root)
     answers = iter(["yes", "yes"])
     assert uninstall.run(ask=lambda _: next(answers), say=lambda *_: None) == 0
     assert not root.exists()
@@ -198,7 +198,7 @@ def test_asking_first_and_refusing_removes_nothing(home):
 
 def test_dry_run_changes_nothing_and_yes_skips_the_question(home, monkeypatch):
     root = lived_in(home)
-    monkeypatch.setattr(uninstall.selfupdate, "install_root", lambda *a: root)
+    monkeypatch.setattr(uninstall.update_install, "install_root", lambda *a: root)
     assert uninstall.run(dry_run=True, say=lambda *_: None) == 0 and root.exists()
     assert uninstall.run(assume_yes=True, ask=lambda _: pytest.fail("asked"), say=lambda *_: None) == 0
     assert not root.exists() and not config_path().exists()

@@ -6,7 +6,7 @@ import pytest
 from sluice import reconnect
 from sluice.audio_io import NullIO
 from sluice.backend import MockSystem
-from sluice.control import ControlApi
+from sluice.control_socket import ControlApi
 from sluice.engine import GUARD_STREAK_LOST, Engine
 from sluice.linker import NullLinker
 from sluice.model import MONITOR, RECORDING, STREAM, Mixer

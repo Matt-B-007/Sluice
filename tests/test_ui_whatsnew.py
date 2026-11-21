@@ -15,7 +15,7 @@ from sluice.linker import NullLinker  # noqa: E402
 from sluice.model import Mixer  # noqa: E402
 from sluice.ui import MainWindow  # noqa: E402
 from sluice.ui_whatsnew import NotesDialog  # noqa: E402
-from sluice.updates import UpdateResult  # noqa: E402
+from sluice.update_check import UpdateResult  # noqa: E402
 
 
 @pytest.fixture

@@ -1,5 +1,107 @@
 # Changelog
 
+## 0.11.6
+A new Glass skin, desktop widgets with their own skin and theme, the KDE layer-shell fix from the 0.11.5 bug report, menus and shortcuts put in
+order, and fixes to Tile, Nexus and Original.
+- **KDE desktop widgets fixed.** Sluice asked KDE's layer-shell library for a function under a misspelt name, so on Plasma 6 widgets fell back to
+  ordinary windows. The names are now built from their parts and checked in a test against the list Plasma 6 exports. Only the four functions
+  widgets cannot work without are required; the others are used when they are there. Widgets now open on the screen they were left on (not
+  whichever screen is active) and never take the keyboard when shown. The bug report says how widgets are shown (layer-shell or ordinary windows, and
+  why), and the README explains the KDE setup.
+- **Glass, a new skin.** Frosted panes over a soft wash of the theme's colours: cards, buttons and chips are see-through with a bright edge along
+  the top. It works for the window and for the desktop widgets; on KDE Plasma, KWin blurs what is behind Glass widgets (through KDE's
+  window-effects library); elsewhere they are see-through without the blur. *Reduce effects* turns the blur off.
+- **Desktop widgets can have their own skin and theme.** *Settings > Themes and skins > Desktop widgets* has a Skin and a Theme, both "Same as the
+  window" until you choose. The Channel levels widget follows too.
+- **Looks are now skins.** "Look" is "Skin" everywhere you read it, and the Settings section is *Themes and skins*. The skin pictures are redrawn:
+  Nexus's glass, Calm's shadows and the new Glass.
+- **Original.** Its text is the same size as in the other skins (it looked shrunken beside them); its cards are wider to fit, so the window shows
+  the compact list below 760 pixels, as the other skins do.
+- **Menus and dialogs look the same in every skin.** The shared style reaches only dialogs, menus and tooltips, so none of it leaks into a skin.
+- **Menus put in order.** *File* has Reset all settings. *Mixer* has sections: Channels, Mixes, Quick mutes. *View* says Skin. The Settings menu
+  (Original) follows the Settings window's sections, with Controllers. *Help* is grouped (Learn, Something wrong, Community, About) with Uninstall
+  apart at the bottom. Section headings show their words (no blank bands), every shortcut has at least 24 px of room before it, "…" marks only
+  items that open a window or ask something, and greyed-out items are easier to read. The theme menu has *Your themes* and *Manage* headings.
+- **Shortcuts.** New: Ctrl+Q (Quit), Ctrl+1 and Ctrl+2 (Columns, Rows), Ctrl+Shift+W (close your desktop widgets, and again to bring the same
+  ones back), Ctrl+0 (reset the window size). Hear Broadcast moved to Ctrl+H, away from Mute Broadcast's Ctrl+Shift+B. A test fails if two
+  actions share a shortcut or one is missing from the shortcuts list.
+- **Spacing in every window.** A test opens Settings (every section), Effects, What's new and Recording devices for OBS in every skin and fails on
+  anything cut off, overlapping or outside the window. Settings works from the keyboard and a screen reader: Tab between controls, the arrow keys
+  between the skin pictures, Space to choose, and every control is named.
+- **Tile.** Tiles take a new theme's colours at once (a channel's colour is shaded differently on light themes; switching theme left the old shade).
+  Listen and Broadcast keys sit 28 px apart, as the tiles do (they were 44). The fill up to a slider's handle is now solid: yellow channels stay
+  yellow instead of turning olive. The channel and mix widgets lost the empty band at their bottom.
+- **Nexus.** The Rows layout has the sound ring too: 48 px at the start of each row and in the middle of the Listen and Broadcast cards.
+- **After an update.** When the new version comes with a newer Rust audio engine than the one built on your computer, *What's new* offers to
+  rebuild it (a minute or two, in the background; restart Sluice afterwards).
+- **Fewer connection checks.** Sluice ignores the changes its own links cause, waits for half a second of quiet before checking (an app starting
+  makes a burst of changes), and logs what set each check off.
+- **Wording.** The dropout messages point to *Settings > Audio* for the buffer.
+- **Files renamed** to say what they hold: `launcher`, `control_socket`, `update_check`, `update_install`, `ui_widgets`, `ui_controllers`,
+  `ui_skins` and `skin_*`. `sluice.updates` stays as a stand-in so the updater in 0.11.5 accepts this version.
+- **Tests.** Each test's closed windows are now deleted, so the whole run needs about a quarter of the memory it did.
+
+## 0.11.5
+Every look and every theme cleaned up: real depth worked out from each theme, a redesigned Nexus with sound rings and glow, Tile keys that look like
+keys, a Settings window, new desktop widgets, and the Free layout gone.
+- **Depth from every theme.** Raised keys, glass cards, shadows, grooves and trays are now worked out from each theme's own colours (`sluice/depth.py`):
+  shading keeps the theme's colour instead of turning grey, shadows take a deep shade of the theme's background instead of plain black, very dark
+  themes (OLED Black, Terminal Green, Neon Tokyo, Aurora) get lit edges instead of shadows they could not show, and High contrast stays flat with solid
+  borders. A theme file can still set any of these colours by hand (see `themes/README.md`).
+- **Tile.** Full depth on every key: a face lit from above with a lit top edge, an 8 px lower edge with a dark rim, a tight shadow and a wide soft one,
+  and enough room round each key that no shadow is cut off. The keys sit in a sunken tray with a front lip, 28 px apart. **Listen and Broadcast** are now
+  short keys with a sideways slider, a Limiter switch and a chevron that folds out the device and the rest.
+- **Nexus.** Glass cards with a lit edge in each card's colour and an outline from the accent; each card **glows with its sound**. Every channel and mix
+  card has the **sound ring** at the top (36 bars round the app's icon). Listen is cyan and Broadcast coral (or the theme's own second colour). Light
+  themes get crisp coloured top edges and soft shadows, never glow. *Reduce effects* turns off the shimmer and the glow.
+- **Calm.** A light touch of depth: soft card shadows and grooves that look sunk in.
+- **The looks' own colours replace only Dark (and Light, for Tile).** Every other theme keeps its own colours in every look, so Retro Purple, Midnight
+  Blue, Amber Console and Paper look like themselves again. The Nexus colours and Tile colours switches are one: *Look's own colours on Dark and Light*.
+- **Easier to read.** Greyed-out text reads at 3 to 1 or better on every theme, the Live label and muted buttons at 4.5 to 1, slider handles have an edge
+  you can see on light themes, and channel colours are darker shades on light themes so yellow and green stand out in their grooves. One test checks
+  every look on every theme.
+- **A Settings window.** The ⚙ button beside ☰ opens it: Appearance (a live picture of each look in your theme, the theme, the look's own colours,
+  reduce effects, the layout), Audio, Startup and background, Controllers and Updates. ☰ keeps File, Mixer, View and Help, with Settings… (Ctrl+,)
+  at the bottom. The right of the top bar shows only status, and there is room between the top bar's buttons and the line under it.
+- **Desktop widgets.** Two new ones: a **channel** (a slider and mute for each mix) and a **mix** (its slider, Mute and the Limiter). Widgets snap to the
+  screen's edges and to each other and remember a place on each screen. On KDE Plasma under Wayland they use KDE's layer-shell when it is installed, so
+  they can place themselves and stay on top; otherwise Sluice can add a KWin rule that keeps them on top. Every widget follows the look in use.
+- **The Free layout is gone.** If you used it, Sluice opens in Columns; its saved positions are dropped. Nexus and Tile no longer need it.
+- **Themes.** The pack has 21 themes: the copies of built-in themes went, and so did six that looked almost the same as another (Cassette, Sepia Reader,
+  Studio Slate, Vintage Hi-Fi, Halloween, Ocean). One you already imported keeps working; if its file is gone, Sluice uses the closest built-in theme.
+- **Lighter.** Sluice watches PipeWire for changes (one `pw-link --monitor`) instead of starting three `pw-link` processes every few seconds to look.
+  With every meter moving, a meter update costs about 0.3 ms in Calm, 1 ms in Tile and Original and 1.1 ms in Nexus; a test keeps every look under 1.5 ms.
+  Meters and rings on a card paint what is behind them, so a frame redraws only them; rings out of sight are not redrawn.
+- **Tidier code.** `ui.py` is split into five modules and `ui_tile.py` into three; the tests are named by what they check, not by version; unused code
+  is gone.
+
+## 0.11.4
+The Tile look becomes raised keys in a tray, light and dark; lighter meters in every look; and fixes to spacing, the Free layout and the command line.
+- **Tile: raised keys.** Each channel is a key: a face lit from above, a thick lower edge and a soft shadow, in a tray. Each mix has a groove
+  that is both its fader and its meter (a soft fill for the fader, a bright fill for the sound, a tick for the peak) with a white handle.
+  Small buttons are keys too and look pushed in while on (muted, linked). White keys on Light and Paper, graphite keys on the dark themes.
+- **Tile: everything matches.** The Listen and Broadcast cards, the rows of the Rows layout, the compact list and the desktop widgets (the
+  microphone button, the volume dial and the channel list) are keys too. The desktop widgets now follow the look and the colours you choose.
+- **View > Tile colours.** On (the default), the built-in themes show the Tile look's own key colours; off, every theme keeps its own.
+  High contrast and imported themes are never changed.
+- **Tile: fold out, move, focus.** Fold a key out for a dB scale, its effects as chips you switch on and off, and its apps with a Move
+  button. Drag a key by its name to move it (a dashed "Drop here" slot shows where it lands; Escape puts it back), or use Move earlier /
+  Move later in its menu. A key with the keyboard focus has a ring in its channel's colour.
+- **Inter and JetBrains Mono** come with Sluice (SIL Open Font License; the licences are in `sluice/data/fonts`) and are used by the Tile look,
+  so it reads the same on every computer. Nothing is installed on the system.
+- **Lighter meters.** The meters in every look are drawn from shapes made once instead of being cut to shape every frame: Calm uses about
+  half the processor time it did for its meters, Tile less than half of what its first version did.
+- **Long channel names** end in "…" instead of being cut off, in every look and layout; the tooltip has the whole name.
+- **Rows with the Recording mix.** The window offers the Rows layout only when every mix has room for its slider, level and mute button (it
+  shows the compact list otherwise), and three mix cards stand at the side only when the window is tall enough. Before, the levels could sit
+  on the sliders and the third column ran off the edge; with two mixes this could happen in windows 980-1080 pixels wide.
+- **Free layout.** A card opens where it covers the fewest nodes. In Tile, one key is folded out at a time, over the others, with a deeper
+  shadow; clicking the floor or Escape folds it back. Keys no longer overlap when the Recording mix makes them taller, and the Broadcast key
+  names its real device (it said "Default output").
+- **Command line.** `sluice --rollback` now holds its lock until the old files are back, so a Sluice started meanwhile cannot run half-replaced
+  files; `--cleanup` and `--uninstall` let go of the lock when they finish.
+- **Bug report** says whether Tile colours are on.
+
 ## 0.11.3
 The window fits any size, a new Tile look, desktop widgets, and a fix for the audio engine going silent when channels change.
 - **Audio engine fix.** Adding, removing or reconnecting channels while Sluice runs no longer blocks the audio for a moment (the Rust engine now does its slow

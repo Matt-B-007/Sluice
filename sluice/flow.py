@@ -3,7 +3,7 @@ wraps its cards instead of scrolling sideways)."""
 from __future__ import annotations
 
 from PySide6.QtCore import QPoint, QRect, QSize, Qt
-from PySide6.QtWidgets import QLayout, QLayoutItem, QSizePolicy
+from PySide6.QtWidgets import QLayout, QLayoutItem
 
 
 class FlowLayout(QLayout):
@@ -94,3 +94,71 @@ class FlowLayout(QLayout):
 def _item(widget):
     from PySide6.QtWidgets import QWidgetItem
     return QWidgetItem(widget)
+
+
+class OverlapLayout(QLayout):
+    """A row or column of widgets that may overlap by ``overlap`` pixels (0.11.6). The Tile look's Listen and Broadcast keys keep
+    clear room round their faces for their shadows; laid out edge to edge, the faces were 44 px apart. Overlapping the clear room
+    puts the faces 28 px apart, and the later key (drawn on top) hides the part of the earlier key's shadow its face covers."""
+
+    def __init__(self, vertical: bool, overlap: int = 0, parent=None) -> None:
+        super().__init__(parent)
+        self._items: list = []
+        self.vertical, self.overlap = vertical, overlap
+        self.setContentsMargins(0, 0, 0, 0)
+
+    def addItem(self, item: QLayoutItem) -> None:
+        self._items.append(item)
+
+    def addWidget(self, widget, stretch: int = 0) -> None:  # noqa: ARG002
+        self.addChildWidget(widget)
+        self.addItem(_item(widget))
+        self.invalidate()
+
+    def addStretch(self, _stretch: int = 0) -> None:
+        pass  # the widgets start at the top (or the left) and the rest is left empty
+
+    def count(self) -> int:
+        return len(self._items)
+
+    def itemAt(self, index: int):
+        return self._items[index] if 0 <= index < len(self._items) else None
+
+    def takeAt(self, index: int):
+        if 0 <= index < len(self._items):
+            self.invalidate()
+            return self._items.pop(index)
+        return None
+
+    def expandingDirections(self):
+        return Qt.Orientation(0)
+
+    def _shown(self) -> list:
+        return [item for item in self._items if not item.isEmpty()]
+
+    def sizeHint(self) -> QSize:
+        sizes = [item.sizeHint() for item in self._shown()]
+        margins = self.contentsMargins()
+        extra = QSize(margins.left() + margins.right(), margins.top() + margins.bottom())
+        if not sizes:
+            return extra
+        if self.vertical:
+            size = QSize(max(s.width() for s in sizes), sum(s.height() for s in sizes) - self.overlap * (len(sizes) - 1))
+        else:
+            size = QSize(sum(s.width() for s in sizes) - self.overlap * (len(sizes) - 1), max(s.height() for s in sizes))
+        return size + extra
+
+    def minimumSize(self) -> QSize:
+        return self.sizeHint()
+
+    def setGeometry(self, rect: QRect) -> None:
+        super().setGeometry(rect)
+        margins = self.contentsMargins()
+        x, y = rect.x() + margins.left(), rect.y() + margins.top()
+        for item in self._shown():
+            size = item.sizeHint()
+            item.setGeometry(QRect(QPoint(x, y), size))
+            if self.vertical:
+                y += size.height() - self.overlap
+            else:
+                x += size.width() - self.overlap

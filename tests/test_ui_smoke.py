@@ -18,7 +18,7 @@ from sluice.linker import NullLinker  # noqa: E402
 from sluice.model import MONITOR, STREAM, Mixer  # noqa: E402
 from sluice.ui import MainWindow, format_db, level_fraction  # noqa: E402
 from sluice.ui_effects import EffectsDialog, ParamRow, format_value  # noqa: E402
-from sluice.ui_widgets import parse_number  # noqa: E402
+from sluice.ui_base import parse_number  # noqa: E402
 
 
 @pytest.fixture
@@ -297,8 +297,9 @@ def test_help_menu_saves_a_bug_report(ui, tmp_path, monkeypatch):
     from sluice import __version__
 
     assert [a.text().replace("&", "") for a in help_menu.actions() if a.text()] == [
-        "Keyboard shortcuts", "What's new in this version", "Save bug report\u2026", "I heard a glitch",
-        "Report a problem", "Join the Discord", "Project page on GitHub", f"About Sluice {__version__}", "Uninstall Sluice\u2026"]
+        "Learn", "Keyboard shortcuts", "What's new in this version", "Something wrong", "I heard a glitch", "Save bug report…",
+        "Report a problem", "Community", "Join the Discord", "Project page on GitHub", "About", f"About Sluice {__version__}",
+        "Uninstall Sluice…"]
     target = tmp_path / "report.txt"
     win.save_report_to(target)
     assert target.read_text().startswith("sluice bug report")
@@ -307,7 +308,7 @@ def test_help_menu_saves_a_bug_report(ui, tmp_path, monkeypatch):
 
 def test_controls_window_learns_a_midi_control(ui, tmp_path):
     from sluice.midi import MidiEvent
-    from sluice.ui_controls import Controls, ControllersDialog
+    from sluice.ui_controllers import Controls, ControllersDialog
 
     win, system, engine = ui
     controls = Controls(engine, win, tmp_path / "controls.json", demo=True)
@@ -431,7 +432,7 @@ def test_version_is_shown_and_about_and_update_menu_exist(ui):
 def test_check_for_updates_reports_each_outcome(ui, monkeypatch):
     from PySide6.QtWidgets import QMessageBox
 
-    from sluice.updates import UpdateResult
+    from sluice.update_check import UpdateResult
 
     win, *_ = ui
     shown = []
@@ -452,42 +453,6 @@ def test_check_for_updates_reports_each_outcome(ui, monkeypatch):
         if "latest version" in win.status_label.text():
             break
     assert "is the latest version" in win.status_label.text()
-
-
-def test_wheel_scrolls_the_channels_sideways_smoothly(app):
-    from PySide6.QtCore import QPoint, QPointF, Qt
-    from PySide6.QtGui import QWheelEvent
-    from PySide6.QtWidgets import QWidget
-
-    from sluice.ui import SmoothScrollArea
-
-    area = SmoothScrollArea()
-    area.setWidgetResizable(False)
-    inner = QWidget()
-    inner.resize(3000, 100)
-    area.setWidget(inner)
-    area.resize(400, 140)
-    area.show()
-    bar = area.horizontalScrollBar()
-    assert bar.maximum() > 0
-
-    def wheel(angle_y, pixel_y=0):
-        return QWheelEvent(QPointF(50, 50), QPointF(50, 50), QPoint(0, pixel_y), QPoint(0, angle_y),
-                           Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier, Qt.ScrollPhase.NoScrollPhase, False)
-
-    area.wheelEvent(wheel(-120))  # one notch down scrolls right
-    assert area._animation.endValue() == SmoothScrollArea.STEP
-    area._animation.setCurrentTime(area._animation.duration())
-    assert bar.value() == SmoothScrollArea.STEP
-    area.wheelEvent(wheel(120))   # and back
-    area._animation.setCurrentTime(area._animation.duration())
-    assert bar.value() == 0
-    area.wheelEvent(wheel(120))   # cannot go past the start
-    area._animation.setCurrentTime(area._animation.duration())
-    assert bar.value() == 0
-    area.wheelEvent(wheel(0, pixel_y=-30))  # touchpad: follows the finger directly
-    assert bar.value() == 30
-    area.close()
 
 
 def test_multichannel_outputs_are_labelled_and_listed_after_stereo_ones(ui):
@@ -524,20 +489,29 @@ def test_menu_bar_has_the_usual_menus_in_the_usual_order(ui):
     win.attach_controls(FakeControls())
     names = [a.text().replace("&", "") for a in win.menuBar().actions()]
     assert names == ["File", "Mixer", "View", "Settings", "Help"]
-    assert _texts(_menu(win, "File")) == ["Save settings", "Import settings…", "Export settings…",
-                                          "Restore earlier settings", "Open folder", "Quit"]
-    assert _texts(_menu(win, "Mixer"))[:4] == ["Add channel…", "Refresh devices and apps", "Recording mix (a third mix)",
-                                               "Recording devices for OBS"]
-    assert "Hear Broadcast" in _texts(_menu(win, "Mixer")) and "Mute my microphone" in _texts(_menu(win, "Mixer"))
+    assert _texts(_menu(win, "File")) == ["Save settings", "Import settings…", "Export settings…", "Restore earlier settings",
+                                          "Reset all settings to the defaults…", "Open folder", "Quit"]
+    assert _texts(_menu(win, "Mixer")) == ["Channels", "Add channel…", "Refresh devices and apps", "Mixes", "Recording mix (a third mix)",
+                                           "Recording devices for OBS…", "Quick mutes", "Mute my microphone", "Mute Listen",
+                                           "Mute Broadcast", "Hear Broadcast"]
     assert _texts(_menu(win, "Settings")) == [
-        "Startup", "Running in the background", "Add Sluice to the applications menu",
-        "Audio", "Audio buffer", "MIDI controllers and Stream Deck…",
-        "Updates", "Update automatically when a new version is found", "Check for updates…", "Go back to the previous version…",
-        "Reset all settings to the defaults…"]
+        "Startup and background", "Running in the background", "Add Sluice to the applications menu",
+        "Audio", "Audio buffer", "Controllers", "MIDI controllers and Stream Deck…",
+        "Updates", "Update automatically when a new version is found", "Check for updates…", "Go back to the previous version…"]
     assert _texts(_menu(win, "View")) == ["Layout", "Columns (a card for each channel)", "Rows (a line for each channel)",
-                                          "Free (nodes you place anywhere)", "Appearance", "Look", "Theme", "Nexus",
-                                          "Nexus colours on dark themes", "Reduce effects", "Tidy up the free layout",
-                                          "Desktop", "Desktop widgets", "Window", "Full screen", "Reset window size"]
+                                          "Themes and skins", "Skin", "Theme", "Skin's own colours on Dark and Light",
+                                          "Reduce effects", "Desktop", "Desktop widgets", "Show or hide my widgets", "Window",
+                                          "Full screen", "Reset window size"]
+    # the ☰ button: File, Mixer, a View with what you do with the window, Help, and the Settings window at the bottom
+    assert [a.text().replace("&", "") for a in win.main_menu.actions() if a.text()] == ["File", "Mixer", "View", "Help", "Settings…"]
+    assert _texts(win.window_menu) == ["Layout", "Columns (a card for each channel)", "Rows (a line for each channel)", "Desktop",
+                                       "Desktop widgets", "Show or hide my widgets", "Window", "Full screen", "Reset window size"]
+    # a heading is words over a group, never a blank band: the first thing in a menu with groups is a heading
+    from sluice.ui_menus import MENU_HEADING
+    for name in ("Mixer", "View", "Settings", "Help"):
+        first = _menu(win, name).actions()[0]
+        assert first.property("heading") and first.defaultWidget().objectName() == MENU_HEADING
+        assert first.defaultWidget().property("first") is True
 
 
 def test_mixer_menu_toggles_follow_the_real_state(ui):
@@ -685,20 +659,20 @@ def test_channel_menu_and_dialog_turn_on_an_own_recording_device(ui):
 
 
 def test_file_menu_adds_and_removes_the_applications_menu_entry(ui, tmp_path, monkeypatch):
-    from sluice import desktop
+    from sluice import launcher
 
     win, _, _ = ui
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "share"))
-    monkeypatch.setattr(desktop.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(launcher.shutil, "which", lambda _name: None)
     action = next(a for a in _menu(win, "Settings").actions() if "applications menu" in a.text())
     win._refresh_file_menu()
     assert not action.isChecked()
     action.trigger()
-    assert desktop.is_installed() and "applications menu" in win.status_label.text()
+    assert launcher.is_installed() and "applications menu" in win.status_label.text()
     win._refresh_file_menu()
     assert action.isChecked()
     action.trigger()
-    assert not desktop.is_installed()
+    assert not launcher.is_installed()
 
 
 def test_effect_values_can_be_typed_and_double_click_resets_to_the_default(ui):
@@ -817,7 +791,7 @@ def test_enter_in_a_value_box_does_not_open_the_add_menu(ui):
 
 
 def test_start_when_i_log_in_menu(ui, monkeypatch, tmp_path):
-    from sluice import desktop
+    from sluice import launcher
 
     win, _, _ = ui
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
@@ -825,16 +799,16 @@ def test_start_when_i_log_in_menu(ui, monkeypatch, tmp_path):
     win._refresh_file_menu()
     assert win.autostart_actions["off"].isChecked()
     win.autostart_actions["minimized"].trigger()
-    assert desktop.autostart_state() == "minimized"
+    assert launcher.autostart_state() == "minimized"
     win._refresh_file_menu()
     assert win.autostart_actions["minimized"].isChecked() and not win.autostart_actions["off"].isChecked()
     win.autostart_actions["off"].trigger()
-    assert desktop.autostart_state() == "off"
+    assert launcher.autostart_state() == "off"
 
 
 def test_a_second_start_brings_the_window_forward(ui):
     win, _, engine = ui
-    from sluice.control import ControlApi
+    from sluice.control_socket import ControlApi
 
     seen = []
     api = ControlApi(engine, on_change=seen.append)

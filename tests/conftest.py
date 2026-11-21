@@ -40,3 +40,26 @@ def clap_room():
         return np.stack([x + hum, x + hum]).astype(np.float32)
 
     return make
+
+
+@pytest.fixture(autouse=True)
+def _delete_closed_windows():
+    """After each test, delete the main windows it shut down (0.11.6). ``shutdown()`` leaves the window to Qt, and outside an event
+    loop Qt never deletes it, so every test's window (some 17 MB each) stayed in memory and the whole run outgrew 8 GB."""
+    yield
+    import sys
+    if "PySide6.QtWidgets" not in sys.modules:
+        return
+    from PySide6.QtCore import QCoreApplication, QEvent
+    from PySide6.QtWidgets import QApplication
+    app = QApplication.instance()
+    if app is None:
+        return
+    window_type = getattr(sys.modules.get("sluice.ui_window"), "MainWindow", None)
+    for widget in app.topLevelWidgets():
+        if window_type is not None and isinstance(widget, window_type) and getattr(widget, "_closed", False):
+            widget.hide()
+            widget.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    import gc
+    gc.collect()

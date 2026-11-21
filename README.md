@@ -15,75 +15,6 @@ An open-source virtual audio mixer for Linux (PipeWire). Put your mic, games, mu
 > and use the Sluice support forum. Please do not post the `sluice --report` file there: it contains device and app
 > names, so offer it in a private ticket instead.
 
-## What's new in 0.11.3
-
-The window now fits any size (cards wrap, Listen and Broadcast move to the side or the bottom, and a compact list takes over when it is small), there is a
-fourth look, **Tile**, and **View > Desktop widgets** puts a microphone mute button, a volume dial or a channel list on the desktop. The audio engine no longer
-blocks when channels change: run `./install.sh` again to get engine 0.10.1. The View and Settings menus are reorganised, the bug report says more about the
-window, and `sluice ctl meters` / `sluice ctl watch` give other programs the live levels. 0.11.2 and earlier are below.
-
-**Added in 0.11.2:**
-
-Nexus uses less processor time (rings redrawn 15 times a second, half rate again while the window is not in use), a clipped *BROADCAST* tag is fixed, and the
-Free layout grows to hold any number of channels. Nexus now has its neon colours on every dark theme (with a switch under **View > Theme**), a soft glow, neon edge
-lines, and **View > Look > Compare looks...** shows a picture of each look. Sluice also checks devices less often while hidden in the tray. 0.11.1 and earlier are below.
-
-**Added in 0.11.1:**
-
-A third look under **View > Look**: **Nexus**, a neon dark look with a pulsing ring for every channel, waveform faders, a **Free** layout of nodes you drag
-anywhere, and **View > Reduce effects** for slow computers. 0.11.0 and earlier are below.
-
-**Added in 0.11.0:**
-
-Two looks to choose from under **View > Look**: **Calm** (today's look) and **Original** (Sluice as it was in 0.9.7: menu bar, strips with a colour bar,
-text buttons, the old faders and meters), both with every current feature.
-
-**Added in 0.10.5:**
-
-Scroll the mouse wheel over a level number to change it (one notch is 1 dB, **Shift** for 0.1 dB), a larger tray icon, and logo files with the
-empty margin trimmed off.
-
-**Added in 0.10.4:**
-
-The finished logo (a deep teal ring and a coral S on a transparent background) with tray icons to match, a *Mute my microphone* button that is
-no longer cut off, an Alt-key letter of its own for every menu item, and a quieter bug report (old crash traces move to an archive, the
-maths libraries in use are listed, and the CPU numbers are fairer after an update).
-
-**Added in 0.10.3:**
-
-A new logo, menus put in order (Theme under *View*, Open folder under *File*, and the update items together under *Settings*), a bug report
-that shows where the CPU goes and names the threads, and a fix that keeps a rare PulseAudio crash from coming back.
-
-**Added in 0.10.2:**
-
-A tidier system tray (one *Running in the background* menu, a tray icon that lights up while you talk and shows a red badge while you are
-muted, and a fuller right-click menu), a one-time question the first time you close the window, and a section in the bug report that shows
-how much CPU and memory Sluice itself uses.
-
-**Added in 0.10.1:**
-
-
-Apps and games now show their own pictures, the **+ Add app or device** button always stays in view, Listen (blue) and Broadcast (amber) are
-easy to tell apart in Rows, and icons are drawn crisply for your screen. Clicking Mute or Limiter no longer resizes the window, and
-*Save bug report* writes one file instead of two. The full list is in the changelog.
-
-**Added in 0.10.0, the new look:**
-
-A new look, a Columns/Rows choice, a live view of your voice in the Effects window, and an uninstaller that tells you what it left. (The full
-list for every version is in [CHANGELOG.md](CHANGELOG.md); Sluice also shows it once after an update, and under *Help > What's new in this version*.)
-
-- **Refreshed interface** in dark and light, with equal-height channel cards, slim faders, gradient meters, icon mute buttons and a
-  keyboard focus ring. **Columns or Rows** layout from the top bar; the top bar shows the version, a Live chip, dropouts and `48 kHz · 512 frames`.
-- **First-run screen** with three steps and *Try the demo*.
-- **Effects window redesigned, with your voice live:** effect cards from left to right, and a display of your voice going in and coming out of the
-  selected effect (gate threshold, compressor curve and gain reduction, limiter ceiling, spectrum for the filters). Nothing is recorded.
-- **Uninstall reworked:** *keep my settings* or *remove everything*, a clear list of what goes and what stays, and a final check.
-- **New logo** to match the new look.
-- **All 30 themes updated** (older theme files still work).
-
-Earlier: 0.9.7 made bug reports dated and added a PulseAudio crash guard; 0.9.6 made *Measure my room* clearer; 0.9.5 added the
-optional Rust engine (see [docs/RUST.md](docs/RUST.md)) and *Help > Uninstall Sluice...*.
-
 ## What it does
 
 - **Channels** (a new install starts with Mic, Browser, Game, Chat, Music and System; add as many more as you like). Each channel has a list of
@@ -109,10 +40,10 @@ optional Rust engine (see [docs/RUST.md](docs/RUST.md)) and *Help > Uninstall Sl
   The built-in ones always run in the best order, and their starting values are chosen for a voice in an ordinary,
   noisy, echoing room (fan, air conditioner, TV, traffic), not a studio. A **Measure my room** button sets the noise
   gate for your room and microphone. See *Effects*.
-- **A launcher for the desktop**: *Settings > Add Sluice to the applications menu* (or `sluice --install-desktop`) gives
+- **A launcher for the desktop**: *Settings > Startup and background > Add Sluice to the applications menu* (or `sluice --install-desktop`) gives
   Sluice an icon and an entry in your launcher, so you can start it like any other app.
 - **Hardware control**: drive faders and mutes from a **Stream Deck** (or any button that can run a command) and from
-  **MIDI** faders, knobs and pads. See *Controllers* below (*Settings > MIDI controllers and Stream Deck*).
+  **MIDI** faders, knobs and pads. See *Controllers* below (*Settings > Controllers*).
 - **Hear what your audience hears**: the *Hear Broadcast* button on the Listen mix plays the Broadcast mix in your
   own output so you can check it, and *Listen* returns when you turn it off. It always starts off.
 - Peak meters everywhere, a limiter on each mix, and your layout is saved to `~/.config/sluice/config.json`.
@@ -124,6 +55,25 @@ The same mixer in the light theme, in the Rows layout, and the first-run screen:
 ![Light theme](docs/screenshot-light.png)
 ![Rows layout](docs/screenshot-rows.png)
 ![First run](docs/first-run.png)
+
+## What's new in 0.11.6
+
+- **A new skin, Glass:** frosted panes over a soft wash of colour, for the window and the desktop widgets. On KDE Plasma, Glass widgets
+  blur what is behind them.
+- **Desktop widgets can have their own skin and theme** (*Settings > Themes and skins > Desktop widgets*), for example Glass widgets with
+  the window in Calm. On KDE Plasma under Wayland they place themselves on the right screen and no longer take the keyboard (the layer-shell
+  fix from the 0.11.5 bug report).
+- **Looks are now called skins**, under *Themes and skins*. Menus and dialogs look the same in every skin, and Original's text is the
+  same size as the others'.
+- **Menus with sections** (Channels, Mixes, Quick mutes; Learn, Something wrong, Community), clear room before every shortcut, and new
+  shortcuts: Ctrl+Q, Ctrl+1 / Ctrl+2, Ctrl+Shift+W (show or hide your widgets), Ctrl+0; Hear Broadcast moved to Ctrl+H.
+- **Tile and Nexus fixes:** tiles take a new theme's colours at once, Listen and Broadcast keys sit 28 px apart, yellow sliders stay
+  yellow, and Nexus's Rows layout has the sound ring too.
+- **After an update** that comes with a newer audio engine, Sluice offers to rebuild it.
+
+![The Glass skin, dark](docs/screenshot-glass.png)
+
+The full list, and every earlier version, is in [CHANGELOG.md](CHANGELOG.md) (also under *Help > What's new in this version*).
 
 ## Status: please read
 
@@ -230,7 +180,7 @@ After installing, run this once:
 .venv/bin/sluice --install-desktop
 ```
 
-(or use *Settings > Add Sluice to the applications menu* inside the app). It writes a launcher and an icon into your own
+(or use *Settings > Startup and background > Add Sluice to the applications menu* inside the app). It writes a launcher and an icon into your own
 folders (`~/.local/share/applications` and `~/.local/share/icons`), and nothing needs root. Then search for **Sluice**
 in your launcher. `sluice --uninstall-desktop` removes both again. If you move the Sluice folder, run the command again.
 
@@ -254,7 +204,7 @@ effect the next time Sluice starts. *File > Export settings* never makes backups
 
 ## Running in the background
 
-*Settings > Running in the background* holds both choices in one place.
+*Settings > Startup and background* holds both choices in one place.
 
 **When I close the window:** **Quit Sluice** (the default; the virtual devices are removed and your apps go back to your normal
 output), **Keep running in the taskbar**, so the mixer keeps working while the window is out of the way (click it in the
@@ -333,13 +283,16 @@ To watch what it is doing while you test: `tail -f ~/.local/state/sluice/sluice.
 
 ## The menus
 
+The ☰ button in the top bar holds the menus; the ⚙ button beside it opens the Settings window. (In the Original skin, the menus are in a
+menu bar across the top, as in 0.9.7, with *View* also holding the skin and theme and a *Settings* menu.)
+
 | Menu | What is in it |
 |---|---|
-| **File** | Save settings (Ctrl+S), Import settings, Export settings, Restore earlier settings, Open folder (Settings, Logs, Themes), Quit (Ctrl+Q) |
-| **Mixer** | Add channel (Ctrl+N), Refresh devices and apps (F5), Recording mix (a third mix), Recording devices for OBS, Mute my microphone (Ctrl+M), Hear Broadcast (Ctrl+B), Mute Listen (Ctrl+Shift+L), Mute Broadcast (Ctrl+Shift+B) |
-| **View** | *Layout:* Columns, Rows, Free. *Appearance:* Look (Calm, Original, Nexus, Tile, Compare looks), Theme. *Desktop:* Desktop widgets. *Window:* Full screen (F11), Reset window size |
-| **Settings** | *Startup:* Running in the background, Add Sluice to the applications menu. *Audio:* Audio buffer, MIDI controllers and Stream Deck. *Updates:* Update automatically, Check for updates, Go back to the previous version. Then Reset all settings to the defaults |
-| **Help** | Keyboard shortcuts (F1), What's new in this version, Save bug report, I heard a glitch (Ctrl+Shift+G), Report a problem, Join the Discord, Project page on GitHub, About, Uninstall Sluice |
+| **File** | Save settings (Ctrl+S), Import settings…, Export settings…, Restore earlier settings, Reset all settings to the defaults…, Open folder (Settings, Logs, Themes), Quit (Ctrl+Q) |
+| **Mixer** | *Channels:* Add channel… (Ctrl+N), Refresh devices and apps (F5). *Mixes:* Recording mix (a third mix), Recording devices for OBS…. *Quick mutes:* Mute my microphone (Ctrl+M), Mute Listen (Ctrl+Shift+L), Mute Broadcast (Ctrl+Shift+B), Hear Broadcast (Ctrl+H) |
+| **View** | *Layout:* Columns (Ctrl+1), Rows (Ctrl+2). *Desktop:* Desktop widgets, Show or hide my widgets (Ctrl+Shift+W). *Window:* Full screen (F11), Reset window size (Ctrl+0) |
+| **Settings…** (the ⚙ button, Ctrl+,) | A window with *Themes and skins* (the skin, with a picture of each in your theme; the theme; the skin's own colours; reduce effects; the layout; the desktop widgets' own skin and theme), *Audio* (the buffer), *Startup and background*, *Controllers* (MIDI and Stream Deck) and *Updates* (automatic updates, check now, go back a version, reset all settings). Every part works from the keyboard: Tab between controls, the arrow keys between the skin pictures, Space to choose |
+| **Help** | *Learn:* Keyboard shortcuts (F1), What's new in this version. *Something wrong:* I heard a glitch (Ctrl+Shift+G), Save bug report…, Report a problem. *Community:* Join the Discord, Project page on GitHub. About Sluice. Uninstall Sluice… (apart, at the bottom) |
 
 Settings are saved automatically a few seconds after every change and when you quit (see *Saving*). **Import settings** checks the file, keeps your current settings as
 `config.before-import.json`, and takes effect the next time Sluice starts; quitting does not overwrite the imported file.
@@ -358,11 +311,32 @@ is. What stays: system packages you installed (PipeWire, the JACK library), shar
 From a terminal: `./uninstall.sh [--keep-settings] [--clear-caches] [--remove-git-folder] [--dry-run] [--yes]`
 (`--dry-run` only lists, `--yes` does not ask).
 
+## Desktop widgets
+
+*View > Desktop widgets* puts small windows on your desktop, so the big window can stay closed: a microphone mute button, a volume dial
+for each mix, a list of every channel, one mix (its slider, Mute and the Limiter) or one channel (a slider and a mute for each mix).
+Drag a widget by its edge to move it; drag or scroll a slider to change a level; right-click for its menu. Widgets snap to the screen's
+edges and to each other, and remember where they were on each screen. They follow the skin and theme of the window (or one of their own,
+in *Settings > Themes and skins*).
+
+**KDE Plasma on Wayland.** Wayland does not let an ordinary window place itself, and "keep on top" is only a request there. Sluice uses
+KDE's own layer-shell (the way Plasma's panels and widgets are made) when the `layer-shell-qt` package is installed, which it usually is
+with Plasma 6: then widgets go where you drop them, stay on their screen, stay on top and never take the keyboard from your game. Without
+it they are ordinary windows; right-click one and choose *Keep widgets on top on KDE…* and Sluice adds a KWin window rule that keeps them
+on top. *Help > Save bug report* says which of the two your widgets use, and why. On X11 desktops widgets place themselves and stay on
+top without either.
+
+**Glass widgets.** Choose *Glass* as the widgets' skin (*Settings > Themes and skins > Desktop widgets*) and they become frosted panes you
+can see your wallpaper through. On KDE Plasma, KWin also blurs what is behind them (through KDE's own window-effects library, which comes
+with Plasma); on other desktops they are see-through without the blur. *Reduce effects* turns the blur off.
+
 ## Themes
 
-*View > Theme* lists **Dark** (the default), **Light**, **High contrast**, **Retro Purple**, **Midnight Blue**,
+*Settings > Themes and skins > Theme* lists **Dark** (the default), **Light**, **High contrast**, **Retro Purple**, **Midnight Blue**,
 **Amber Console**, **Paper** and **Match my system** (follows your desktop's light or dark setting while Sluice runs).
-**Get more themes...** opens the [`themes/`](themes/) folder of this project: 30 ready-made themes with previews.
+**Get more themes...** opens the [`themes/`](themes/) folder of this project: 21 more themes with previews.
+Every theme works in every skin (a *theme* is the colours; a *skin* is how things are shaped and drawn: Calm, Original, Nexus,
+Tile or Glass): the raised keys, glass, shadows and grooves are worked out from its own colours.
 Download one and use *Import theme*. A check mark shows the one in use. The level
 meters' green-to-red colours, the Mute red and the Limiter teal are the same in every theme so they always mean the same thing.
 
@@ -378,9 +352,13 @@ Imported themes live in `~/.config/sluice/themes/` (*Open theme folder*); *Remov
 
 ## Dropouts
 
+The status bar counts *dropouts*: moments when the audio could not keep up, which sound like a click or a gap. A few while Sluice starts or while
+you add effects are normal and are not counted. If the number keeps climbing, choose a larger buffer in *Settings > Audio*, close heavy plugins,
+or check that nothing else is hogging the CPU.
+
 A dropout (an "xrun") means the audio was late once. Any program can cause one, not only Sluice. After three or more,
 the status bar says whether Sluice's own processing was close to the time it has ("mostly Sluice") or not ("mostly
-elsewhere"). To see who is responsible, run `pw-top` in a terminal while it happens, or raise *Settings > Audio buffer*
+elsewhere"). To see who is responsible, run `pw-top` in a terminal while it happens, or raise the buffer in *Settings > Audio*
 to Large (1024 frames). *Save bug report* includes the PipeWire buffer settings and a `pw-top` snapshot that lists the
 programs with dropouts first, plus the CPU and USB details that often explain a USB audio interface that drops out.
 
@@ -398,7 +376,7 @@ Gain effect. A Compressor whose threshold is above your voice shows "not doing a
 ## Version and updates
 
 The version is in the window title, at the right of the status bar and in **Help > About Sluice**. Please include it
-in bug reports. **Settings > Check for updates** runs when you click it: it asks GitHub for the newest release
+in bug reports. **Settings > Updates > Check for updates now** runs when you click it: it asks GitHub for the newest release
 (pre-releases included) and tells you whether yours is current. If a newer one exists it shows **what that version
 changes** (its release notes) with an **Update now** button and a button to open the download page. Nothing is sent
 except that request. For a different release feed, set `SLUICE_UPDATE_URL`.
@@ -406,14 +384,14 @@ except that request. For a different release feed, set `SLUICE_UPDATE_URL`.
 **Update now** downloads the release zip and its `.sha256` file from github.com over https and stops unless they match,
 unpacks it into a `.update` folder inside the Sluice folder, starts the new code once to see that it loads, and then
 asks you to restart. *Later* installs it the next time you close Sluice; Sluice never swaps its own files while it runs.
-The old files are kept in `.previous`, and **Settings > Go back to the previous version** (or `sluice --rollback`) restores
+The old files are kept in `.previous`, and **Settings > Updates > Go back to the previous version** (or `sluice --rollback`) restores
 them. Your settings and `.venv` are not touched; if the new version needs another Python package, it is installed first,
 and nothing changes if that fails. The checksum catches a damaged or cut-off download; it cannot catch a release that was
 tampered with on GitHub itself. A copy that is a git checkout (update it with `git pull`) or sits in a folder Sluice
 cannot write to is never changed by the updater, and versions before 0.9.1 cannot update themselves: install 0.9.1 from the
 zip once.
 
-**Settings > Update automatically when a new version is found** is off by default. When it is on, Sluice asks GitHub once,
+**Settings > Updates > Update automatically when a new version is found** is off by default. When it is on, Sluice asks GitHub once,
 20 seconds after it starts, and downloads and checks a newer version in the background; it is installed when you close
 Sluice, never while you are in a call or a game.
 
@@ -484,7 +462,7 @@ dial or touch strip on newer models can repeat a command depends on that program
 with 0 on success, 1 if Sluice refused it (the reason is printed), and 2 if Sluice is not running. It talks to a private
 socket in `$XDG_RUNTIME_DIR` that only your user can open, and it needs no extra packages.
 
-**MIDI faders, knobs and pads.** Open **Settings > MIDI controllers and Stream Deck...**, choose what the control
+**MIDI faders, knobs and pads.** Open **Settings > Controllers > Set up controllers**, choose what the control
 should do, press **Learn**, and then move the fader, turn the knob or press the button on your device. Fader/knob
 bindings use an audio taper (top = 0 dB). Endless encoders send "turn" steps, with a configurable dB per click.
 Buttons toggle a mute when pressed. Bindings are saved in `~/.config/sluice/controls.json`.
@@ -698,12 +676,6 @@ pactl set-card-profile CARD output:multichannel-output+input:multichannel-input
 
 A multichannel input has many channels; Sluice uses the first two. If your voice is on others, say so in a bug report.
 
-## Dropouts
-
-The status bar counts *dropouts*: moments when the audio could not keep up, which sound like a click or a gap. A few
-while Sluice starts or while you add effects are normal and are not counted. If the number keeps climbing, choose
-a larger size in *Settings > Audio buffer*, close heavy plugins, or check that nothing else is hogging the CPU.
-
 ## Resource use
 
 Sluice is built to sit quietly behind a game. Measured with the demo mixer (`tools/benchmark.py`): the audio
@@ -713,51 +685,14 @@ window uses roughly 1% of one core while visible and about 0.1% hidden, and the 
 memory, most of it Qt, numpy and the effects engine. Meters stop redrawing when the window is minimised or hidden, a
 channel with no sound for 6 seconds stops running its effects, and the controller reader sleeps unless a controller is
 plugged in.
-What you can tune: *Settings > Audio buffer* (larger = lighter on the CPU, a little more delay; 512 is the default, 1024
+What you can tune: the buffer in *Settings > Audio* (larger = lighter on the CPU, a little more delay; 512 is the default, 1024
 is fine for listening only), fewer effects on channels you do not use, and VST3 plugins, which are the usual heavy part.
-Background work is a 2-second device check and a 0.5-second rules check, with link repair every 10 seconds.
-
-## Putting it on GitHub
-
-See [docs/PUBLISHING.md](docs/PUBLISHING.md) for the step-by-step guide. The repository includes continuous
-integration, a release workflow and issue templates.
+Background work is a 2-second device check and a 0.5-second rules check; the connections are checked when PipeWire reports a change (one `pw-link --monitor` runs alongside), and once a minute in case one was missed.
 
 ## Development
 
-```bash
-pip install -e ".[dev]"
-pytest                                                    # more than 600 tests, no audio server needed
-QT_QPA_PLATFORM=offscreen sluice --demo --screenshot out.png
-```
-
-| File | Role |
-|---|---|
-| `sluice/model.py` | channels, mixes, gain/mute/link logic, saving (no Qt, no audio) |
-| `sluice/dsp.py` | the real-time mixing graph and limiter |
-| `sluice/effects.py` | built-in effects and VST3 hosting (pedalboard) |
-| `sluice/audio_io.py` | JACK audio client, plus a synthetic one for demo and tests |
-| `sluice/linker.py` | `pw-link` wrapper |
-| `sluice/backend.py` | PulseAudio control: devices, virtual sinks, moving apps (and a fake for tests) |
-| `sluice/engine.py` | keeps everything above in sync with the model |
-| `sluice/__main__.py`, `sluice/__init__.py` | start-up, the command-line flags, the version |
-| `sluice/ui.py`, `ui_effects.py` | PySide6 interface: the window and its channel and mix cards, and the Effects window |
-| `sluice/ui_menus.py`, `ui_themes.py`, `ui_tray.py`, `ui_updating.py`, `ui_constants.py` | parts of the main window: the menus, the themes, the tray icon, updating in place, and shared numbers (`MainWindow` inherits the first four) |
-| `sluice/apps.py`, `sluice/ui_apps.py` | the installed apps and games list, and its picker |
-| `sluice/control.py` | `sluice ctl` and the control socket |
-| `sluice/midi.py`, `sluice/ui_controls.py` | MIDI input, bindings, and the Controllers window |
-| `sluice/diagnose.py` | `--diagnose` |
-| `sluice/distro.py`, `sluice/jackfix.py` | per-distribution package names and the Debian JACK library fix |
-| `sluice/desktop.py` | the applications-menu launcher, start-at-login entry and icons |
-| `sluice/updates.py` | the *Check for updates* request |
-| `sluice/whatsnew.py`, `sluice/ui_whatsnew.py`, `sluice/data/CHANGELOG.md` | release notes: reading them, the What's new window, and the copy of `CHANGELOG.md` that ships inside the package |
-| `sluice/spectral.py` | the Echo Reducer and Noise Reducer (spectral processing, numpy only) |
-| `sluice/presets.py` | the built-in and your own effect presets |
-| `sluice/reconnect.py` | waiting for the audio server and restarting Sluice after it was restarted |
-| `sluice/room.py`, `sluice/ui_room.py` | *Measure my room* and *Check my voice level*: the analysis and its windows |
-| `sluice/themes.py` | the colour themes, the style sheet built from them, and theme import and export |
-| `tools/` | `benchmark.py` (CPU and memory), `tune_room.py` (how the effect defaults were chosen), `tune_reducers.py` (scores the two reducers; needs `pystoi` and `espeakng-loader`), `set-github-repo.sh` (fills in your GitHub name) |
-| `sluice/ui_widgets.py` | typed-value boxes and double-click-reset sliders |
-| `sluice/logs.py`, `sluice/report.py` | the log files, crash hooks and `--report` |
+`pip install -e ".[dev]"`, then `pytest` (no audio server needed). How the code is laid out, how to run it in demo mode and how to publish a
+release are in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md); the optional Rust engine is in [docs/RUST.md](docs/RUST.md).
 
 ## Roadmap
 

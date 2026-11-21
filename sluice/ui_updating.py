@@ -10,7 +10,7 @@ import threading
 from PySide6.QtCore import QObject, Qt, Signal
 from PySide6.QtWidgets import QMessageBox, QProgressDialog
 
-from . import __version__, selfupdate
+from . import __version__, update_install
 
 log = logging.getLogger("sluice.ui")
 
@@ -22,14 +22,15 @@ class _UpdateBridge(QObject):
     progress = Signal(int, int)  # bytes downloaded so far, total (0 = unknown)
     staged = Signal(object)      # (version, "") when an update was downloaded and verified, ("", message) when it was not
     quiet = Signal(object)       # the same, for the automatic update: no dialogs
+    engine_rebuilt = Signal(str)  # 0.11.6: "" when the Rust engine was rebuilt, else what went wrong
 
 
 class UpdatingMixin:
     # ----------------------------------------------------------- updating in place
     def start_update(self, result) -> None:
         """Download and check the new version (nothing changes yet), then offer to restart into it."""
-        root = selfupdate.install_root()
-        problem = selfupdate.offer_problem(root, result)
+        root = update_install.install_root()
+        problem = update_install.offer_problem(root, result)
         if problem:
             QMessageBox.information(self, "Update", problem)
             return
@@ -47,7 +48,7 @@ class UpdatingMixin:
             try:
                 version = stage(result, root, progress=lambda done, total: bridge.progress.emit(done, total))
                 bridge.staged.emit((version, ""))
-            except selfupdate.UpdateError as exc:
+            except update_install.UpdateError as exc:
                 bridge.staged.emit(("", str(exc)))
             except Exception as exc:  # anything unexpected is still just "could not update"
                 log.exception("update failed")
@@ -90,11 +91,11 @@ class UpdatingMixin:
         from . import reconnect
 
         self.shutdown()  # saves the settings, stops the audio
-        selfupdate.apply_staged_quietly()
+        update_install.apply_staged_quietly()
         reconnect.restart_self(show_window=True)
 
     def _refresh_update_menu(self) -> None:
-        previous = selfupdate.previous_version(selfupdate.install_root())
+        previous = update_install.previous_version(update_install.install_root())
         self.rollback_action.setEnabled(bool(previous))
         self.rollback_action.setText(f"&Go back to version {previous}\u2026" if previous else "&Go back to the previous version\u2026")
 
@@ -102,7 +103,7 @@ class UpdatingMixin:
         mixer = self.engine.mixer
         turn_on = not mixer.auto_update
         if turn_on:
-            reason = selfupdate.unavailable_reason(selfupdate.install_root())
+            reason = update_install.unavailable_reason(update_install.install_root())
             if reason:
                 self.auto_update_action.setChecked(False)
                 QMessageBox.information(self, "Update automatically", reason)
@@ -125,8 +126,8 @@ class UpdatingMixin:
         """Once, a little after start-up, only if the user turned it on: fetch a newer version and leave it waiting."""
         if self._auto_update_started or self._closed or self.config_file is None or not self.engine.mixer.auto_update:
             return
-        root = selfupdate.install_root()
-        if selfupdate.unavailable_reason(root):
+        root = update_install.install_root()
+        if update_install.unavailable_reason(root):
             return
         self._auto_update_started = True
         check, stage, bridge = self._update_check, self._stage_update, self._update_bridge
@@ -134,10 +135,10 @@ class UpdatingMixin:
         def work() -> None:
             try:
                 result = check(__version__)
-                if result.status != "available" or selfupdate.offer_problem(root, result):
+                if result.status != "available" or update_install.offer_problem(root, result):
                     return
                 bridge.quiet.emit((stage(result, root), ""))
-            except selfupdate.UpdateError as exc:
+            except update_install.UpdateError as exc:
                 bridge.quiet.emit(("", str(exc)))
             except Exception:
                 log.exception("automatic update failed")
@@ -153,8 +154,8 @@ class UpdatingMixin:
             self.say("An automatic update could not be installed. Settings > Check for updates shows why.")
 
     def rollback_update(self) -> None:
-        root = selfupdate.install_root()
-        previous = selfupdate.previous_version(root)
+        root = update_install.install_root()
+        previous = update_install.previous_version(root)
         if not previous:
             QMessageBox.information(self, "Go back", "There is no earlier version to go back to.")
             return
@@ -170,8 +171,8 @@ class UpdatingMixin:
             return
         self.shutdown()
         try:
-            selfupdate.rollback(root)
-        except selfupdate.UpdateError as exc:
+            update_install.rollback(root)
+        except update_install.UpdateError as exc:
             log.warning("rollback failed: %s", exc)
         from . import reconnect
 

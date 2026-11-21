@@ -7,7 +7,7 @@
 #   tools/set-github-repo.sh YOURNAME my-repo    (repository with another name)
 #
 # It changes: the project links in pyproject.toml, the links in README.md and docs/PUBLISHING.md, and the
-# address "Help > Check for updates" asks (sluice/updates.py). Run it again with other names to change them.
+# address "Help > Check for updates" asks (sluice/update_check.py). Run it again with other names to change them.
 set -eu
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
@@ -25,8 +25,8 @@ done
 
 # the update check: GitHub's list of releases (the "latest" address would skip pre-releases such as betas)
 url="https://api.github.com/repos/${owner}/${repo}/releases?per_page=5"
-sed -i -E "s#^RELEASE_URL = \".*\"#RELEASE_URL = \"${url}\"#" sluice/updates.py
+sed -i -E "s#^RELEASE_URL = \".*\"#RELEASE_URL = \"${url}\"#" sluice/update_check.py
 
 echo "Set to ${owner}/${repo}:"
 grep -n "github.com" pyproject.toml | sed 's/^/  /'
-grep -n '^RELEASE_URL' sluice/updates.py | sed 's/^/  /'
+grep -n '^RELEASE_URL' sluice/update_check.py | sed 's/^/  /'

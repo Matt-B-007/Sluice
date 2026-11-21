@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
-from . import desktop, logs, selfupdate
+from . import launcher, logs, update_install
 from .model import config_path
 
 log = logging.getLogger(__name__)
@@ -115,12 +115,12 @@ def folder_problem(root: Optional[Path], allow_git: bool = False) -> str:
 
 def plan(keep_settings: bool = False, root: Optional[Path] = None, clear_caches: bool = False,
          remove_git: bool = False) -> Plan:
-    result = Plan(install_root=root if root is not None else selfupdate.install_root(), keep_settings=keep_settings)
-    for path, what in ((desktop.launcher_path(), "applications-menu entry"),
-                       (desktop.autostart_path(), "start-at-login entry"),
-                       (desktop.script_path(), "launcher script"),
-                       (desktop.icon_path(), "icon"),
-                       *[(p, "icon") for p in desktop.png_icon_paths()]):
+    result = Plan(install_root=root if root is not None else update_install.install_root(), keep_settings=keep_settings)
+    for path, what in ((launcher.launcher_path(), "applications-menu entry"),
+                       (launcher.autostart_path(), "start-at-login entry"),
+                       (launcher.script_path(), "launcher script"),
+                       (launcher.icon_path(), "icon"),
+                       *[(p, "icon") for p in launcher.png_icon_paths()]):
         if path.exists():
             result.items.append(Item(path, what))
     settings = config_path().parent
@@ -239,7 +239,7 @@ def execute(result: Plan, cleanup_devices: Optional[Callable[[], int]] = None, s
     failures = []
     desktop_paths = {i.path for i in result.items if i.what in DESKTOP_KINDS}
     if desktop_paths:
-        desktop.uninstall()
+        launcher.uninstall()
     for item in result.items:
         if item.path in desktop_paths:
             continue

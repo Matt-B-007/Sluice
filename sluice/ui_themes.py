@@ -15,7 +15,7 @@ from PySide6.QtGui import QActionGroup, QColor, QDesktopServices, QGuiApplicatio
 from PySide6.QtWidgets import QFileDialog, QMessageBox
 
 from . import logs, themes
-from .ui_constants import THEMES_URL
+from .ui_base import THEMES_URL
 
 log = logging.getLogger("sluice.ui")
 
@@ -62,14 +62,24 @@ class ThemesMixin:
         theme = self.current_theme()
         themes.set_look(self.engine.mixer.look)
         themes.set_reduce_effects(self.engine.mixer.reduce_effects)
-        themes.set_nexus_colors(self.engine.mixer.nexus_colors)
+        themes.set_look_colors(self.engine.mixer.look_colors)
         colors = themes.look_colors(theme, self.engine.mixer.look)
         themes.set_current(colors)
-        self.setStyleSheet(themes.build_style(colors, self.engine.mixer.look))
+        # The skin dresses the mixer (the window's content and its status bar); menus, the Settings window and the other windows
+        # opened from it keep the shared style in every skin, in the theme's colours (0.11.6).
+        # Calm, narrowed to dialogs, menus and tooltips, in the theme's own colours (not a skin's own), so they match in every skin
+        self.setStyleSheet(themes.shared_style(themes.look_colors(theme, "calm")))
+        self.dress_skin()
         app = QGuiApplication.instance()
         if app is not None:
             app.setPalette(_palette_for(colors))
         self.refresh_theme_widgets()
+        desktop = getattr(self, "desktop", None)
+        if desktop is not None:  # the desktop widgets are windows of their own: they follow the look and colours too
+            desktop.restyle()
+        settings = getattr(self, "settings_window", None)
+        if settings is not None and settings.isVisible():  # its pictures of the looks are drawn in the theme in use
+            settings.refresh()
         return theme
 
     def _fill_look_menu(self) -> None:
@@ -83,12 +93,12 @@ class ThemesMixin:
             action.setChecked(themes.valid_look(self.engine.mixer.look) == look_id)
             action.triggered.connect(lambda _c=False, look_id=look_id: self.choose_look(look_id))
         menu.addSeparator()
-        menu.addAction("&Compare looks…").triggered.connect(self.compare_looks)
+        menu.addAction("&Compare skins…").triggered.connect(self.compare_looks)
         menu.setToolTipsVisible(True)
 
     def compare_looks(self) -> None:
         """Show a picture of each look in the colours of the theme in use, with a button to pick one."""
-        from .ui_looks import CompareLooksDialog
+        from .ui_skins import CompareLooksDialog
         CompareLooksDialog(self).exec()
 
     def choose_look(self, look_id: str) -> None:
@@ -100,13 +110,13 @@ class ThemesMixin:
         self.apply_theme()
         if hasattr(self, "_restructure_for_look"):
             self._restructure_for_look()
-        self.say(f"Look: {themes.LOOKS[look_id]}.")
+        self.say(f"Skin: {themes.LOOKS[look_id]}.")
 
-    def set_nexus_colors(self, on: bool) -> None:
-        """Nexus: its neon colours on the dark themes, or each theme's own colours."""
-        self.engine.mixer.nexus_colors = bool(on)
+    def set_look_colors(self, on: bool) -> None:
+        """Nexus's and Tile's own colours on Dark (and Tile's white keys on Light), or every theme's own colours everywhere."""
+        self.engine.mixer.look_colors = bool(on)
         self.apply_theme()
-        self.say("Nexus colours on." if on else "Each theme shows its own colours in Nexus.")
+        self.say("Skins show their own colours on Dark and Light." if on else "Every theme shows its own colours in every skin.")
 
     def set_reduce_effects(self, on: bool) -> None:
         """Nexus: no shimmer on the rings and no waveform on the faders."""
@@ -136,6 +146,8 @@ class ThemesMixin:
                 action.setToolTip(tip)
             action.triggered.connect(lambda _c=False, theme_id=theme_id: self.choose_theme(theme_id))
 
+        from .ui_menus import heading
+        heading(menu, "Your themes")
         for theme in themes.BUILT_IN.values():
             add(theme.id, theme.name)
         add(themes.SYSTEM, themes.SYSTEM_LABEL, "Dark or Light, following your desktop's own setting")
@@ -150,17 +162,37 @@ class ThemesMixin:
             missing.setCheckable(True)
             missing.setChecked(True)
             missing.setEnabled(False)
-        menu.addSeparator()
+        heading(menu, "Manage")
         menu.addAction("&Import theme\u2026", self.import_theme)
         menu.addAction("&Export current theme\u2026", self.export_theme)
         if custom:
             remove = menu.addMenu("&Remove an imported theme")
             for theme in custom:
                 remove.addAction(theme.name, partial(self.remove_theme, theme.id))
-        menu.addSeparator()
-        more = menu.addAction("&Get more themes\u2026", partial(self.open_link, THEMES_URL))
+        more = menu.addAction("&Get more themes", partial(self.open_link, THEMES_URL))  # a link: no "…"
         more.setToolTip("Opens the theme collection on the project page in your browser: download a file, then Import theme")
         menu.setToolTipsVisible(True)
+
+    def set_widget_dress(self, look=None, theme=None) -> None:
+        """Settings > Themes and skins > Desktop widgets: their own skin and theme ("" is the same as the window), shown at once."""
+        mixer = self.engine.mixer
+        if look is not None:
+            mixer.widget_look = look if look in themes.LOOKS else ""
+        if theme is not None:
+            mixer.widget_theme = theme
+        desktop = getattr(self, "desktop", None)
+        if desktop is not None:
+            desktop.restyle()
+        skin = themes.LOOKS.get(mixer.widget_look, "the window's skin")
+        self.say(f"Desktop widgets: {skin}" + (f", {themes.resolve(mixer.widget_theme, self._system_is_dark(), self._themes_folder()).name}"
+                                               if mixer.widget_theme else ", the window's theme") + ".")
+
+    def dress_skin(self) -> None:
+        """Put the skin's sheet on the mixer: the window's content and its status bar (again once they exist, at start-up)."""
+        skin = themes.build_style(themes._current, themes.valid_look(self.engine.mixer.look))
+        for part in (self.centralWidget(), self.statusBar()):
+            if part is not None and part.styleSheet() != skin:
+                part.setStyleSheet(skin)
 
     def choose_theme(self, theme_id: str) -> None:
         theme = self.apply_theme(theme_id)

@@ -1,5 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""The menu bar and the Settings menu of the main window, and the menus' refreshers.
+"""The menus of the main window, and the menus' refreshers.
+
+The ☰ button in the top bar holds File, Mixer, View (layout, desktop widgets, the window) and Help, with Settings… at the bottom; the
+⚙ button beside it opens the Settings window (``ui_settings``). The classic menu bar (shown in the Original look, as in 0.9.7) has the
+full View menu and the Settings menu; the Settings window is bound to the same actions, so each setting is done in one place.
 
 Part of the main window, split out of ``ui.py``: ``MainWindow`` inherits this class, so every method here is still a method of the window."""
 from __future__ import annotations
@@ -9,13 +13,65 @@ from functools import partial
 
 from PySide6.QtCore import QUrl
 from PySide6.QtGui import QAction, QActionGroup, QDesktopServices, QKeySequence
-from PySide6.QtWidgets import QCheckBox, QMenu, QMessageBox
+from PySide6.QtWidgets import QCheckBox, QLabel, QMenu, QMessageBox, QWidgetAction
 
 from . import __version__, themes
 from .model import BUFFER_CHOICES, MONITOR, STREAM
-from .ui_constants import DEFAULT_SIZE, DISCORD_URL, ISSUES_URL, PROJECT_URL
+from .ui_base import DEFAULT_SIZE, DISCORD_URL, ISSUES_URL, PROJECT_URL
 
 log = logging.getLogger("sluice.ui")
+
+
+MENU_HEADING = "menuheading"
+
+
+def heading(menu: QMenu, text: str) -> QAction:
+    """A small heading over a group of menu items (0.11.6). Qt's own section headings show only as a line with this style sheet,
+    which left a blank band at the top of a menu; this one shows its words. It cannot be chosen."""
+    label = QLabel(text.upper())
+    label.setObjectName(MENU_HEADING)
+    action = QWidgetAction(menu)
+    action.setDefaultWidget(label)
+    action.setEnabled(False)
+    action.setText(text)
+    action.setProperty("heading", True)
+    if any(not a.property("heading") for a in menu.actions()):
+        label.setProperty("first", False)
+    else:
+        label.setProperty("first", True)
+    menu.addAction(action)
+    return action
+
+
+SHORTCUT_GAP = 24  # pixels at least between an item's name and its shortcut, in every menu
+
+
+def keep_shortcut_gap(menu: QMenu) -> None:
+    """Make ``menu`` wide enough that every shortcut sits at least SHORTCUT_GAP from the longest name (0.11.6). Qt puts the names
+    on the left and the shortcuts on the right, and with a style sheet it can leave only a few pixels between them in a narrow menu
+    (it did beside Settings…); a wider menu moves the shortcuts away."""
+    metrics = menu.fontMetrics()
+    names = [metrics.horizontalAdvance(plain(a.text()) + "\u2026" * a.text().endswith("\u2026")) for a in menu.actions()
+             if a.isVisible() and not a.isSeparator() and not a.property("heading")]
+    keys = [metrics.horizontalAdvance(a.shortcut().toString(QKeySequence.SequenceFormat.NativeText)) for a in menu.actions()
+            if a.isVisible() and not a.shortcut().isEmpty()]
+    if not names or not keys:
+        return
+    # the item's padding on both sides, room for a tick or a submenu arrow, the menu's own padding and border
+    menu.setMinimumWidth(max(names) + SHORTCUT_GAP + max(keys) + 2 * 24 + 2 * 22 + 2 * 9)
+
+
+def watch_shortcut_gaps(menu: QMenu) -> None:
+    keep_shortcut_gap(menu)  # now, and again whenever it opens (items can change)
+    menu.aboutToShow.connect(lambda menu=menu: keep_shortcut_gap(menu))
+    for action in menu.actions():
+        if action.menu() is not None:
+            watch_shortcut_gaps(action.menu())
+
+
+def plain(text: str) -> str:
+    """A menu item's name without its Alt-key mark, its shortcut and a trailing "…"."""
+    return text.split("\t")[0].replace("&&", "\0").replace("&", "").replace("\0", "&").rstrip("\u2026")
 
 
 class MenusMixin:
@@ -29,86 +85,91 @@ class MenusMixin:
         return action
 
     def _build_menus(self) -> None:
-        """The menus, in the order other desktop apps use. A "…" ends only an item that opens a dialog asking for something;
-        toggles and choices have none. Each thing lives in exactly one menu (tests/test_0103.py checks it)."""
+        """The menus (0.11.6): each split into small groups under a heading, in the order other desktop apps use. A "…" ends only
+        an item that opens a window or asks something; toggles, choices, links and submenus have none. Each thing lives in exactly
+        one menu of the menu bar (tests/test_crash_trail_and_menus.py checks it)."""
         bar = self.menuBar()
         # File: your settings and files, and Quit.
         file_menu = bar.addMenu("&File")
-        self._action(file_menu, "&Save settings", self.save_settings, QKeySequence.StandardKey.Save)
+        self._action(file_menu, "&Save settings", self.save_settings, "Ctrl+S")
         file_menu.addSeparator()
         self._action(file_menu, "&Import settings\u2026", self.import_settings)
         self._action(file_menu, "&Export settings\u2026", self.export_settings)
         self.restore_menu = file_menu.addMenu("&Restore earlier settings")
         self.restore_menu.aboutToShow.connect(self._fill_restore_menu)
+        self._action(file_menu, "Reset all se&ttings to the defaults\u2026", self.reset_settings)
         file_menu.addSeparator()
         folders = file_menu.addMenu("Open &folder")
         folders.addAction("&Settings", self.open_settings_folder)
         folders.addAction("&Logs", self.open_log_folder)
         folders.addAction("&Themes", self.open_theme_folder)
         file_menu.addSeparator()
-        self._action(file_menu, "&Quit", self.quit_app, QKeySequence.StandardKey.Quit)
+        self._action(file_menu, "&Quit", self.quit_app, "Ctrl+Q")
+        file_menu.aboutToShow.connect(self._refresh_file_menu)
 
-        # Mixer: what you do while mixing.
+        # Mixer: what you do while mixing, in three groups.
         mixer_menu = bar.addMenu("&Mixer")
+        heading(mixer_menu, "Channels")
         self._action(mixer_menu, "&Add channel\u2026", self.add_channel, "Ctrl+N")
         self._action(mixer_menu, "Re&fresh devices and apps", self.refresh_now, "F5")
-        mixer_menu.addSeparator()
+        heading(mixer_menu, "Mixes")
         self.recording_action = self._action(mixer_menu, "&Recording mix (a third mix)", self.toggle_recording_mix, checkable=True)
-        self._action(mixer_menu, "Recording &devices for OBS", self.show_own_devices)
-        mixer_menu.addSeparator()
+        self._action(mixer_menu, "Recording &devices for OBS\u2026", self.show_own_devices)
+        heading(mixer_menu, "Quick mutes")
         self.mic_action = self._action(mixer_menu, "Mute my &microphone", self.toggle_mic_mute, "Ctrl+M", checkable=True)
-        self.hear_action = self._action(mixer_menu, "&Hear Broadcast", self.toggle_hear_broadcast, "Ctrl+B", checkable=True)
         self.mute_actions = {}
-        used = {"a", "f", "r", "d", "m", "h"}  # the Alt-key letters the items above and below take
+        used = {"a", "f", "r", "d", "m", "h"}  # the Alt-key letters the other items take
         for mix in self.engine.mixer.mixes:
             shortcut = {MONITOR: "Ctrl+Shift+L", STREAM: "Ctrl+Shift+B"}.get(mix.id, "")
             letter = next((c for c in mix.label if c.isalnum() and c.lower() not in used), "")  # first letter of the name nobody has yet
             used.add(letter.lower())
             text = f"Mute {mix.label.replace(letter, '&' + letter, 1)}" if letter else f"Mute {mix.label}"
             self.mute_actions[mix.id] = self._action(mixer_menu, text, partial(self.toggle_mix_mute, mix.id),
-                                                     shortcut, checkable=True)
+                                                     shortcut or None, checkable=True)
+        # H for hear: kept away from Ctrl+Shift+B (Mute Broadcast), which does nearly the opposite
+        self.hear_action = self._action(mixer_menu, "&Hear Broadcast", self.toggle_hear_broadcast, "Ctrl+H", checkable=True)
         mixer_menu.aboutToShow.connect(self._refresh_mixer_menu)
 
-        # View: how the window looks, in three groups (the Nexus ones only show in the Nexus look).
+        # View: how the window is laid out and drawn, the desktop widgets, and the window itself.
         view_menu = bar.addMenu("&View")
-        view_menu.addSection("Layout")
+        heading(view_menu, "Layout")
         self.layout_actions = {}
         layout_group = QActionGroup(self)
-        for key, text in (("columns", "&Columns (a card for each channel)"), ("rows", "&Rows (a line for each channel)"),
-                          ("free", "Fr&ee (nodes you place anywhere)")):
-            action = view_menu.addAction(text)
-            action.setCheckable(True)
+        for key, text, keys in (("columns", "&Columns (a card for each channel)", "Ctrl+1"),
+                                ("rows", "&Rows (a line for each channel)", "Ctrl+2")):
+            action = self._action(view_menu, text, partial(self.set_layout, key), keys, checkable=True)
             action.setActionGroup(layout_group)
-            action.triggered.connect(lambda _c=False, key=key: self.set_layout(key))
             self.layout_actions[key] = action
-        view_menu.addSection("Appearance")
-        self.look_menu = view_menu.addMenu("&Look")
+        heading(view_menu, "Themes and skins")
+        self.look_menu = view_menu.addMenu("S&kin")
         self.look_menu.aboutToShow.connect(self._fill_look_menu)
         self.theme_menu = view_menu.addMenu("&Theme")
         self.theme_menu.aboutToShow.connect(self._fill_theme_menu)
-        self.nexus_section = view_menu.addSection("Nexus")
-        self.nexus_colors_action = self._action(view_menu, "&Nexus colours on dark themes",
-                                                lambda: self.set_nexus_colors(self.nexus_colors_action.isChecked()), checkable=True)
-        self.nexus_colors_action.setToolTip("Nexus's deep blue and cyan on Dark, Retro Purple, Midnight Blue and Amber Console. Off: each theme "
-                                            "keeps its own colours. High contrast and imported themes are never changed.")
+        self.look_colors_action = self._action(view_menu, "Skin's own colo&urs on Dark and Light",
+                                               lambda: self.set_look_colors(self.look_colors_action.isChecked()), checkable=True)
+        self.look_colors_action.setToolTip("Nexus's deep blue and cyan, and Tile's graphite and white keys, on the Dark and Light themes. "
+                                           "Every other theme always keeps its own colours. Off: Dark and Light keep theirs too.")
+        self.nexus_section = self.reduce_action = None
         self.reduce_action = self._action(view_menu, "Re&duce effects", lambda: self.set_reduce_effects(self.reduce_action.isChecked()),
                                           checkable=True)
-        self.reduce_action.setToolTip("For slow or busy computers: the Nexus rings stop shimmering and the faders show no waveform or glow")
-        self.tidy_action = self._action(view_menu, "T&idy up the free layout", lambda: self.canvas.tidy() if self.layout_mode == "free" else None)
-        view_menu.addSection("Desktop")
+        self.nexus_section = self.reduce_action  # (0.11.5 had a Nexus heading here; the item shows only in Nexus)
+        self.reduce_action.setToolTip("For slow or busy computers: the Nexus rings stop shimmering and the cards do not glow")
+        heading(view_menu, "Desktop")
         self.widgets_menu = view_menu.addMenu("Desktop wid&gets")
         self.widgets_menu.setToolTipsVisible(True)
         self.widgets_menu.aboutToShow.connect(self._fill_widgets_menu)
-        view_menu.addSection("Window")
+        self.widgets_toggle_action = self._action(view_menu, "Show or hide &my widgets", self.toggle_my_widgets, "Ctrl+Shift+W")
+        self.widgets_toggle_action.setToolTip("Closes the desktop widgets that are open, or opens again the ones you had")
+        heading(view_menu, "Window")
         self.fullscreen_action = self._action(view_menu, "&Full screen", self.toggle_fullscreen, "F11", checkable=True)
-        self._action(view_menu, "Reset &window size", self.reset_window_size)
+        self.reset_size_action = self._action(view_menu, "Reset &window size", self.reset_window_size, "Ctrl+0")
         view_menu.aboutToShow.connect(self._refresh_view_menu)
 
-        # Settings: everything that is chosen once and then left alone, in four groups.
+        # Settings (the menu bar of the Original skin): the same groups as the Settings window.
         self.settings_menu = settings_menu = bar.addMenu("&Settings")
-        settings_menu.addSection("Startup")
+        heading(settings_menu, "Startup and background")
         background = settings_menu.addMenu("&Running in the background")
-        background.addSection("When I log in")
+        heading(background, "When I log in")
         group = QActionGroup(self)
         self.autostart_actions = {}
         for key, text in (("off", "Do not start automatically"), ("window", "Start with the window open"),
@@ -118,7 +179,7 @@ class MenusMixin:
             action.setActionGroup(group)
             action.triggered.connect(lambda _c=False, key=key: self.set_autostart(key))
             self.autostart_actions[key] = action
-        background.addSection("When I close the window")
+        heading(background, "When I close the window")
         close_group = QActionGroup(self)
         self.close_actions = {}
         for key, text in (("quit", "Quit Sluice"), ("minimize", "Keep running in the taskbar"),
@@ -134,7 +195,7 @@ class MenusMixin:
         background.aboutToShow.connect(self._refresh_background_menu)
         self.background_menu = background
         self.launcher_action = self._action(settings_menu, "Add Sluice to the &applications menu", self.toggle_launcher, checkable=True)
-        settings_menu.addSection("Audio")
+        heading(settings_menu, "Audio")
         buffer_menu = settings_menu.addMenu("Audio &buffer")
         self.buffer_actions = {}
         labels = {256: "Smallest (256 frames): lowest delay, most CPU", 512: "Small (512 frames): the default",
@@ -142,78 +203,129 @@ class MenusMixin:
         for frames in BUFFER_CHOICES:
             self.buffer_actions[frames] = self._action(buffer_menu, labels[frames], partial(self.set_buffer, frames), checkable=True)
         buffer_menu.aboutToShow.connect(self._refresh_buffer_menu)
-        # "MIDI controllers and Stream Deck" is added at the end of this group by attach_controls(), in front of this heading.
-        self.controllers_separator = settings_menu.addSection("Updates")
+        self.controllers_heading = heading(settings_menu, "Controllers")
+        self.controllers_heading.setVisible(False)  # until attach_controls() puts its item under it
+        # "MIDI controllers and Stream Deck…" is put here by attach_controls(), in front of the next heading.
+        self.controllers_separator = heading(settings_menu, "Updates")
         self.auto_update_action = self._action(settings_menu, "&Update automatically when a new version is found",
                                                self.toggle_auto_update, checkable=True)
         self._action(settings_menu, "&Check for updates\u2026", self.check_for_updates)
         self.rollback_action = self._action(settings_menu, "&Go back to the previous version\u2026", self.rollback_update)
-        settings_menu.addSeparator()
-        self._action(settings_menu, "Reset all &settings to the defaults\u2026", self.reset_settings)
         settings_menu.aboutToShow.connect(self._refresh_settings_menu)
 
-        # Help: how to use it, and where to go when something is wrong.
+        # Help: learning it, when something is wrong, the community, and about.
         self.help_menu = bar.addMenu("&Help")
+        self.help_menu.setToolTipsVisible(True)
+        heading(self.help_menu, "Learn")
         self._action(self.help_menu, "&Keyboard shortcuts", self.show_shortcuts, "F1")
         self.help_menu.addAction("&What's new in this version", self.show_whats_new)
-        self.help_menu.addSeparator()
+        heading(self.help_menu, "Something wrong")
+        self._action(self.help_menu, "I heard a &glitch", self.mark_glitch, "Ctrl+Shift+G")
         report_action = self.help_menu.addAction("Save bug &report\u2026", self.save_report)
         report_action.setToolTip("Something wrong, or something looks wrong? Save this file and send it: it lists the window size, how the "
                                  "window was arranged and where each part is, as well as the audio setup.")
-        self.help_menu.setToolTipsVisible(True)
-        self._action(self.help_menu, "I heard a &glitch", self.mark_glitch, "Ctrl+Shift+G")
         self.help_menu.addAction("Report a &problem", partial(self.open_link, ISSUES_URL))
-        self.help_menu.addSeparator()
+        heading(self.help_menu, "Community")
         self.help_menu.addAction("Join the &Discord", partial(self.open_link, DISCORD_URL))
         self.help_menu.addAction("Project page on Git&Hub", partial(self.open_link, PROJECT_URL))
-        self.help_menu.addSeparator()
+        heading(self.help_menu, "About")
         self.help_menu.addAction(f"&About Sluice {__version__}", self.show_about)
-        self.help_menu.addSeparator()
+        self.help_menu.addSeparator()  # kept apart, so it is not clicked by mistake
         self.uninstall_action = self.help_menu.addAction("&Uninstall Sluice\u2026", self.uninstall_app)
 
-        # The menus live behind the menu button (and the Settings button) in the top bar; the classic bar stays out of sight.
+        # The menus live behind the ☰ button in the top bar; the classic bar stays out of sight (but for the Original skin). The ☰
+        # View menu has what you do with the window; the skin, the theme and the rest of the settings are in the Settings window.
+        self.window_menu = QMenu("&View", self)
+        heading(self.window_menu, "Layout")
+        for action in self.layout_actions.values():
+            self.window_menu.addAction(action)
+        heading(self.window_menu, "Desktop")
+        self.window_menu.addMenu(self.widgets_menu)
+        self.window_menu.addAction(self.widgets_toggle_action)
+        heading(self.window_menu, "Window")
+        self.window_menu.addAction(self.fullscreen_action)
+        self.window_menu.addAction(self.reset_size_action)
+        self.window_menu.aboutToShow.connect(self._refresh_view_menu)
         self.main_menu = QMenu(self)
-        for menu in (file_menu, mixer_menu, view_menu, self.help_menu):
+        for menu in (file_menu, mixer_menu, self.window_menu, self.help_menu):
             self.main_menu.addMenu(menu)
+        self.main_menu.addSeparator()
+        self.open_settings_action = self._action(self.main_menu, "S&ettings\u2026", self.open_settings, "Ctrl+,")
+        for menu in (self.main_menu, *[a.menu() for a in bar.actions() if a.menu() is not None]):
+            watch_shortcut_gaps(menu)
         bar.setVisible(False)
+
+    def toggle_my_widgets(self) -> None:
+        """Ctrl+Shift+W: close the open desktop widgets (remembering them), or open again the ones you had."""
+        desktop = self.desktop
+        if desktop.open_widgets:
+            self._hidden_widgets = [dict(spec) for spec in self.engine.mixer.desktop_widgets]
+            desktop.close_all(forget=True)
+            self.say("Desktop widgets closed. Ctrl+Shift+W opens them again.")
+            return
+        specs = getattr(self, "_hidden_widgets", None) or []
+        if not specs:
+            self.say("No desktop widgets to open again. Choose some in View > Desktop widgets.")
+            return
+        for spec in specs:
+            desktop.open(spec["kind"], spec.get("mix"), spec.get("channel"))
+        self._hidden_widgets = []
+
+    def open_settings(self, section: str = "") -> None:
+        """The Settings window (one, kept): Appearance, Audio, Startup and background, Controllers and Updates."""
+        from .ui_settings import SettingsWindow
+
+        if getattr(self, "settings_window", None) is None:
+            self.settings_window = SettingsWindow(self)
+        self.settings_window.open_at(section)
 
     def _refresh_view_menu(self) -> None:
         self.fullscreen_action.setChecked(self.isFullScreen())
         self.reduce_action.setChecked(self.engine.mixer.reduce_effects)
-        self.nexus_colors_action.setChecked(self.engine.mixer.nexus_colors)
+        self.look_colors_action.setChecked(self.engine.mixer.look_colors)
         self._show_look_items()
 
     def _fill_widgets_menu(self) -> None:
         """Small windows to leave on the desktop: tick one to show it, untick to close it."""
         menu = self.widgets_menu
         menu.clear()
-        items = [("Microphone mute button", "mic", None, "A round button: click it to mute or unmute your microphone")]
+        items = [("Microphone mute button", "mic", None, None, "A round button: click it to mute or unmute your microphone")]
         for mix in self.engine.mixer.mixes:
-            items.append((f"{mix.label} volume dial", "dial", mix.id, f"A dial for the {mix.label} main level: scroll to change it, click to mute"))
-        items.append(("Channel list", "strip", None, "Every channel on one line, in a small window"))
-        for text, kind, mix, tip in items:
-            action = menu.addAction(text)
-            action.setCheckable(True)
-            action.setChecked(self.desktop.is_open(kind, mix))
-            action.setToolTip(tip)
-            action.triggered.connect(lambda _c=False, kind=kind, mix=mix: self._toggle_desktop_widget(kind, mix))
+            items.append((f"{mix.label} volume dial", "dial", mix.id, None,
+                          f"A dial for the {mix.label} main level: scroll to change it, click to mute"))
+        items.append(("Channel list", "strip", None, None, "Every channel on one line, in a small window"))
+        self._widget_items(menu, items)
+        menu.addSeparator()  # 0.11.5: one mix or one channel, with its sliders
+        items = [(f"{mix.label} mix", "mix", mix.id, None, f"The {mix.label} mix with its slider, Mute and the Limiter")
+                 for mix in self.engine.mixer.mixes]
+        self._widget_items(menu, items)
+        channels = menu.addMenu("Channels")
+        channels.setToolTipsVisible(True)
+        self._widget_items(channels, [(channel.label, "channel", None, channel.id,
+                                       f"{channel.label} with a slider and a mute button for each mix") for channel in self.engine.mixer.channels])
         menu.addSeparator()
         close_all = menu.addAction("Close all widgets", lambda: self.desktop.close_all(forget=True))
         close_all.setEnabled(bool(self.desktop.open_widgets))
 
-    def _toggle_desktop_widget(self, kind: str, mix) -> None:
-        was_open = self.desktop.is_open(kind, mix)
-        self.desktop.toggle(kind, mix)
-        if not was_open and not self.desktop.is_open(kind, mix):
+    def _widget_items(self, menu, items) -> None:
+        for text, kind, mix, channel, tip in items:
+            action = menu.addAction(text)
+            action.setCheckable(True)
+            action.setChecked(self.desktop.is_open(kind, mix, channel))
+            action.setToolTip(tip)
+            action.triggered.connect(lambda _c=False, kind=kind, mix=mix, channel=channel: self._toggle_desktop_widget(kind, mix, channel))
+
+    def _toggle_desktop_widget(self, kind: str, mix, channel=None) -> None:
+        was_open = self.desktop.is_open(kind, mix, channel)
+        self.desktop.toggle(kind, mix, channel)
+        if not was_open and not self.desktop.is_open(kind, mix, channel):
             self.say("That is as many widgets as Sluice keeps. Close one first.")
 
     def _show_look_items(self) -> None:
-        """The View items that only mean something in the Nexus look are shown only there (and Tidy up only in the looks with Free)."""
+        """The View items that only mean something in the Nexus look are shown only there."""
         nexus = themes.current_look() == "nexus"
-        for item in (self.nexus_section, self.nexus_colors_action, self.reduce_action):
-            item.setVisible(nexus)
-        self.tidy_action.setVisible(themes.has_free(themes.current_look()))  # Nexus and Tile have the Free layout
-        self.tidy_action.setEnabled(self.layout_mode == "free")
+        self.reduce_action.setVisible(nexus)
+        self.look_colors_action.setVisible(themes.current_look() in ("nexus", "tile"))
 
     def uninstall_app(self) -> None:
         """Two ways to remove Sluice, each showing exactly what it removes; then Sluice closes and a separate process does it."""
@@ -342,7 +454,7 @@ class MenusMixin:
                  f"(running now: {self.engine.io.blocksize}).")
 
     def show_own_devices(self) -> None:
-        from .ui import OwnDevicesDialog  # here, not at the top: ui.py imports this module
+        from .ui_channel import OwnDevicesDialog  # here, not at the top: the window imports this module
 
         OwnDevicesDialog(self.engine, self).exec()
 
@@ -369,7 +481,7 @@ class MenusMixin:
         for action in self.actions():
             keys = action.shortcut().toString(QKeySequence.SequenceFormat.NativeText)
             if keys:
-                rows.append((keys, action.text().replace("&", "").rstrip("\u2026")))
+                rows.append((keys, plain(action.text())))
         return rows
 
     def show_shortcuts(self) -> None:
@@ -377,5 +489,5 @@ class MenusMixin:
         table = "".join(f"<tr><td><b>{key}</b>&nbsp;&nbsp;&nbsp;</td><td>{what}</td></tr>" for key, what in rows)
         QMessageBox.information(self, "Keyboard shortcuts", f"<table>{table}</table><br>"
                                 "Faders: scroll the mouse wheel over one, or use the arrow keys when it is selected.<br>"
-                                "For buttons and knobs outside the app, see <b>Settings > MIDI controllers and Stream Deck</b>.")
+                                "For buttons and knobs outside the app, see <b>Settings > Controllers</b>.")
 

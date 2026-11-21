@@ -6,10 +6,13 @@ from __future__ import annotations
 from functools import partial
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QVBoxLayout, QWidget
 
 from . import themes
 from . import ui_icons as icons
+from .ui_base import ElidedLabel
+from .ui_meters import Fader
 
 
 def _db_text(db: float) -> str:
@@ -19,10 +22,9 @@ def _db_text(db: float) -> str:
 class MiniStrip(QWidget):
     """A list of channels for one mix at a time (Listen or Broadcast), and that mix's master line at the bottom."""
 
-    def __init__(self, window) -> None:
+    def __init__(self, window, tile: bool = False) -> None:
         super().__init__()
-        from .ui import Fader  # here: ui imports this module
-
+        self.tile = tile  # the Tile look: each line is a mini tile with one lane (fader and meter in one)
         self.window_ = window
         self.engine = window.engine
         self._fader_class = Fader
@@ -31,8 +33,9 @@ class MiniStrip(QWidget):
         self.rows: dict = {}
         self.master: dict = {}
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setContentsMargins(*((12, 12, 12, 20) if tile else (0, 0, 0, 0)))  # Tile: the mini keys sit in a tray
         outer.setSpacing(8)
+        self._tray = None
         self.choice = QFrame()
         self.choice.setObjectName("segmented")
         pick = QHBoxLayout(self.choice)
@@ -52,7 +55,7 @@ class MiniStrip(QWidget):
             self.choice_buttons[mix.id] = button
         outer.addWidget(self.choice)
         self.list_box = QVBoxLayout()
-        self.list_box.setSpacing(6)
+        self.list_box.setSpacing(0 if tile else 6)
         outer.addLayout(self.list_box)
         outer.addStretch(1)
         rule = QFrame()
@@ -67,6 +70,8 @@ class MiniStrip(QWidget):
 
     # ---------------------------------------------------------------- building
     def _make_row(self, text: str, channel) -> QWidget:
+        if self.tile:
+            return self._make_tile(text, channel)
         row = QWidget()
         line = QHBoxLayout(row)
         line.setContentsMargins(0, 0, 0, 0)
@@ -75,8 +80,6 @@ class MiniStrip(QWidget):
         dot.setFixedSize(10, 10)
         color = channel.color if channel is not None else themes.color("accent")
         dot.setStyleSheet(f"background: {color}; border-radius: 5px;")
-        from .ui import ElidedLabel  # here: ui imports this module
-
         name = ElidedLabel(text)
         name.setObjectName("name")
         name.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
@@ -102,11 +105,29 @@ class MiniStrip(QWidget):
         row.fader, row.readout, row.mute, row.name, row.channel = fader, readout, mute, name, channel
         return row
 
+    def _make_tile(self, text: str, channel) -> QWidget:
+        from . import skin_tile
+        from .ui_tile import MiniTile  # here: ui_tile imports the channel cards, which the window imports with this module
+
+        if channel is not None:
+            row = MiniTile(text, skin_tile.channel_color(channel), skin_tile.channel_icon(channel))
+        else:
+            row = MiniTile(text, themes.color("accent"), "speaker")
+        row.channel = channel
+        return row
+
+    def push_levels(self, levels: dict) -> None:
+        """The live signal on each mini tile's lane, for the mix chosen at the top (the Tile look only)."""
+        for channel_id, row in self.rows.items():
+            row.fader.push(levels.get(f"ch:{channel_id}:{self.mix_id}", 0.0))
+        self.master_row.fader.push(levels.get(f"mix:{self.mix_id}", 0.0))
+
     def rebuild(self) -> None:
         """One line for each channel now in the mixer."""
         while self.list_box.count():
             item = self.list_box.takeAt(0)
             if item.widget():
+                item.widget().hide()  # at once: the old line must not show beside the new one until it is deleted
                 item.widget().deleteLater()
         self.rows = {}
         for channel in self.engine.mixer.channels:
@@ -169,8 +190,20 @@ class MiniStrip(QWidget):
         row.mute.setChecked(muted)
         for widget in (row.fader, row.mute):
             widget.blockSignals(False)
-        row.readout.setText(_db_text(db))
-        row.mute.setIcon(icons.icon("speaker_off" if muted else "speaker", themes.color("mute_fg" if muted else "text"), 18))
+        if self.tile:
+            from . import skin_tile
+
+            row.fader.set_muted(muted)
+            row.readout.setText("Muted" if muted else _db_text(db))
+            if bool(row.readout.property("muted")) != muted:
+                row.readout.setProperty("muted", muted)
+                row.readout.style().unpolish(row.readout)
+                row.readout.style().polish(row.readout)
+            name = skin_tile.LANE_ICONS.get(self.mix_id, "speaker") if row.channel is not None else ("speaker_off" if muted else "speaker")
+            row.mute.setIcon(icons.icon(name, themes.color("mute_fg" if muted else "text2"), 16))
+        else:
+            row.readout.setText(_db_text(db))
+            row.mute.setIcon(icons.icon("speaker_off" if muted else "speaker", themes.color("mute_fg" if muted else "text"), 18))
         label = self.mix_label()
         who = row.channel.label if row.channel is not None else "the main level"
         row.mute.setToolTip(f"{'Unmute' if muted else 'Mute'} {who} in {label}")
@@ -179,6 +212,19 @@ class MiniStrip(QWidget):
         mix = next((m for m in self.engine.mixer.mixes if m.id == self.mix_id), None)
         return mix.label if mix is not None else "this mix"
 
+    def paintEvent(self, event) -> None:
+        if not self.tile:
+            super().paintEvent(event)
+            return
+        if self._tray is None:
+            from .ui_tile_paint import TrayPainter
+            self._tray = TrayPainter()  # the same tray as behind the big tiles
+        p = QPainter(self)
+        self._tray.draw(self, p)
+        p.end()
+
     def refresh_theme(self) -> None:
+        if self._tray is not None:
+            self._tray.reset()
         if hasattr(self, "rows"):
             self.sync_from_model()

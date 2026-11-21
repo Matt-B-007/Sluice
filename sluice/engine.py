@@ -36,7 +36,8 @@ log = logging.getLogger("sluice.engine")
 
 REFRESH_SECONDS = 2.0
 GUARD_STREAK_LOST = 6  # this many failed audio-server calls in a row, with no success between, means the server is gone
-RELINK_EVERY = 5  # re-check the connections every 5th device refresh (10 s) unless something changed sooner
+RELINK_EVERY = 5  # without a graph watcher: re-check the connections every 5th device refresh (10 s) unless something changed sooner
+RELINK_SAFETY = 30  # with one (0.11.5): only when the graph changed, and once a minute in case a change was missed
 XRUN_LOG_SECONDS = 10.0  # dropouts are summed up into one log line per this many seconds
 SETTLE_SECONDS = 8.0  # dropouts while starting up or loading effects are expected and are not shown in the status bar
 CHANGE_SETTLE_SECONDS = 3.0  # the same quiet time after a change such as adding an effect
@@ -284,7 +285,7 @@ class Engine:
                      "which points at something else: another program, a busy USB device, or the system itself.")
             if not self._last_dropout_note:
                 text += ("\n\nTo find the cause, run  pw-top  in a terminal and watch the ERR column. To give everything more room, "
-                         "choose a larger size in Settings > Audio buffer, or remove heavy effects.")
+                         "choose a larger buffer in Settings > Audio, or remove heavy effects.")
         return text
 
     def _note(self, text: str, level: int = logging.INFO) -> None:
@@ -550,9 +551,16 @@ class Engine:
                 changed.add("devices")
                 relink = True
             self._refreshes_since_link += 1
-            if self._refreshes_since_link >= RELINK_EVERY:
+            watcher = getattr(self.linker, "watcher", None)
+            if watcher is not None and watcher.running():
+                if self._refreshes_since_link >= RELINK_SAFETY:
+                    relink = True
+            elif self._refreshes_since_link >= RELINK_EVERY:
                 relink = True  # ports can also appear or vanish without the device list changing; checking costs a few
                 #                small processes (pw-link), so it is done every few seconds, not every tick
+        watcher = getattr(self.linker, "watcher", None)
+        if watcher is not None and watcher.running() and watcher.take_changed():
+            relink = True  # PipeWire says a port or a link came or went
         if now - self._last_rules >= RULES_SECONDS:
             if self.apply_rules(now):
                 changed.add("streams")
@@ -641,7 +649,7 @@ class Engine:
             self._xrun_hint_given = True
             self._hints_given.add("busy")
             log.warning("if dropouts keep coming: run pw-top and look at the ERR column to see which program is behind them, or "
-                        "use Settings > Audio buffer > Large")
+                        "choose a larger buffer in Settings > Audio")
         self._pending_xruns = 0
         self._last_xrun_log = now
 

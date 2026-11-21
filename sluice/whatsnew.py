@@ -11,7 +11,7 @@ import re
 from pathlib import Path
 from typing import Optional
 
-from .updates import parse_version
+from .update_check import parse_version
 
 BUNDLED = Path(__file__).resolve().parent / "data" / "CHANGELOG.md"
 SECTION = re.compile(r"^## (\d+(?:\.\d+)*)\s*$", re.MULTILINE)

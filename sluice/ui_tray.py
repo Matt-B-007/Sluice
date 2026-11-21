@@ -15,7 +15,7 @@ from PySide6.QtWidgets import QMessageBox
 from . import ui_icons as icons
 from .engine import REFRESH_SECONDS
 from .model import config_path
-from .ui_constants import TALKING_HOLD, TALKING_LEVEL, TRAY_WATCH_MS
+from .ui_base import TALKING_HOLD, TALKING_LEVEL, TRAY_WATCH_MS
 
 HIDDEN_REFRESH_SECONDS = 4.0
 
@@ -145,9 +145,9 @@ class TrayMixin:
 
     def _refresh_background_menu(self) -> None:
         """Tick the current choices and say, in the labels, where Sluice will actually go."""
-        from . import desktop
+        from . import launcher
 
-        state = desktop.autostart_state()
+        state = launcher.autostart_state()
         for key, action in self.autostart_actions.items():
             action.setChecked(key == state)
         for key, action in self.close_actions.items():
@@ -157,10 +157,10 @@ class TrayMixin:
         self.no_tray_note.setVisible(not self._tray_possible())
 
     def set_autostart(self, mode: str) -> None:
-        from . import desktop
+        from . import launcher
 
         try:
-            desktop.set_autostart(mode)
+            launcher.set_autostart(mode)
         except OSError as exc:
             QMessageBox.warning(self, "Could not change start-up", str(exc))
             return
@@ -170,14 +170,14 @@ class TrayMixin:
                                + ("tray." if self.engine.mixer.close_action == "tray" and self._tray_possible() else "taskbar.")}[mode])
 
     def toggle_launcher(self) -> None:
-        from . import desktop
+        from . import launcher
 
         try:
-            if desktop.is_installed():
-                desktop.uninstall()
+            if launcher.is_installed():
+                launcher.uninstall()
                 self.say("Sluice was removed from the applications menu.")
             else:
-                desktop.install()
+                launcher.install()
                 self.say("Sluice is now in the applications menu: search for \u201cSluice\u201d in your launcher.")
         except OSError as exc:
             QMessageBox.warning(self, "Could not change the applications menu", str(exc))

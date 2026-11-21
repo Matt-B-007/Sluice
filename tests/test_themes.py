@@ -260,7 +260,7 @@ def test_the_theme_menu_lists_the_themes_and_ticks_the_one_in_use(win):
     assert items == [("Dark", True), ("Light", False), ("High contrast", False), ("Retro Purple", False),
                      ("Midnight Blue", False), ("Amber Console", False), ("Paper", False), ("Match my system", False)]
     tail = [a.text().replace("&", "") for a in menu.actions() if a.text() and not a.isCheckable()]
-    assert tail == ["Import theme…", "Export current theme…", "Get more themes…"]
+    assert tail == ["Your themes", "Manage", "Import theme…", "Export current theme…", "Get more themes"]  # headings, then the rest
 
 
 def test_choosing_a_theme_changes_the_window_the_setting_and_the_tick(win):
@@ -432,7 +432,7 @@ def test_get_more_themes_opens_the_collection_on_the_project_page(win, monkeypat
     opened = []
     monkeypatch.setattr(QDesktopServices, "openUrl", lambda url: opened.append(url.toString()) or True)
     menu = _theme_menu(win)
-    action = next(a for a in menu.actions() if a.text().replace("&", "") == "Get more themes…")
+    action = next(a for a in menu.actions() if a.text().replace("&", "") == "Get more themes")
     action.trigger()
     assert opened == [ui.THEMES_URL] and ui.THEMES_URL == ui.PROJECT_URL + "/tree/main/themes"
 
@@ -455,3 +455,16 @@ def test_the_window_tick_sends_the_heartbeat(win, monkeypatch):
     monkeypatch.setattr(logs, "heartbeat", lambda: beats.append(1))
     win._tick_engine()
     assert beats == [1]
+
+
+def test_a_retired_pack_theme_whose_file_is_gone_falls_back_to_the_closest_built_in(tmp_path):
+    assert themes.resolve("custom:ocean", folder=tmp_path).id == "midnight"
+    assert themes.resolve("custom:cassette", folder=tmp_path).id == "paper"
+    assert themes.resolve("custom:halloween", folder=tmp_path).id == "amber"
+    assert themes.resolve("custom:something-else", folder=tmp_path).id == themes.DEFAULT
+
+
+def test_a_retired_pack_theme_that_was_imported_keeps_working(tmp_path):
+    theme = themes.Theme("x", "Ocean", "dark", dict(themes.BUILT_IN["dark"].colors, accent="#00ccdd"))
+    themes.save_custom(theme, tmp_path)
+    assert themes.resolve("custom:ocean", folder=tmp_path).colors["accent"] == "#00ccdd"

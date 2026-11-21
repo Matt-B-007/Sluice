@@ -32,12 +32,12 @@ def _real_parts():
     from .backend import PulseSystem
     from .linker import PwLinker
 
-    linker = PwLinker()
+    linker = PwLinker(watch=True)  # it watches the graph for changes (one pw-link --monitor) instead of looking on a clock
     if not linker.available():
         raise RuntimeError("pw-link not found or PipeWire is not running")
     from .model import Mixer, config_path
 
-    # The block size the user chose (Settings > Audio buffer). A PIPEWIRE_LATENCY set in the environment still wins.
+    # The block size the user chose (Settings > Audio). A PIPEWIRE_LATENCY set in the environment still wins.
     os.environ.setdefault("PIPEWIRE_LATENCY", f"{Mixer.load(config_path()).buffer_frames}/48000")
     system = PulseSystem()
     try:
@@ -85,6 +85,16 @@ def _acquire_lock():
         return True
 
 
+def _release_lock(lock) -> None:
+    """Let go of a lock from ``_acquire_lock`` (closing the file releases it). True (no fcntl) and None need nothing."""
+    close = getattr(lock, "close", None)
+    if close is not None:
+        try:
+            close()
+        except OSError:
+            pass
+
+
 def _lock_holder() -> tuple:
     """(process number, version) of the running Sluice, from the lock file; None for what is not known."""
     try:
@@ -114,18 +124,21 @@ def _cleanup() -> int:
         print("sluice is running. Close it first (it removes its own devices when it quits).", file=sys.stderr)
         return 1
     try:
-        from .backend import PulseSystem
+        try:
+            from .backend import PulseSystem
 
-        system = PulseSystem(purge=False)
-    except Exception as exc:
-        print(f"sluice: could not connect to PipeWire/PulseAudio: {exc}", file=sys.stderr)
-        return 1
-    try:
-        removed = system.purge_stale(legacy=True)
+            system = PulseSystem(purge=False)
+        except Exception as exc:
+            print(f"sluice: could not connect to PipeWire/PulseAudio: {exc}", file=sys.stderr)
+            return 1
+        try:
+            removed = system.purge_stale(legacy=True)
+        finally:
+            system.cleanup()
+        print(f"Removed {removed} leftover sluice device(s)." if removed else "Nothing to clean up.")
+        return 0
     finally:
-        system.cleanup()
-    print(f"Removed {removed} leftover sluice device(s)." if removed else "Nothing to clean up.")
-    return 0
+        _release_lock(lock)
 
 
 def _report(target: str) -> int:
@@ -141,21 +154,24 @@ def _report(target: str) -> int:
 
 
 def _rollback() -> int:
-    from . import selfupdate
+    from . import update_install
 
-    root = selfupdate.install_root()
-    previous = selfupdate.previous_version(root)
+    root = update_install.install_root()
+    previous = update_install.previous_version(root)
     if not previous:
         print("There is no earlier version to go back to.", file=sys.stderr)
         return 1
-    if _acquire_lock() is None:
+    lock = _acquire_lock()  # held until the files are back: a Sluice started meanwhile would run half-replaced files
+    if lock is None:
         print("sluice is running. Close it first, then go back.", file=sys.stderr)
         return 1
     try:
-        selfupdate.rollback(root)
-    except selfupdate.UpdateError as exc:
+        update_install.rollback(root)
+    except update_install.UpdateError as exc:
         print(f"sluice: {exc}", file=sys.stderr)
         return 1
+    finally:
+        _release_lock(lock)
     print(f"Went back to Sluice {previous}. Your settings were not changed.")
     return 0
 
@@ -167,9 +183,12 @@ def _uninstall(args) -> int:
     if lock is None:
         print("sluice is running. Close it first (Help > Uninstall Sluice closes it for you).", file=sys.stderr)
         return 1
-    return uninstall.run(keep_settings=args.keep_settings, assume_yes=args.yes, dry_run=args.dry_run,
-                         cleanup_devices=_cleanup_devices, list_devices=_list_devices,
-                         clear_caches=args.clear_caches, remove_git=args.remove_git_folder)
+    try:
+        return uninstall.run(keep_settings=args.keep_settings, assume_yes=args.yes, dry_run=args.dry_run,
+                             cleanup_devices=_cleanup_devices, list_devices=_list_devices,
+                             clear_caches=args.clear_caches, remove_git=args.remove_git_folder)
+    finally:
+        _release_lock(lock)
 
 
 def _list_devices() -> list:
@@ -193,18 +212,18 @@ def _cleanup_devices() -> int:
 
 
 def _desktop(install: bool) -> int:
-    from . import desktop
+    from . import launcher
 
     if install:
         try:
-            launcher = desktop.install()
+            entry = launcher.install()
         except OSError as exc:
             print(f"sluice: could not write the launcher: {exc}", file=sys.stderr)
             return 1
-        print(f"Added Sluice to the applications menu ({launcher}).\n"
+        print(f"Added Sluice to the applications menu ({entry}).\n"
               "Search for \u201cSluice\u201d in your launcher. Remove it again with: sluice --uninstall-desktop")
         return 0
-    print("Removed Sluice from the applications menu." if desktop.uninstall() else "Sluice was not in the applications menu.")
+    print("Removed Sluice from the applications menu." if launcher.uninstall() else "Sluice was not in the applications menu.")
     return 0
 
 
@@ -219,7 +238,7 @@ def _run_gui(args, log_file: Optional[Path]) -> int:
         lock = _acquire_lock()
         if lock is None:
             try:  # a second start (the menu, or login) should show the first window rather than do nothing
-                from .control import send
+                from .control_socket import send
 
                 send({"cmd": "show"}, timeout=2.0)
                 print("sluice is already running; its window was brought to the front.", file=sys.stderr)
@@ -261,11 +280,11 @@ def _run_gui(args, log_file: Optional[Path]) -> int:
     app.setDesktopFileName("sluice")  # matches sluice.desktop, so the launcher's icon is used for the window
     from PySide6.QtGui import QIcon
 
-    from .desktop import bundled_icon
+    from .launcher import bundled_icon
 
     icon = QIcon(str(bundled_icon())) if bundled_icon().is_file() else QIcon()
     if icon.isNull():  # a Qt without SVG support: the PNG does the same job
-        from .desktop import bundled_png
+        from .launcher import bundled_png
 
         icon = QIcon(str(bundled_png(256)))
     app.setWindowIcon(icon)
@@ -285,7 +304,7 @@ def _run_gui(args, log_file: Optional[Path]) -> int:
     engine = Engine(mixer, system, io, linker, catalog=Catalog.scan())
     engine.start()
     window = MainWindow(engine, config_file=config_file, notice=notice)
-    from .ui_controls import Controls
+    from .ui_controllers import Controls
 
     window.attach_controls(Controls(engine, window, config_file.with_name("controls.json") if config_file else None, demo=is_demo))
     if args.minimized:
@@ -307,9 +326,9 @@ def _run_gui(args, log_file: Optional[Path]) -> int:
     code = app.exec()
     log.info("window closed, exit code %s", code)
     if not is_demo:
-        from . import selfupdate
+        from . import update_install
 
-        installed = selfupdate.apply_staged_quietly()  # a downloaded update goes in now that nothing is running
+        installed = update_install.apply_staged_quietly()  # a downloaded update goes in now that nothing is running
         if installed:
             print(f"sluice: updated to {installed}; it starts next time.", file=sys.stderr)
     del lock
@@ -319,7 +338,7 @@ def _run_gui(args, log_file: Optional[Path]) -> int:
 def main(argv: Optional[list] = None) -> int:
     args_list = sys.argv[1:] if argv is None else list(argv)
     if args_list[:1] == ["ctl"]:  # remote control of a running sluice: no logging, no Qt, fast enough for a button press
-        from .control import run_cli
+        from .control_socket import run_cli
 
         return run_cli(args_list[1:])
     parser = argparse.ArgumentParser(prog="sluice", description="Virtual audio mixer for PipeWire.")
@@ -365,10 +384,10 @@ def main(argv: Optional[list] = None) -> int:
         if args.rollback:
             return _rollback()
         if args.autostart:
-            from . import desktop
+            from . import launcher
 
             try:
-                desktop.set_autostart(args.autostart)
+                launcher.set_autostart(args.autostart)
             except OSError as exc:
                 print(f"sluice: could not change start-up: {exc}", file=sys.stderr)
                 return 1
