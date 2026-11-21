@@ -1,16 +1,18 @@
 # Sluice theme pack
 
-Thirty colour themes for [Sluice](https://github.com/Matt-B-007/Sluice) 0.9.2 or newer, all updated for the 0.10.0 look (the previews show it). A picture of each is in
+Twenty-one colour themes for [Sluice](https://github.com/Matt-B-007/Sluice) 0.9.2 or newer, all updated for the 0.10.0 look (the previews show it). A picture of each is in
 the `previews` folder (same name as the theme file).
 
-**Sluice 0.9.3 and newer already has Midnight Blue, Amber Console and Paper built in** (under View > Theme); their
-files are here for 0.9.2. The rest need importing.
+Sluice also has seven themes built in (Dark, Light, High contrast, Retro Purple, Midnight Blue, Amber Console and Paper), so
+those are not repeated here. The themes here need importing.
+
+0.11.5 trimmed the pack from thirty: the copies of the built-in themes went, and so did six that looked almost the same as another
+one (Cassette, Sepia Reader, Studio Slate, Vintage Hi-Fi, Halloween and Ocean). If you imported one of those, it stays in your themes
+folder and keeps working; Paper, Sunset, Amber Console and Midnight Blue are the closest ones still here or built in.
 
 ## The themes
 
 **Dark**
-- Midnight Blue: deep navy with a bright blue accent
-- Ocean: dark teal with aqua
 - Aurora: near-black with green and violet
 - Blueprint: engineering-drawing blue with cyan lines
 - Frost: cool blue-grey
@@ -22,21 +24,14 @@ files are here for 0.9.2. The rest need importing.
 - Streamer Purple: deep purple with a bright violet accent
 - Synthwave: indigo with pink and cyan
 - Neon Tokyo: black with magenta and electric blue
-- Amber Console: vintage studio gear, amber on brown-black
 - Retro Warm: warm retro browns and yellow
-- Vintage Hi-Fi: charcoal with brushed silver and brass
-- Studio Slate: charcoal with a muted orange accent
 - Terminal Green: black with phosphor-green text
 - Handheld Green: four-shades-of-olive handheld look
-- Halloween: black with orange, green and purple
 - OLED Black: true black panels with thin borders
 - Night Mode: very dim and warm, for late nights
 - Colour-blind friendly: blue and orange accents instead of red and green
 
 **Light**
-- Paper: warm off-white with terracotta
-- Sepia Reader: cream with soft brown text
-- Cassette: cream and orange, like a tape label
 - Lavender Fog: soft purple-grey
 - Mint Studio: pale green-white with teal
 - Winter: ice blue and white
@@ -57,6 +52,10 @@ of them in the menu. **Remove an imported theme** deletes one.
   `live_bg`, `live_fg`, `dashed`, `focus`). The files here list all of them. A theme file that leaves them out still works: Sluice works
   them out from the colours the file does give.
 
+- 0.11.5 works out the colours that give depth (raised keys, glass, shadows, grooves and trays) from each theme's own colours, so a theme
+  file does not need them. To set them by hand, add any of these to `colors`: `key_top`, `key_bottom` (a key's face, top and bottom),
+  `key_skirt`, `key_rim` (its thick lower edge and the dark line under it), `key_edge`, `tray_top`, `tray_bottom`, `tray_lip`, `groove`,
+  `shadow` (the shadow's colour), `knob_top`, `knob_bottom`, `knob_ring` and `outline` (Nexus's card outline).
 - A theme only changes colours. It cannot change anything else in Sluice.
 - The level meters' green-to-red colours, the Mute red and the Limiter teal are the same in every theme, so they
   always mean the same thing. That also means the meters keep their red-green colours in the colour-blind

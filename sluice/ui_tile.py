@@ -19,322 +19,27 @@ Everything here paints with the theme's colours (``look_tile.paint_colors``) and
 focus halo are one pixmap, redrawn only when its size, focus or theme changes."""
 from __future__ import annotations
 
-from functools import partial
 import time
+from functools import partial
 from typing import Optional
 
-import numpy as np
-from PySide6.QtCore import QEvent, QObject, QPoint, QPointF, QRectF, QSize, Qt
-from PySide6.QtGui import QBrush, QColor, QFont, QFontMetrics, QImage, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtCore import QPoint, QPointF, QRectF, QSize, Qt
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QMenu, QPushButton, QSizePolicy, QVBoxLayout, QWidget
 
-from . import look_tile, themes
-from . import ui_icons as icons
+from . import look_tile, themes, ui_icons as icons
 from .flow import FlowLayout
 from .model import MIN_DB
-from .ui import (EMPTY_HINTS, ChannelStrip, ElidedLabel, Fader, SourcePicture, db_to_fader_position, format_db, level_fraction,
-                 mute_tip)
-from .ui_widgets import ReadoutEdit
+from .ui_base import db_to_fader_position, ElidedLabel, EMPTY_HINTS, format_db, level_fraction, mute_tip, ReadoutEdit
+from .ui_channel import ChannelStrip
+from .ui_meters import Fader, SourcePicture
+from .ui_tile_paint import (
+    _HANDLES, CLIP_HOLD, CLIP_NOTE, face_gradient, frame_of, IconWell, LANE_EXTRA_H, OPEN_W, PAD, paint_groove, paint_handle,
+    SCALE_MARKS, SHADOW, SKIRT, stripe_brush, TileFrame,
+)
+
 
 TILE_W, TILE_H = 264, 232      # a folded tile
-OPEN_W = 360                   # a folded-out tile (its height follows what it holds)
-LANE_EXTRA_H = 38              # each lane past the second (the Recording mix) makes a folded tile this much taller
-SHADOW = (10, 6, 10, 14)       # left, top, right, bottom: the room around a tile for its shadow and halo
-PAD = 14                       # inside the tile's edge
-SKIRT = 6                      # the key's thick lower edge, inside the tile's footprint
-RADIUS = 12.0
-CLIP_HOLD = 2.0                # seconds the track stays outlined in red after a clip
-CLIP_NOTE = 60.0               # seconds the source line says when it clipped
-FREE_STEP = (TILE_W + SHADOW[0] + SHADOW[2] + 6, TILE_H + SHADOW[1] + SHADOW[3] + 6)  # the Free layout's grid for tiles
-SCALE_MARKS = ((MIN_DB, "-∞"), (-40.0, "-40"), (-20.0, "-20"), (-10.0, "-10"), (0.0, "0"), (6.0, "+6"), (12.0, "+12"))
-
-
-# ----------------------------------------------------------------------------- painting helpers
-_SHADOWS: dict = {}
-
-
-def _box_blur(a: np.ndarray, r: int, axis: int) -> np.ndarray:
-    if r < 1:
-        return a
-    pad = [(0, 0), (0, 0)]
-    pad[axis] = (r + 1, r)
-    c = np.cumsum(np.pad(a, pad), axis=axis, dtype=np.float32)
-    n = 2 * r + 1
-    return (c[n:] - c[:-n]) / n if axis == 0 else (c[:, n:] - c[:, :-n]) / n
-
-
-def soft_shape(width: float, height: float, blur: int, alpha: float, color: str, ratio: float, radius: float = RADIUS) -> tuple:
-    """A blurred rounded rectangle (a shadow or a halo) as (pixmap, pad): draw it ``pad`` points up and left of the shape.
-    Blurred once with numpy (three box passes, close to a Gaussian) and cached by size, so it costs nothing to draw again."""
-    key = (round(width), round(height), blur, round(alpha, 3), color, round(ratio, 2), round(radius))
-    hit = _SHADOWS.get(key)
-    if hit is not None:
-        return hit
-    pad = blur * 2
-    w, h = max(1, int((width + 2 * pad) * ratio)), max(1, int((height + 2 * pad) * ratio))
-    mask = QImage(w, h, QImage.Format.Format_Grayscale8)
-    mask.fill(0)
-    p = QPainter(mask)
-    p.setRenderHint(QPainter.RenderHint.Antialiasing)
-    p.setPen(Qt.PenStyle.NoPen)
-    p.setBrush(QColor(255, 255, 255))
-    p.drawRoundedRect(QRectF(pad * ratio, pad * ratio, width * ratio, height * ratio), radius * ratio, radius * ratio)
-    p.end()
-    stride = mask.bytesPerLine()
-    a = np.frombuffer(mask.constBits(), dtype=np.uint8, count=stride * h).reshape(h, stride)[:, :w].astype(np.float32)
-    r = max(1, int(blur * ratio / 2))
-    for _ in range(3):
-        a = _box_blur(_box_blur(a, r, 0), r, 1)
-    a = np.clip(a * alpha, 0, 255).astype(np.uint8)
-    tint = QColor(color)
-    rgba = np.zeros((h, w, 4), dtype=np.uint8)
-    premultiply = a.astype(np.float32) / 255.0
-    rgba[..., 0] = (tint.blue() * premultiply).astype(np.uint8)   # ARGB32 in memory on little-endian machines: B, G, R, A
-    rgba[..., 1] = (tint.green() * premultiply).astype(np.uint8)
-    rgba[..., 2] = (tint.red() * premultiply).astype(np.uint8)
-    rgba[..., 3] = a
-    image = QImage(rgba.data, w, h, 4 * w, QImage.Format.Format_ARGB32_Premultiplied).copy()
-    pixmap = QPixmap.fromImage(image)
-    pixmap.setDevicePixelRatio(ratio)
-    if len(_SHADOWS) > 64:
-        _SHADOWS.clear()
-    _SHADOWS[key] = (pixmap, pad)
-    return pixmap, pad
-
-
-def paint_surface(p: QPainter, rect: QRectF, ratio: float, focus: Optional[str] = None, lifted: bool = False,
-                  shadow: bool = True, radius: float = RADIUS, skirt: int = SKIRT) -> None:
-    """One key, in ``rect`` (its whole footprint): the soft shadow under it, its skirt (the thick lower edge), the face lit from above,
-    and the halo and ring when it has the focus. Painted once into a cached pixmap by whoever owns the key."""
-    pc = look_tile.paint_colors()
-    face = rect.adjusted(0, 0, 0, -skirt)
-    if shadow:
-        blur, alpha, drop = (12, pc["shadow"] * 2.0, skirt + 6) if lifted else (7, pc["shadow"] * 1.5, skirt + 2)
-        pixmap, pad = soft_shape(face.width(), face.height(), blur, alpha, "#000000", ratio, radius)
-        p.drawPixmap(QPointF(face.x() - pad, face.y() - pad + drop), pixmap)
-    if focus:
-        pixmap, pad = soft_shape(face.width(), face.height() + skirt, 6, 0.55, focus, ratio, radius)
-        p.drawPixmap(QPointF(face.x() - pad, face.y() - pad), pixmap)
-    p.setPen(Qt.PenStyle.NoPen)
-    p.setBrush(QColor(pc["skirt_dark"]))
-    p.drawRoundedRect(face.translated(0, skirt + 1), radius, radius)
-    p.setBrush(QColor(pc["skirt"]))
-    p.drawRoundedRect(face.translated(0, skirt), radius, radius)
-    gradient = QLinearGradient(face.topLeft(), face.bottomLeft())
-    gradient.setColorAt(0.0, QColor(pc["face_top"]))
-    gradient.setColorAt(1.0, QColor(pc["face_bottom"]))
-    p.setBrush(gradient)
-    edge = QColor(0, 0, 0, 14 if pc["light"] else 60)
-    p.setPen(QPen(edge, 1))
-    p.drawRoundedRect(face.adjusted(0.5, 0.5, -0.5, -0.5), radius, radius)
-    highlight = QColor(255, 255, 255, 255 if pc["light"] else 24)  # the lit top edge
-    p.setPen(QPen(highlight, 1))
-    p.drawLine(QPointF(face.left() + radius, face.top() + 1.5), QPointF(face.right() - radius, face.top() + 1.5))
-    if focus:
-        p.setBrush(Qt.BrushStyle.NoBrush)
-        p.setPen(QPen(QColor(focus), 1.5))
-        p.drawRoundedRect(face.adjusted(0.75, 0.75, -0.75, -0.75), radius - 0.5, radius - 0.5)
-
-
-def face_gradient(widget: QWidget, frame) -> Optional[QLinearGradient]:
-    """The key face's gradient in ``widget``'s own coordinates, so a widget on the face can paint the face behind itself (and be
-    opaque: Qt then repaints only that widget, not the key under it, when it changes)."""
-    if frame is None:
-        return None
-    face = frame.face_rect()
-    top = widget.mapFrom(frame, QPoint(0, round(face.top()))).y()
-    bottom = widget.mapFrom(frame, QPoint(0, round(face.bottom()))).y()
-    pc = look_tile.paint_colors()
-    gradient = QLinearGradient(QPointF(0, top), QPointF(0, bottom))
-    gradient.setColorAt(0.0, QColor(pc["face_top"]))
-    gradient.setColorAt(1.0, QColor(pc["face_bottom"]))
-    return gradient
-
-
-def frame_of(widget: QWidget):
-    """The TileFrame a widget sits on, or None."""
-    parent = widget.parentWidget()
-    while parent is not None and not isinstance(parent, TileFrame):
-        parent = parent.parentWidget()
-    return parent
-
-
-_STRIPES: dict = {}
-_HANDLES: dict = {}
-
-
-def stripe_brush(base: str, stripe: str) -> QBrush:
-    """The diagonal stripes of a muted track, as one small tile Qt repeats (not forty lines a frame)."""
-    key = (base, stripe)
-    brush = _STRIPES.get(key)
-    if brush is None:
-        tile = QPixmap(8, 8)
-        tile.fill(QColor(base))
-        q = QPainter(tile)
-        q.setRenderHint(QPainter.RenderHint.Antialiasing)
-        q.setPen(QPen(QColor(stripe), 2.5))
-        for offset in (-8, 0, 8):
-            q.drawLine(QPointF(offset, 8), QPointF(offset + 8, 0))
-        q.end()
-        brush = QBrush(tile)
-        _STRIPES[key] = brush
-    return brush
-
-
-def paint_groove(p: QPainter, shape: QPainterPath, track: QRectF, pc: dict) -> None:
-    """A groove pressed into the face: dark at its top edge (in shadow), a faint light line at its bottom edge."""
-    p.save()
-    p.setClipPath(shape)
-    shade = QLinearGradient(track.topLeft(), QPointF(track.left(), track.top() + min(5.0, track.height() / 2)))
-    shade.setColorAt(0.0, QColor(0, 0, 0, round(255 * pc["groove_shadow"] * 0.55)))
-    shade.setColorAt(1.0, QColor(0, 0, 0, 0))
-    p.fillRect(track, shade)
-    p.restore()
-    light = QColor(255, 255, 255, 230 if pc["light"] else 14)
-    p.setPen(QPen(light, 1))
-    r = track.height() / 2.0
-    p.drawLine(QPointF(track.left() + r, track.bottom() + 0.5), QPointF(track.right() - r, track.bottom() + 0.5))
-
-
-def paint_handle(p: QPainter, thumb: QRectF, pc: dict, muted: bool) -> None:
-    """A raised white handle with a soft shadow and a grip line."""
-    radius = min(thumb.width(), thumb.height()) / 2.0
-    p.setPen(Qt.PenStyle.NoPen)
-    p.setBrush(QColor(0, 0, 0, 70 if pc["light"] else 130))
-    p.drawRoundedRect(thumb.translated(0, 1.5), radius, radius)
-    if muted:
-        p.setBrush(QColor(pc["handle_muted"]))
-    else:
-        gradient = QLinearGradient(thumb.topLeft(), thumb.bottomLeft())
-        gradient.setColorAt(0.0, QColor(pc["handle"]))
-        gradient.setColorAt(1.0, QColor(pc["handle_bottom"]))
-        p.setBrush(gradient)
-    if pc["light"]:
-        p.setPen(QPen(QColor(0, 0, 0, 30), 1))
-    p.drawRoundedRect(thumb, radius, radius)
-    p.setPen(QPen(QColor(0, 0, 0, 55), 1.2))
-    centre = thumb.center().x()
-    p.drawLine(QPointF(centre, thumb.top() + 5), QPointF(centre, thumb.bottom() - 5))
-
-
-def paint_slot(p: QPainter, rect: QRectF) -> None:
-    """Where a dragged tile will land: a dashed outline and "Drop here"."""
-    pc = look_tile.paint_colors()
-    floor = QColor(pc["track"])
-    floor.setAlpha(110)
-    pen = QPen(QColor(pc["dashed"]), 1.5, Qt.PenStyle.CustomDashLine)
-    pen.setDashPattern([5, 4])
-    p.setPen(pen)
-    p.setBrush(floor)
-    p.drawRoundedRect(rect.adjusted(1, 1, -1, -1), RADIUS, RADIUS)
-    p.setPen(QColor(pc["text2"]))
-    font = QFont(p.font())
-    font.setPixelSize(12)
-    p.setFont(font)
-    band = QRectF(rect.left(), rect.bottom() - 40, rect.width(), 30)  # the lifted tile hangs over the middle: the label is below it
-    p.drawText(band, Qt.AlignmentFlag.AlignCenter, "Drop here")
-
-
-class TileFrame(QFrame):
-    """The painted part of a tile: everything under its controls. ``margins`` is the room left round the tile for its shadow."""
-
-    def __init__(self, margins: tuple = SHADOW, radius: float = RADIUS) -> None:
-        super().__init__()
-        self.setObjectName("tileframe")
-        self.margins = margins
-        self.radius = radius
-        self.focus_color: Optional[str] = None
-        self.slot = False
-        self.shadow = True
-        self.lifted = False
-        self._cache = None
-        self._cache_key = None
-
-    def tile_rect(self) -> QRectF:
-        left, top, right, bottom = self.margins
-        return QRectF(self.rect()).adjusted(left, top, -right, -bottom)
-
-    def face_rect(self) -> QRectF:
-        """The key's top face (its footprint without the skirt)."""
-        return self.tile_rect().adjusted(0, 0, 0, -SKIRT)
-
-    def set_focus_color(self, color: Optional[str]) -> None:
-        if color != self.focus_color:
-            self.focus_color = color
-            self.update()
-
-    def set_slot(self, on: bool) -> None:
-        self.slot = on
-        self.update()
-
-    def set_lifted(self, on: bool) -> None:
-        if on != self.lifted:
-            self.lifted = on
-            self.update()
-
-    def refresh_theme(self) -> None:
-        self._cache = None
-        self.update()
-
-    def paintEvent(self, _event) -> None:
-        p = QPainter(self)
-        if self.slot:
-            p.setRenderHint(QPainter.RenderHint.Antialiasing)
-            paint_slot(p, self.tile_rect())
-            p.end()
-            return
-        ratio = self.devicePixelRatioF()
-        key = (self.size(), self.focus_color, ratio, themes.generation(), self.shadow, self.lifted, self.radius)
-        if self._cache is None or key != self._cache_key:
-            pixmap = QPixmap(max(1, int(self.width() * ratio)), max(1, int(self.height() * ratio)))
-            pixmap.setDevicePixelRatio(ratio)
-            pixmap.fill(Qt.GlobalColor.transparent)
-            q = QPainter(pixmap)
-            q.setRenderHint(QPainter.RenderHint.Antialiasing)
-            paint_surface(q, self.tile_rect(), ratio, self.focus_color, lifted=self.lifted, shadow=self.shadow, radius=self.radius)
-            q.end()
-            self._cache, self._cache_key = pixmap, key
-        p.drawPixmap(0, 0, self._cache)
-        p.end()
-
-
-class IconWell(QWidget):
-    """The channel's tinted icon well: its identity colour, faint behind and full on the drawing (or its first letter)."""
-
-    def __init__(self, color: str, icon: str, letter: str, size: int = 32) -> None:
-        super().__init__()
-        self.color, self.icon_name, self.letter, self.size_ = color, icon, (letter[:1] or "?").upper(), size
-        self.setFixedSize(size, size)
-        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-
-    def refresh_theme(self) -> None:
-        self.update()
-
-    def paintEvent(self, _event) -> None:
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        pc = look_tile.paint_colors()
-        well = QColor(themes.mix(pc["surface"], self.color, 0.16 if not pc["light"] else 0.14))
-        edge = QColor(themes.mix(pc["surface"], self.color, 0.30))
-        p.setPen(QPen(edge, 1))
-        p.setBrush(well)
-        r = self.size_ * 0.28
-        p.drawRoundedRect(QRectF(0.5, 0.5, self.size_ - 1, self.size_ - 1), r, r)
-        if self.icon_name:
-            ratio = self.devicePixelRatioF()
-            px = round(self.size_ * 0.56)
-            pixmap = icons.render(self.icon_name, self.color, round(px * ratio))
-            pixmap.setDevicePixelRatio(ratio)
-            offset = (self.size_ - px) / 2.0
-            p.drawPixmap(QPointF(offset, offset), pixmap)
-        else:
-            font = QFont(p.font())
-            font.setPixelSize(round(self.size_ * 0.44))
-            font.setBold(True)
-            p.setFont(font)
-            p.setPen(QColor(self.color))
-            p.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, self.letter)
-        p.end()
 
 
 # ----------------------------------------------------------------------------- the track: fader and meter in one
@@ -743,19 +448,14 @@ class TileStrip(ChannelStrip):
     """A channel as a tile. It is a ChannelStrip underneath (the same menus, engine calls and model syncing), with the Tile
     look's parts: lanes instead of fader columns, the source line instead of the chip list, and a fold-out for the detail."""
 
-    def __init__(self, channel, engine, window, free: bool = False) -> None:
-        self.free = free
+    def __init__(self, channel, engine, window) -> None:
         self.tint = look_tile.channel_color(channel)
-        # Columns keeps the tiles you folded out across rebuilds; Free starts with all folded (one opens at a time there)
-        self.expanded = channel.id in getattr(window, "tile_open", set()) and not free
+        self.expanded = channel.id in getattr(window, "tile_open", set())  # the tiles you folded out stay so across rebuilds
         self._clip_at: Optional[float] = None
         self._ticks = 0
         self._playing: set = set()
         self.app_meters: list = []
         self.lane_rows: dict = {}
-        self.key = channel.id   # as a node of the Free layout: the tile is its own node and has no card to fold out beside it
-        self.card = None
-        self.strip = self
         self.is_open = False
         super().__init__(channel, engine, window, rows=False)
         self.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
@@ -917,33 +617,27 @@ class TileStrip(ChannelStrip):
         first = menu.actions()[0] if menu.actions() else None
         self.fold_action = QAction_(menu, "Fold out", self.toggle_open)
         menu.insertAction(first, self.fold_action)
-        if not self.free:
-            self.earlier_action = QAction_(menu, "Move earlier", lambda: self.window.move_tile(self.channel.id, -1))
-            self.later_action = QAction_(menu, "Move later", lambda: self.window.move_tile(self.channel.id, 1))
-            menu.insertAction(first, self.earlier_action)
-            menu.insertAction(first, self.later_action)
+        self.earlier_action = QAction_(menu, "Move earlier", lambda: self.window.move_tile(self.channel.id, -1))
+        self.later_action = QAction_(menu, "Move later", lambda: self.window.move_tile(self.channel.id, 1))
+        menu.insertAction(first, self.earlier_action)
+        menu.insertAction(first, self.later_action)
         menu.insertSeparator(first)
 
         def refresh() -> None:
             self.fold_action.setText("Fold in" if self.expanded else "Fold out")
-            if not self.free:
-                ids = [c.id for c in self.engine.mixer.channels]
-                index = ids.index(self.channel.id) if self.channel.id in ids else 0
-                self.earlier_action.setEnabled(index > 0)
-                self.later_action.setEnabled(index < len(ids) - 1)
+            ids = [c.id for c in self.engine.mixer.channels]
+            index = ids.index(self.channel.id) if self.channel.id in ids else 0
+            self.earlier_action.setEnabled(index > 0)
+            self.later_action.setEnabled(index < len(ids) - 1)
 
         menu.aboutToShow.connect(refresh)
 
     # ------------------------------------------------------------------ folding out
     def toggle_open(self) -> None:
-        canvas = getattr(self.window, "canvas", None) if self.free else None
-        if canvas is not None:  # the Free layout keeps one tile folded out at a time
-            canvas.toggle(self)
-        else:
-            self.set_open(not self.expanded)
+        self.set_open(not self.expanded)
 
     def set_open(self, on: bool) -> None:
-        """Fold out or in (the Free layout calls this too)."""
+        """Fold out or in."""
         if on == self.expanded:
             return
         self.expanded = on
@@ -952,7 +646,6 @@ class TileStrip(ChannelStrip):
         if opened is None:
             opened = self.window.tile_open = set()
         (opened.add if on else opened.discard)(self.channel.id)
-        self.frame.set_lifted(on and self.free)  # over its neighbours in Free: a deeper shadow says so
         self._apply_open()
 
     def _apply_open(self) -> None:
@@ -1255,322 +948,6 @@ def QAction_(menu: QMenu, text: str, slot):  # noqa: N802  (an action owned by t
     return action
 
 
-# ----------------------------------------------------------------------------- a mix as a tile (the Free layout)
-class TileMixNode(QWidget):
-    """Listen or Broadcast as a tile in the Free layout: the master lane works here; the chevron folds the full mix card out beside
-    it (its device, Limiter and the rest)."""
-
-    def __init__(self, canvas, strip, color: str) -> None:
-        super().__init__()
-        self.canvas, self.strip, self.card, self.key = canvas, strip, strip, strip.mix.id
-        self.tint = color
-        self.is_open = False
-        mix = strip.mix
-        self.mix = mix
-        self.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
-        self.setAccessibleName(f"{mix.label} mix tile")
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        self.frame = TileFrame()
-        outer.addWidget(self.frame)
-        root = QVBoxLayout(self.frame)
-        left, top, right, bottom = SHADOW
-        root.setContentsMargins(left + PAD, top + PAD - 2, right + PAD, bottom + SKIRT + 8)
-        root.setSpacing(0)
-        self.grip = TileGrip(self)
-        grip = QHBoxLayout(self.grip)
-        grip.setContentsMargins(0, 0, 0, 0)
-        grip.setSpacing(10)
-        grip.addWidget(IconWell(color, look_tile.LANE_ICONS.get(mix.id, "speaker"), mix.label))
-        texts = QVBoxLayout()
-        texts.setSpacing(1)
-        self.title = ElidedLabel(mix.label)
-        self.title.setObjectName("tilename")
-        self.title.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self.source_line = ElidedLabel("")
-        self.source_line.setObjectName("tilesource")
-        self.source_line.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        texts.addWidget(self.title)
-        texts.addWidget(self.source_line)
-        grip.addLayout(texts, 1)
-        self.grip.setFixedHeight(36)
-        root.addWidget(self.grip)
-        root.addSpacing(14)
-        self.lane = TileLane(color)
-        self.lane.setAccessibleName(f"{mix.label} level and meter")
-        self.lane.gainChanged.connect(self._on_level)
-        self.mute = QPushButton("")
-        self.mute.setObjectName("tilemute")
-        self.mute.setCheckable(True)
-        self.mute.setFixedSize(28, 28)
-        self.mute.setIconSize(QSize(16, 16))
-        self.mute.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.mute.setAccessibleName(f"Mute {mix.label}")
-        self.mute.toggled.connect(self._on_mute)
-        self.readout = QLabel("")
-        self.readout.setObjectName("tilevalue")
-        self.readout.setFixedSize(66, 28)
-        self.readout.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        row = QWidget()
-        row.setObjectName("tilerow")
-        line = QHBoxLayout(row)
-        line.setContentsMargins(0, 0, 0, 0)
-        line.setSpacing(8)
-        line.addWidget(self.mute)
-        line.addWidget(self.lane, 1)
-        line.addWidget(self.readout)
-        row.setFixedHeight(28)
-        root.addWidget(row)
-        root.addStretch(1)
-        self.note = QLabel("")
-        self.note.setObjectName("tilenote")
-        self.chevron = _small_button("chevron_down", "Fold out the full card: device, Limiter and more", "tileplain")
-        self.chevron.clicked.connect(lambda: self.canvas.toggle(self))
-        foot = QHBoxLayout()
-        foot.setContentsMargins(0, 0, 0, 0)
-        foot.addWidget(self.note, 1)
-        foot.addWidget(self.chevron)
-        footer = QWidget()
-        footer.setObjectName("tilefoot")
-        footer.setFixedHeight(28)
-        footer.setLayout(foot)
-        root.addWidget(footer)
-        self.setFixedSize(TILE_W + left + right, 168 + top + bottom)
-        _focus_tracker(self)
-        self.refresh()
-
-    def mover(self):
-        return self.canvas.window_.tile_mover()
-
-    def _on_level(self, tenths: int) -> None:
-        self.strip.engine.set_master(self.mix.id, tenths / 10.0)
-        self.strip.sync_from_model()
-
-    def _on_mute(self, on: bool) -> None:
-        self.strip.engine.set_master_mute(self.mix.id, on)
-        self.strip.sync_from_model()
-
-    def set_open(self, on: bool) -> None:
-        self.is_open = on
-        self.chevron.setIcon(icons.icon("chevron_up" if on else "chevron_down", themes.color("text2"), 16))
-
-    def push_level(self, linear: float, _slow: float = 1.0) -> None:
-        self.lane.push(linear)
-
-    def refresh_theme(self) -> None:
-        self.frame.refresh_theme()
-        self.refresh()
-
-    def refresh(self) -> None:
-        mix = self.mix
-        for widget in (self.lane, self.mute):
-            widget.blockSignals(True)
-        self.lane.setGain(round(mix.gain_db * 10))
-        self.mute.setChecked(bool(mix.mute))
-        for widget in (self.lane, self.mute):
-            widget.blockSignals(False)
-        self.lane.set_muted(bool(mix.mute))
-        self.mute.setIcon(icons.icon("speaker_off" if mix.mute else "speaker", themes.color("mute_fg" if mix.mute else "text2"), 16))
-        self.mute.setToolTip(f"Unmute {mix.label}" if mix.mute else f"Mute {mix.label}")
-        self.readout.setText("Muted" if mix.mute else format_db(mix.gain_db))
-        if bool(self.readout.property("muted")) != bool(mix.mute):
-            self.readout.setProperty("muted", bool(mix.mute))
-            self.readout.style().unpolish(self.readout)
-            self.readout.style().polish(self.readout)
-        self.source_line.setText(self.device_text())
-        self.note.setText("Limiter on" if mix.limiter else "Limiter off")
-        self.set_open(self.is_open)
-
-    def device_text(self) -> str:
-        """What the mix plays to or is offered as, from the engine (not from the card's picker, which may not be filled yet)."""
-        mix, engine = self.mix, self.strip.engine
-        if getattr(self.strip, "combo", None) is None:  # Broadcast and Recording are devices other apps pick
-            return f"Sends to {mix.source_description}"
-        if mix.device is None:
-            return "No output"
-        name = mix.device or engine.default_sink
-        description = next((d.description for d in engine.sinks if d.name == name), None)
-        if not mix.device:
-            return f"{description} (system default)" if description else "System default output"
-        return description or f"{mix.device} (missing)"
-
-    def set_slot(self, on: bool) -> None:
-        for widget in self.frame.findChildren(QWidget, options=Qt.FindChildOption.FindDirectChildrenOnly):
-            widget.setVisible(not on)
-        self.frame.set_slot(on)
-
-
-# ----------------------------------------------------------------------------- moving a tile
-class TileGhost(QWidget):
-    """The lifted tile under the pointer while it is moved: a picture of it, turned a little, on a deeper shadow."""
-
-    ANGLE = 2.0
-    ROOM = 44
-
-    def __init__(self, parent: QWidget, picture: QPixmap, tile_rect: QRectF) -> None:
-        super().__init__(parent)
-        self.picture, self.tile_rect = picture, tile_rect
-        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
-        size = picture.deviceIndependentSize()
-        self.resize(int(size.width()) + 2 * self.ROOM, int(size.height()) + 2 * self.ROOM)
-
-    LIFT = QPoint(-10, -22)  # lifted up off the tray: the slot's "Drop here" shows below it
-
-    def place(self, top_left: QPoint) -> None:
-        self.move(top_left - QPoint(self.ROOM, self.ROOM) + self.LIFT)
-
-    def paintEvent(self, _event) -> None:
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-        size = self.picture.deviceIndependentSize()
-        centre = QPointF(self.ROOM + size.width() / 2.0, self.ROOM + size.height() / 2.0)
-        p.translate(centre)
-        p.rotate(self.ANGLE)
-        p.scale(1.02, 1.02)
-        p.translate(-size.width() / 2.0, -size.height() / 2.0)
-        pc = look_tile.paint_colors()
-        pixmap, pad = soft_shape(self.tile_rect.width(), self.tile_rect.height(), 20, pc["shadow"] * 2.6, "#000000",
-                                 self.devicePixelRatioF())
-        p.drawPixmap(QPointF(self.tile_rect.x() - pad, self.tile_rect.y() - pad + 14), pixmap)
-        p.drawPixmap(QPointF(0, 0), self.picture)
-        p.end()
-
-
-class TileMover(QObject):
-    """Moves a tile. In Columns the tile's place becomes the "Drop here" slot, which moves through the other tiles as the pointer
-    does; dropping keeps that order (and saves it). In Free the tile goes where it is dropped. Escape puts it back."""
-
-    def __init__(self, window) -> None:
-        super().__init__(window)
-        self.window = window
-        self.tile = None
-        self.ghost: Optional[TileGhost] = None
-
-    def active(self) -> bool:
-        return self.tile is not None
-
-    def begin(self, tile, press_global: QPoint) -> None:
-        if self.tile is not None:
-            self.cancel()
-        self.tile = tile
-        self.free = self.window.layout_mode == "free"
-        self.offset = tile.mapFromGlobal(press_global)
-        self.start_pos = tile.pos()
-        self.start_order = self._order()
-        picture = tile.grab()
-        self.ghost = TileGhost(self.window, picture, tile.frame.tile_rect())
-        self.ghost.show()
-        self.ghost.raise_()
-        tile.set_slot(True)
-        QApplication.instance().installEventFilter(self)
-        self.move(press_global)
-
-    def move(self, point: QPoint) -> None:
-        if self.tile is None:
-            return
-        self.ghost.place(self.window.mapFromGlobal(point) - self.offset)
-        if not self.free:
-            self._reorder(point)
-
-    def drop(self, point: QPoint) -> None:
-        tile = self.tile
-        if tile is None:
-            return
-        if self.free:
-            canvas = self.window.canvas
-            spot = canvas.clamped(canvas.mapFromGlobal(point) - self.offset, tile)
-            tile.move(spot)
-            canvas.fit(tile)
-            canvas.remember(tile)
-            if canvas.open_node is tile and tile.card is not None:
-                canvas.place_card(tile)
-        else:
-            self.window.commit_tile_order([s.channel.id for s in self._strips_in_flow()])
-        self._end()
-
-    def cancel(self) -> None:
-        tile = self.tile
-        if tile is None:
-            return
-        if self.free:
-            tile.move(self.start_pos)
-        else:
-            flow = self.window.channels_row
-            for wanted, channel_id in enumerate(self.start_order):
-                strip = next((s for s in self._strips_in_flow() if s.channel.id == channel_id), None)
-                current = self._flow_index(strip)
-                if strip is not None and current is not None:
-                    item = flow.takeAt(current)
-                    flow.insertWidget(self._first_strip_index() + wanted, item.widget())
-        self._end()
-
-    def eventFilter(self, _obj, event) -> bool:  # noqa: N802
-        if event.type() == QEvent.Type.KeyPress and event.key() == Qt.Key.Key_Escape and self.tile is not None:
-            self.cancel()
-            return True
-        return False
-
-    def _end(self) -> None:
-        QApplication.instance().removeEventFilter(self)
-        if self.ghost is not None:
-            self.ghost.hide()
-            self.ghost.deleteLater()
-            self.ghost = None
-        if self.tile is not None:
-            try:
-                self.tile.set_slot(False)
-            except RuntimeError:
-                pass
-        self.tile = None
-
-    # -- the Columns flow
-    def _strips_in_flow(self) -> list:
-        flow = getattr(self.window, "channels_row", None)
-        if flow is None:
-            return []
-        out = []
-        for i in range(flow.count()):
-            widget = flow.itemAt(i).widget()
-            if widget is not None and hasattr(widget, "channel"):
-                out.append(widget)
-        return out
-
-    def _flow_index(self, widget) -> Optional[int]:
-        flow = self.window.channels_row
-        for i in range(flow.count()):
-            if flow.itemAt(i).widget() is widget:
-                return i
-        return None
-
-    def _first_strip_index(self) -> int:
-        flow = self.window.channels_row
-        for i in range(flow.count()):
-            widget = flow.itemAt(i).widget()
-            if widget is not None and hasattr(widget, "channel"):
-                return i
-        return 0
-
-    def _order(self) -> list:
-        return [s.channel.id for s in self._strips_in_flow()]
-
-    def _reorder(self, point: QPoint) -> None:
-        flow = self.window.channels_row
-        area = self.window.channels_widget
-        local = area.mapFromGlobal(point)
-        for strip in self._strips_in_flow():
-            if strip is self.tile or not strip.geometry().contains(local):
-                continue
-            target, current = self._flow_index(strip), self._flow_index(self.tile)
-            if target is None or current is None:
-                return
-            item = flow.takeAt(current)
-            flow.insertWidget(target, item.widget())
-            flow.activate()
-            return
-
-
 # ----------------------------------------------------------------------------- mini tiles (the compact list)
 class MiniTile(QWidget):
     """One channel in the compact list: its icon well, name, one lane (the mix chosen at the top of the list), value and mute."""
@@ -1617,86 +994,147 @@ class MiniTile(QWidget):
         self.frame.refresh_theme()
 
 
-# ----------------------------------------------------------------------------- the tray, and keys for the other cards
-class KeyBackground:
-    """A raised key behind any widget (the Listen and Broadcast cards, a row of the Rows layout): drawn once per size and theme."""
-
-    def __init__(self, margins: tuple, radius: float = RADIUS) -> None:
-        self.margins, self.radius = margins, radius
-        self._cache = None
-        self._key = None
-
-    def face_rect(self, widget: QWidget) -> QRectF:
-        left, top, right, bottom = self.margins
-        return QRectF(widget.rect()).adjusted(left, top, -right, -bottom - SKIRT)
-
-    def draw(self, widget: QWidget, p: QPainter, focus: Optional[str] = None) -> None:
-        ratio = widget.devicePixelRatioF()
-        key = (widget.size(), ratio, themes.generation(), focus)
-        if self._cache is None or key != self._key:
-            pixmap = QPixmap(max(1, int(widget.width() * ratio)), max(1, int(widget.height() * ratio)))
-            pixmap.setDevicePixelRatio(ratio)
-            pixmap.fill(Qt.GlobalColor.transparent)
-            q = QPainter(pixmap)
-            q.setRenderHint(QPainter.RenderHint.Antialiasing)
-            left, top, right, bottom = self.margins
-            paint_surface(q, QRectF(widget.rect()).adjusted(left, top, -right, -bottom), ratio, focus, radius=self.radius)
-            q.end()
-            self._cache, self._key = pixmap, key
-        p.drawPixmap(0, 0, self._cache)
+# ----------------------------------------------------------------------------- Listen and Broadcast as keys (0.11.5)
+MIX_KEY_W = 300                # the face of a Listen or Broadcast key; it stacks beside the channel tiles
+MIX_KEY_MARGINS = (22, 8, 22, 36)  # room round the face for its skirt and shadows
 
 
-class TrayPainter:
-    """The tray the keys sit in: a plate lit from above with a thick front lip. Drawn once per size and theme."""
-
-    LIP = 8
-
-    def __init__(self) -> None:
-        self._cache = None
-        self._key = None
-
-    def reset(self) -> None:
-        self._cache = None
-
-    def draw(self, widget: QWidget, p: QPainter) -> None:
-        ratio = widget.devicePixelRatioF()
-        key = (widget.size(), ratio, themes.generation())
-        if self._cache is None or key != self._key:
-            pc = look_tile.paint_colors()
-            pixmap = QPixmap(max(1, int(widget.width() * ratio)), max(1, int(widget.height() * ratio)))
-            pixmap.setDevicePixelRatio(ratio)
-            pixmap.fill(Qt.GlobalColor.transparent)
-            q = QPainter(pixmap)
-            q.setRenderHint(QPainter.RenderHint.Antialiasing)
-            plate = QRectF(widget.rect()).adjusted(1, 1, -1, -1 - self.LIP)
-            q.setPen(Qt.PenStyle.NoPen)
-            q.setBrush(QColor(pc["tray_lip"]))
-            q.drawRoundedRect(plate.translated(0, self.LIP), 24, 24)
-            gradient = QLinearGradient(plate.topLeft(), plate.bottomLeft())
-            gradient.setColorAt(0.0, QColor(pc["tray_top"]))
-            gradient.setColorAt(1.0, QColor(pc["tray_bottom"]))
-            q.setBrush(gradient)
-            q.drawRoundedRect(plate, 24, 24)
-            q.setPen(QPen(QColor(255, 255, 255, 255 if pc["light"] else 18), 1))
-            q.drawLine(QPointF(plate.left() + 24, plate.top() + 1.5), QPointF(plate.right() - 24, plate.top() + 1.5))
-            q.end()
-            self._cache, self._key = pixmap, key
-        p.drawPixmap(0, 0, self._cache)
+def mix_key_color(mix_id: str) -> str:
+    colors = themes.mix_colors(themes._current)
+    return {"monitor": colors["listen"], "stream": colors["broadcast"]}.get(mix_id, themes.color("mute"))
 
 
-class TileTray(QWidget):
-    """The tray behind the Columns layout's tiles."""
+def build_mix_key(strip, mix, on_remove=None, on_add_recording=None) -> None:
+    """Build ``strip`` (a MixStrip) as a short key with a sideways slider: the mix's icon, name and device on top with a Limiter
+    switch and a chevron, then one lane (mute, fader and meter in one groove, the level). The chevron folds out what is used less:
+    the device picker (or the name to pick in OBS), Hear Broadcast or Add a recording mix, and Remove for the Recording mix. The parts
+    keep MixStrip's names (fader, meter, readout, mute, limiter, combo, hear...), so everything that drives a mix card drives this."""
+    from .ui_base import MIX_ICONS
+    from .ui_mix import DeviceCombo
+    from .ui_tile_paint import KeyBackground
 
-    def __init__(self) -> None:
-        super().__init__()
-        self.setObjectName("tiletray")
-        self.tray = TrayPainter()
+    left, top, right, bottom = MIX_KEY_MARGINS
+    strip.tile_key = True
+    strip.key = KeyBackground(MIX_KEY_MARGINS, radius=16)
+    strip.setFixedWidth(MIX_KEY_W + left + right)
+    strip.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Maximum)
+    color = mix_key_color(mix.id)
+    strip.tint = color
+    root = QVBoxLayout(strip)
+    root.setContentsMargins(left + 14, top + 12, right + 14, bottom + SKIRT + 12)
+    root.setSpacing(10)
 
-    def refresh_theme(self) -> None:
-        self.tray.reset()
-        self.update()
+    head = QHBoxLayout()
+    head.setSpacing(10)
+    strip.well = IconWell(color, MIX_ICONS.get(mix.id, "speaker"), mix.label, 30)
+    head.addWidget(strip.well, 0, Qt.AlignmentFlag.AlignTop)
+    names = QVBoxLayout()
+    names.setSpacing(0)
+    title = QLabel(mix.label)
+    title.setObjectName("tilename")
+    names.addWidget(title)
+    device_text = mix.source_description if mix.kind != "monitor" else "Your headphones or speakers"
+    strip.device_line = ElidedLabel(device_text)
+    strip.device_line.setObjectName("tilesource")
+    names.addWidget(strip.device_line)
+    head.addLayout(names, 1)
+    strip.limiter = QPushButton("Limiter")
+    strip.limiter.setObjectName("tilelimiter")
+    strip.limiter.setCheckable(True)
+    strip.limiter.setCursor(Qt.CursorShape.PointingHandCursor)
+    strip.limiter.setToolTip("Limiter: stops peaks from clipping")
+    head.addWidget(strip.limiter, 0, Qt.AlignmentFlag.AlignVCenter)
+    strip.fold = _small_button("chevron_down", "Open the full mix settings: device and more", "tileplain", checkable=True, size=28)
+    head.addWidget(strip.fold, 0, Qt.AlignmentFlag.AlignVCenter)
+    root.addLayout(head)
 
-    def paintEvent(self, _event) -> None:
-        p = QPainter(self)
-        self.tray.draw(self, p)
-        p.end()
+    lane_row = QHBoxLayout()
+    lane_row.setSpacing(8)
+    strip.mute = QPushButton("")
+    strip.mute.setObjectName("tilemute")
+    strip.mute.setCheckable(True)
+    strip.mute.setFixedSize(28, 28)
+    strip.mute.setIconSize(QSize(16, 16))
+    strip.mute.setCursor(Qt.CursorShape.PointingHandCursor)
+    strip.mute.setAccessibleName(f"Mute {mix.label}")
+    lane = TileLane(color)
+    lane.setAccessibleName(f"{mix.label} level and meter")
+    strip.fader = strip.meter = lane   # the window's meter timer pushes the level into the same groove
+    strip.readout = ReadoutEdit(None)
+    strip.readout.setObjectName("tilevalue")
+    strip.readout.setFixedSize(58, 28)
+    strip.readout.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+    strip.readout.setAccessibleName(f"{mix.label} level in decibels")
+    strip.readout.setToolTip("Scroll over the number to change the level (hold Shift for fine steps), or click and type a level in dB "
+                             "(for example -6) and press Enter")
+    strip.readout.wheel_steps = True
+    lane_row.addWidget(strip.mute)
+    lane_row.addWidget(lane, 1)
+    lane_row.addWidget(strip.readout)
+    root.addLayout(lane_row)
+
+    strip.details = QWidget()
+    strip.details.setObjectName("tiledetails")
+    details = QVBoxLayout(strip.details)
+    details.setContentsMargins(0, 4, 0, 0)
+    details.setSpacing(8)
+    strip.combo = None
+    strip.device_button = None
+    if mix.kind == "monitor":
+        strip.combo = DeviceCombo("Output: ")
+        strip.combo.setToolTip("Where you hear the mix")
+        strip.combo.setAccessibleName("Listen output device")
+        strip.combo.activated.connect(strip._on_device)
+        details.addWidget(strip.combo)
+    else:
+        strip.device_button = QPushButton(f"Pick “{mix.source_description}” in OBS: copy the name")
+        strip.device_button.setObjectName("tilemove")
+        strip.device_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        strip.device_button.setToolTip(f"The device your streaming or recording app should pick: “{mix.source_description}”. "
+                                       "Click to copy the name.")
+        strip.device_button.clicked.connect(strip._copy_device_name)
+        details.addWidget(strip.device_button)
+    strip.hear = None
+    strip.add_button = None
+    if mix.kind == "monitor":
+        strip.hear = QPushButton("Hear Broadcast")
+        strip.hear.setObjectName("tilemove")
+        strip.hear.setCheckable(True)
+        strip.hear.setCursor(Qt.CursorShape.PointingHandCursor)
+        strip.hear.setToolTip("Check what your audience hears: your output plays the Broadcast mix instead of the Listen mix. "
+                              "Turn it off to go back. It always starts off.")
+        strip.hear.toggled.connect(strip._on_hear)
+        details.addWidget(strip.hear, 0, Qt.AlignmentFlag.AlignLeft)
+    elif mix.id == "stream" and on_add_recording is not None:
+        strip.add_button = QPushButton("Add a recording mix")
+        strip.add_button.setObjectName("tileadd")
+        strip.add_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        strip.add_button.setToolTip("Add a third mix, “Recording”: a second virtual microphone with its own faders and mutes. "
+                                    "Sluice restarts to add it.")
+        strip.add_button.clicked.connect(on_add_recording)
+        details.addWidget(strip.add_button, 0, Qt.AlignmentFlag.AlignLeft)
+    strip.menu_button = None
+    if on_remove is not None:
+        remove = QPushButton("Remove the Recording mix…")
+        remove.setObjectName("tileadd")
+        remove.setCursor(Qt.CursorShape.PointingHandCursor)
+        remove.clicked.connect(on_remove)
+        details.addWidget(remove, 0, Qt.AlignmentFlag.AlignLeft)
+    strip.details.setVisible(False)
+    root.addWidget(strip.details)
+
+    def fold(on: bool) -> None:
+        strip.details.setVisible(on)
+        strip.fold.setIcon(icons.icon("chevron_up" if on else "chevron_down", themes.color("text2"), 16))
+        strip.fold.setToolTip("Fold in" if on else "Open the full mix settings: device and more")
+        strip.updateGeometry()
+
+    strip.fold.toggled.connect(fold)
+    lane.gainChanged.connect(strip._on_gain)
+    strip.readout.wheeled.connect(strip._wheel_gain)
+    strip.readout.entered.connect(strip._typed_gain)
+    strip.mute.toggled.connect(lambda on: strip.engine.set_master_mute(strip.mix.id, on))
+    strip.mute.toggled.connect(lambda _on: strip._show_toggles())
+    strip.limiter.toggled.connect(lambda on: strip.engine.set_limiter(strip.mix.id, on))
+    strip.limiter.toggled.connect(lambda _on: strip._show_toggles())
+

@@ -11,8 +11,8 @@ W, H = 240, 150
 BLURBS = {
     "calm": "Soft cards and quiet colours. The easiest on the eyes and on the computer.",
     "original": "The look of Sluice 0.9.7: flat, compact and familiar.",
-    "nexus": "Round rings, neon edges and a free layout. Reduce effects keeps it light.",
-    "tile": "Raised keys in a tray, light or dark: fader and meter in one groove on each key. Fold a key out for effects and apps. Free layout too.",
+    "nexus": "Glass cards with sound rings and neon edges. Reduce effects keeps it light.",
+    "tile": "Raised keys in a tray, light or dark: fader and meter in one groove on each key. Fold a key out for effects and apps.",
 }
 
 
@@ -69,16 +69,17 @@ def draw_preview(look: str, colors: dict, ratio: float = 1.0) -> QPixmap:
 
 
 def _draw_tiles(p: QPainter, colors: dict) -> None:
-    from .look_tile import CHANNEL_TINTS
-    panel, edge, track = QColor(colors["panel"]), QColor(colors.get("border", colors["panel"])), QColor(colors.get("track", colors["bg"]))
+    from .look_tile import CHANNEL_TINTS, key_colors
+    keys = key_colors(colors)  # the same depth colours the real keys use (0.11.5)
+    panel, edge, track = QColor(keys["face_top"]), QColor(keys["key_edge"]), QColor(keys["groove"])
     tints = (CHANNEL_TINTS["mic"], CHANNEL_TINTS["game"], CHANNEL_TINTS["music"], CHANNEL_TINTS["chat"])
-    tray_top = QColor(themes.mix(colors["bg"], "#ffffff", 0.3 if QColor(colors["bg"]).lightness() > 128 else 0.1))
+    tray_top = QColor(keys["tray_top"])
     p.setPen(Qt.NoPen)
-    p.setBrush(QColor(themes.mix(colors["bg"], "#000000", 0.25)))
+    p.setBrush(QColor(keys["tray_lip"]))
     p.drawRoundedRect(QRectF(4, 26, 148, 122), 10, 10)
     p.setBrush(tray_top)
     p.drawRoundedRect(QRectF(4, 22, 148, 122), 10, 10)
-    skirt = QColor(themes.mix(colors["panel"], "#000000", 0.2 if panel.lightness() > 128 else 0.45))
+    skirt = QColor(keys["skirt"])
     for i, tint in enumerate(tints):
         x, y = 10 + (i % 2) * 72, 28 + (i // 2) * 58
         card = QRectF(x, y, 66, 48)

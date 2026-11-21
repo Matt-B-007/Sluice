@@ -36,7 +36,7 @@ from . import logs, presets, themes
 from .model import MIN_DB, Effect, new_effect_id
 from .ui_room import MeasureEchoDialog, MeasureRoomDialog, MeasureVoiceDialog
 from .ui_live import LivePanel
-from .ui_widgets import ReadoutEdit, ResetSlider
+from .ui_base import ReadoutEdit, ResetSlider
 
 log = logging.getLogger(__name__)
 

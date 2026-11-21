@@ -15,7 +15,7 @@ from PySide6.QtGui import QActionGroup, QColor, QDesktopServices, QGuiApplicatio
 from PySide6.QtWidgets import QFileDialog, QMessageBox
 
 from . import logs, themes
-from .ui_constants import THEMES_URL
+from .ui_base import THEMES_URL
 
 log = logging.getLogger("sluice.ui")
 
@@ -62,8 +62,7 @@ class ThemesMixin:
         theme = self.current_theme()
         themes.set_look(self.engine.mixer.look)
         themes.set_reduce_effects(self.engine.mixer.reduce_effects)
-        themes.set_nexus_colors(self.engine.mixer.nexus_colors)
-        themes.set_tile_colors(self.engine.mixer.tile_colors)
+        themes.set_look_colors(self.engine.mixer.look_colors)
         colors = themes.look_colors(theme, self.engine.mixer.look)
         themes.set_current(colors)
         self.setStyleSheet(themes.build_style(colors, self.engine.mixer.look))
@@ -74,6 +73,9 @@ class ThemesMixin:
         desktop = getattr(self, "desktop", None)
         if desktop is not None:  # the desktop widgets are windows of their own: they follow the look and colours too
             desktop.restyle()
+        settings = getattr(self, "settings_window", None)
+        if settings is not None and settings.isVisible():  # its pictures of the looks are drawn in the theme in use
+            settings.refresh()
         return theme
 
     def _fill_look_menu(self) -> None:
@@ -106,17 +108,11 @@ class ThemesMixin:
             self._restructure_for_look()
         self.say(f"Look: {themes.LOOKS[look_id]}.")
 
-    def set_nexus_colors(self, on: bool) -> None:
-        """Nexus: its neon colours on the dark themes, or each theme's own colours."""
-        self.engine.mixer.nexus_colors = bool(on)
+    def set_look_colors(self, on: bool) -> None:
+        """Nexus's and Tile's own colours on Dark (and Tile's white keys on Light), or every theme's own colours everywhere."""
+        self.engine.mixer.look_colors = bool(on)
         self.apply_theme()
-        self.say("Nexus colours on." if on else "Each theme shows its own colours in Nexus.")
-
-    def set_tile_colors(self, on: bool) -> None:
-        """Tile: its own white and graphite keys on the built-in themes, or each theme's own colours."""
-        self.engine.mixer.tile_colors = bool(on)
-        self.apply_theme()
-        self.say("Tile colours on." if on else "Each theme shows its own colours in Tile.")
+        self.say("Looks show their own colours on Dark and Light." if on else "Every theme shows its own colours in every look.")
 
     def set_reduce_effects(self, on: bool) -> None:
         """Nexus: no shimmer on the rings and no waveform on the faders."""

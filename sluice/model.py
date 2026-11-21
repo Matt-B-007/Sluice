@@ -183,7 +183,7 @@ class Channel:
         return f"Sluice ({self.label}) recording feed"
 
 
-WIDGET_KINDS = ("mic", "dial", "strip")  # the desktop widgets (ui_desktop)
+WIDGET_KINDS = ("mic", "dial", "strip", "channel", "mix")  # the desktop widgets (ui_desktop); channel and mix are new in 0.11.5
 MAX_DESKTOP_WIDGETS = 12
 
 
@@ -200,7 +200,16 @@ def clean_widget_spec(spec) -> dict | None:
         value = spec.get(key)
         return value if isinstance(value, int) and not isinstance(value, bool) and -5000 <= value <= 20000 else None
 
-    return {"kind": spec["kind"], "mix": text("mix"), "channel": text("channel"), "x": number("x"), "y": number("y")}
+    out = {"kind": spec["kind"], "mix": text("mix"), "channel": text("channel"), "x": number("x"), "y": number("y")}
+    if spec["kind"] == "channel" and out["channel"] is None:
+        return None  # a channel widget is for one channel
+    from .desktop_place import clean_places
+    places = clean_places(spec.get("places"))
+    if places:  # where it was on each screen (0.11.5)
+        out["places"] = places
+        if text("screen") in places:
+            out["screen"] = text("screen")
+    return out
 
 
 @dataclass
@@ -244,12 +253,10 @@ class Mixer:
         self.hints_seen: list = []  # one-time tips already shown (they are only ever shown once)
         self.buffer_frames = DEFAULT_BUFFER  # used the next time Sluice starts
         self.auto_update = False  # download new releases in the background and install them when Sluice closes (off by default)
-        self.layout = "columns"  # how the channels are laid out: "columns" (a card each), "rows" (a line each) or "free" (Nexus: nodes you place)
-        self.nexus_colors = True  # Nexus: its neon colours on the dark themes (off: each theme keeps its own colours)
-        self.tile_colors = True  # Tile: its own light and dark key colours on the built-in themes (off: each theme keeps its own)
+        self.layout = "columns"  # how the channels are laid out: "columns" (a card each) or "rows" (a line each); a saved "free" (gone in 0.11.5) loads as columns
+        self.look_colors = True  # Nexus and Tile show their own colours on Dark (Tile on Light too); off: every theme keeps its own
         self.reduce_effects = False  # Nexus: no shimmer on the rings and no waveform on the faders (for slow or busy machines)
         self.desktop_widgets: list = []  # widgets left on the desktop: [{kind, mix, channel, x, y}], see ui_desktop
-        self.free_positions: dict = {}  # the Free layout: where each node sits, {channel or mix id: [x, y]}
         self.look = "calm"  # the shapes and sizes of the window ("calm", "original", "nexus" or "tile"), apart from the colour theme
         self.theme = "dark"  # a theme id: dark, light, contrast, purple, system, or custom:<name> (an imported file)
         self.close_action = DEFAULT_CLOSE  # "quit", "minimize" (keep running in the taskbar) or "tray" (keep running in the system tray)
@@ -409,11 +416,9 @@ class Mixer:
             "theme": self.theme,
             "look": self.look,
             "layout": self.layout,
-            "nexus_colors": self.nexus_colors,
-            "tile_colors": self.tile_colors,
+            "look_colors": self.look_colors,
             "reduce_effects": self.reduce_effects,
             "desktop_widgets": [dict(w) for w in self.desktop_widgets],
-            "free_positions": {k: [int(v[0]), int(v[1])] for k, v in self.free_positions.items()},
             "channels": [
                 {
                     "id": c.id,
@@ -467,10 +472,12 @@ class Mixer:
         look = data.get("look")
         if isinstance(look, str) and look in ("calm", "original", "nexus", "tile"):
             mixer.look = look
-        if data.get("layout") in ("columns", "rows", "free"):
-            mixer.layout = data["layout"]
-        mixer.nexus_colors = data.get("nexus_colors") is not False
-        mixer.tile_colors = data.get("tile_colors") is not False
+        if data.get("layout") in ("columns", "rows"):
+            mixer.layout = data["layout"]  # the Free layout (before 0.11.5) and anything unknown stay Columns; Free's positions are dropped
+        if isinstance(data.get("look_colors"), bool):
+            mixer.look_colors = data["look_colors"]
+        else:  # settings from before 0.11.5 had one switch for Nexus and one for Tile: off only if both were switched off
+            mixer.look_colors = not (data.get("nexus_colors") is False and data.get("tile_colors") is False)
         mixer.reduce_effects = data.get("reduce_effects") is True
         widgets = data.get("desktop_widgets")
         if isinstance(widgets, list):
@@ -481,12 +488,6 @@ class Mixer:
                 if spec is not None and key not in seen and len(mixer.desktop_widgets) < MAX_DESKTOP_WIDGETS:
                     seen.add(key)
                     mixer.desktop_widgets.append(spec)
-        positions = data.get("free_positions")
-        if isinstance(positions, dict):
-            for key, pair in list(positions.items())[:60]:
-                if (isinstance(key, str) and 0 < len(key) <= 60 and isinstance(pair, list) and len(pair) == 2
-                        and all(isinstance(n, int) and not isinstance(n, bool) and -2000 <= n <= 20000 for n in pair)):
-                    mixer.free_positions[key] = [pair[0], pair[1]]
         seen_hints = data.get("hints_seen")
         if isinstance(seen_hints, list):
             mixer.hints_seen = [h for h in seen_hints if isinstance(h, str)][:50]

@@ -117,3 +117,94 @@ def test_null_linker_records_links_and_invents_ports():
     assert linker.snapshot().outputs("node") == ["node:out_L", "node:out_R"]
     linker.shutdown()
     assert linker.links == set()
+
+
+# ---------------------------------------------------------------- watching the graph instead of looking on a clock (0.11.5)
+class _FakeProcess:
+    def __init__(self, lines):
+        import io
+        self.stdout = io.StringIO("".join(line + "\n" for line in lines))
+        self.alive = True
+
+    def poll(self):
+        return None if self.alive else 0
+
+    def terminate(self):
+        self.alive = False
+
+    def wait(self, timeout=None):
+        return 0
+
+    def kill(self):
+        self.alive = False
+
+
+def test_the_graph_watcher_raises_its_flag_when_pipewire_prints_a_change():
+    import time as _time
+
+    from sluice.linker import GraphWatcher
+    started = []
+
+    def popen(args, **_kw):
+        started.append(args)
+        return _FakeProcess(["+ a:out -> b:in"])
+
+    watcher = GraphWatcher(popen=popen)
+    assert watcher.start() and watcher.running()
+    assert [a[1:] for a in started] == [list(c) for c in GraphWatcher.COMMANDS]
+    assert watcher.take_changed()  # the first look, and the printed change
+    _time.sleep(0.05)
+    watcher.take_changed()
+    assert not watcher.take_changed()  # nothing new since
+    watcher.stop()
+    assert not watcher.running()
+
+
+def test_a_watcher_that_cannot_start_leaves_the_clock_in_charge():
+    from sluice.linker import GraphWatcher
+
+    def popen(*_a, **_k):
+        raise OSError("no pw-link")
+
+    watcher = GraphWatcher(popen=popen)
+    assert not watcher.start() and not watcher.running()
+
+
+def test_with_a_watcher_the_engine_checks_links_only_when_the_graph_changed():
+    from sluice.audio_io import NullIO
+    from sluice.backend import MockSystem
+    from sluice.engine import RELINK_SAFETY, Engine
+    from sluice.linker import NullLinker
+    from sluice.model import Mixer
+
+    class Watcher:
+        def __init__(self):
+            self.flag = False
+
+        def running(self):
+            return True
+
+        def take_changed(self):
+            flag, self.flag = self.flag, False
+            return flag
+
+    linker = NullLinker()
+    linker.watcher = Watcher()
+    engine = Engine(Mixer.demo(), MockSystem(), NullIO(realtime=False), linker)
+    engine.start()
+    calls = []
+    engine.apply_links = lambda: calls.append(1)
+    engine._link_retry = False
+    import time as _time
+    now = _time.monotonic() + 1000.0  # the engine stamps its refreshes with the real clock
+    for step in range(10):  # ten device refreshes, nothing changed: no look at the links
+        now += engine.refresh_seconds
+        engine.tick(now)
+    assert calls == []
+    linker.watcher.flag = True
+    engine.tick(now + 0.1)
+    assert calls == [1]
+    engine._refreshes_since_link = RELINK_SAFETY  # and once in a while anyway, in case a change was missed
+    engine.tick(_time.monotonic() + 5000.0)
+    assert len(calls) == 2
+    engine.shutdown()

@@ -23,18 +23,16 @@ def rows_min_width(mixes: int) -> int:
 
 
 class Plan(NamedTuple):
-    mode: str            # columns, rows, free or mini (the compact list)
+    mode: str            # columns, rows or mini (the compact list)
     dock: str            # right: Listen and Broadcast beside the channels; bottom: in a bar under them (columns and rows only)
     step: str            # roomy, standard, compact or mini: how much of the top bar and spacing is shown
 
 
 def _base(width: int, height: int, layout: str, look: str, mixes: int = 2) -> Plan:
     original = look == "original"
-    mode = layout if layout in ("columns", "rows", "free") else "columns"
-    if mode == "free" and look not in ("nexus", "tile"):
-        mode = "columns"  # Free belongs to the Nexus and Tile looks; the saved choice is kept
+    mode = layout if layout in ("columns", "rows") else "columns"  # anything else (Free, gone in 0.11.5) shows Columns
     step = "roomy" if width >= 1600 else "standard" if width >= 1180 else "compact" if width >= 820 else "mini"
-    narrowest = {"rows": rows_min_width(mixes), "free": 640}.get(mode, 620 if original else 760)
+    narrowest = {"rows": rows_min_width(mixes)}.get(mode, 620 if original else 760)
     if width < narrowest or height < MINI_HEIGHT:
         return Plan("mini", "right", "mini")
     dock = "right"

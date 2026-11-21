@@ -373,6 +373,10 @@ QCheckBox { spacing: 8px; color: $check_text; }
 QCheckBox::indicator { width: 16px; height: 16px; border: 1px solid $line; border-radius: 4px; background: $input; }
 QCheckBox::indicator:checked { background: $accent; border-color: $accent; }
 QCheckBox::indicator:focus { border-color: $focus; }
+QRadioButton { spacing: 8px; color: $check_text; }
+QRadioButton::indicator { width: 16px; height: 16px; border: 1px solid $line; border-radius: 9px; background: $input; }
+QRadioButton::indicator:checked { background: $accent; border: 4px solid $input; outline: none; }
+QRadioButton::indicator:focus { border-color: $focus; }
 QListWidget { background: $input; border: 1px solid $border_soft; border-radius: 12px; padding: 8px; color: $list_text;
     outline: 0; }
 QListWidget::item { padding: 8px; border-radius: 8px; }
@@ -401,16 +405,34 @@ QSlider::groove:vertical { background: $track; width: 8px; border-radius: 4px; }
 QSlider::add-page:vertical { background: $accent; border-radius: 4px; }
 QSlider::handle:vertical { background: $handle; border: 1px solid $handle_edge; height: 16px; width: 16px; margin: 0 -5px;
     border-radius: 9px; }
+/* the Settings window (0.11.5) */
+QLabel#settingsheading { font-size: 16px; font-weight: 600; color: $title; padding-top: 8px; }
+QListWidget#settingssections { background: $panel; border: 1px solid $border; border-radius: 12px; padding: 8px; outline: none; }
+QListWidget#settingssections::item { padding: 10px 12px; border-radius: 8px; color: $text; }
+QListWidget#settingssections::item:hover { background: $row_hover; }
+QListWidget#settingssections::item:selected { background: $accent_bg; color: $accent_text; }
+QPushButton#lookcard { background: $panel; border: 1px solid $border; border-radius: 12px; padding: 0; min-width: 254px;
+    max-width: 254px; min-height: 192px; max-height: 192px; }
+QPushButton#lookcard:hover { border-color: $hover; }
+QPushButton#lookcard:checked { border: 2px solid $accent; }
+QPushButton#lookcard:focus { border: 2px solid $focus; }
+QLabel#lookname { font-weight: 600; color: $text; background: transparent; }
+QPushButton#themepicker { padding: 0 16px; min-width: 200px; text-align: left; }
+QPushButton#themepicker::menu-indicator { image: none; width: 0; }
 """)
 
 
-def mix_colors(colors: dict) -> dict:
+def mix_colors(colors: dict, look: Optional[str] = None) -> dict:
     """The two colours that tell the mixes apart in the Rows layout: Listen (what you hear) and Broadcast (what your audience hears),
     each with a tint for its background, an edge, and a text colour that reads on the panel. They come from the theme's own colours;
     if the theme's link and accent colours are close, Broadcast takes the theme's warm colour instead so the two stay apart."""
-    listen, broadcast = colors["link"], colors["accent"]
-    if contrast_ratio(listen, broadcast) < 1.35:
-        broadcast = colors["code"]
+    if valid_look(look if look is not None else _look) == "nexus":  # Nexus: Listen cyan (its accent), Broadcast coral or the 2nd colour
+        from .look_nexus import mix_pair
+        listen, broadcast = mix_pair(colors)
+    else:
+        listen, broadcast = colors["link"], colors["accent"]
+        if contrast_ratio(listen, broadcast) < 1.35:
+            broadcast = colors["code"]
     out = {}
     for name, base in (("listen", listen), ("broadcast", broadcast)):
         out[name] = base
@@ -437,18 +459,13 @@ def current_look() -> str:
     return _look
 
 
-FREE_LOOKS = ("nexus", "tile")  # the looks that have the Free layout (nodes you drag; a click folds a card out beside one)
-
-
-def has_free(look) -> bool:
-    return valid_look(look) in FREE_LOOKS
-
-
 _reduce = False
-_nexus_colors = True
-NEXUS_THEMES = ("dark", "purple", "midnight", "amber")
-TILE_DARK_THEMES = ("dark", "purple", "midnight", "amber")  # the Tile look's graphite keys (look_tile.TILE_DARK), with Tile colours on
-TILE_LIGHT_THEMES = ("light", "paper")                       # ...and its white keys (look_tile.TILE_LIGHT). Never High contrast or imported  # not High contrast (made to be read) and not imported themes
+_look_colors = True
+# With "Look's own colours" on (the default), a look may show its own colours on the plain Dark theme, and Tile on Light too (0.11.5,
+# option A). Every other theme keeps its own colours in every look, with full depth worked out from them (``depth``).
+NEXUS_THEMES = ("dark",)
+TILE_DARK_THEMES = ("dark",)    # the Tile look's graphite keys (look_tile.TILE_DARK)
+TILE_LIGHT_THEMES = ("light",)  # ...and its white keys (look_tile.TILE_LIGHT)
 
 
 def set_reduce_effects(on: bool) -> None:
@@ -461,45 +478,54 @@ def reduce_effects() -> bool:
     return _reduce
 
 
-def set_nexus_colors(on: bool) -> None:
-    """Whether the Nexus look shows its own neon colours on the dark themes (View > Theme > Nexus colours)."""
-    global _nexus_colors
-    _nexus_colors = bool(on)
+def set_look_colors(on: bool) -> None:
+    """Whether a look shows its own colours on Dark (and Tile on Light): Settings > Appearance > Look's own colours."""
+    global _look_colors
+    _look_colors = bool(on)
 
 
-def nexus_colors() -> bool:
-    return _nexus_colors
-
-
-_tile_colors = True
-
-
-def set_tile_colors(on: bool) -> None:
-    """Whether the Tile look shows its own key colours on the built-in themes (View > Tile colours)."""
-    global _tile_colors
-    _tile_colors = bool(on)
-
-
-def tile_colors() -> bool:
-    return _tile_colors
+def look_colors_on() -> bool:
+    return _look_colors
 
 
 def look_colors(theme: "Theme", look: str) -> dict:
-    """The colours to show for a theme in a look. The Original look shows the built-in themes as they were in 0.9.7;
-    imported themes, and every other look, show the theme's own colours."""
-    if valid_look(look) == "nexus" and theme.id in NEXUS_THEMES and _nexus_colors:  # Nexus's own colours on the dark themes
+    """The colours to show for a theme in a look. Nexus and Tile may show their own colours on Dark (and Tile on Light); the Original
+    look shows the built-in themes as they were in 0.9.7; every other theme shows its own colours. Then ``finish`` makes sure the
+    small and drawn things can be seen."""
+    look = valid_look(look)
+    colors = theme.colors
+    if look == "nexus" and theme.id in NEXUS_THEMES and _look_colors:
         from .look_nexus import NEXUS_DARK
-        return complete({**theme.colors, **NEXUS_DARK}, given=NEXUS_DARK.keys())
-    if valid_look(look) == "tile" and _tile_colors and theme.id in TILE_DARK_THEMES + TILE_LIGHT_THEMES:  # the Tile look's key colours
+        colors = complete({**theme.colors, **NEXUS_DARK}, given=NEXUS_DARK.keys())
+    elif look == "tile" and _look_colors and theme.id in TILE_DARK_THEMES + TILE_LIGHT_THEMES:
         from .look_tile import TILE_DARK, TILE_LIGHT
         own = TILE_DARK if theme.id in TILE_DARK_THEMES else TILE_LIGHT
-        return complete({**theme.colors, **own}, given=own.keys())
-    if valid_look(look) == "original" and theme.id in BUILT_IN:
+        colors = complete({**theme.colors, **own}, given=own.keys())
+    elif look == "original" and theme.id in BUILT_IN:
         from .look_original import ORIGINAL_PALETTES
         old = ORIGINAL_PALETTES.get(theme.id)
         if old is not None:
-            return complete({**theme.colors, **old}, given=old.keys())
-    return theme.colors
+            colors = complete({**theme.colors, **old}, given=old.keys())
+    return finish(colors)
+
+
+TEXT_OFF_MINIMUM = 3.0  # greyed-out text (a switched-off control, an empty hint): still readable
+
+
+def finish(colors: dict) -> dict:
+    """The last pass over any theme's colours before they are shown (0.11.5): greyed-out text is raised to 3 to 1 on every surface it
+    sits on, the Live label to 4.5, and a slider handle's edge to 3 against its groove, so nothing disappears on a light theme."""
+    c = dict(colors)
+    for surface in ("panel", "bg", "surface2"):
+        c["text_off"] = readable(c["text_off"], c[surface], TEXT_OFF_MINIMUM)
+    c["live_fg"] = readable(c["live_fg"], c["live_bg"], 4.5)
+    c["mute_fg"] = readable(c["mute_fg"], c["mute_bg"], 4.5)
+    if luminance(c["panel"]) >= 0.4:
+        from .depth import stand_out
+        c["handle_edge"] = stand_out(c["handle_edge"], c["track"])
+        if contrast_ratio(c["handle"], c["track"]) < 1.3 and contrast_ratio(c["handle_edge"], c["handle"]) < 3:
+            c["handle_edge"] = stand_out(c["text2"], c["handle"])
+    return c
 
 
 def valid_look(look) -> str:
@@ -510,7 +536,7 @@ def valid_look(look) -> str:
 @lru_cache(maxsize=16)
 def _style_for(items: tuple, look: str = DEFAULT_LOOK) -> str:
     values = dict(items)
-    values.update(mix_colors(values))
+    values.update(mix_colors(values, look))
     values["accent_edge"] = mix(values["panel"], values["accent"], 0.5)  # a thin neon outline for Nexus
     values["accent_soft"] = mix(values["panel"], values["accent"], 0.22)
     if look == "original":
@@ -521,7 +547,8 @@ def _style_for(items: tuple, look: str = DEFAULT_LOOK) -> str:
         values.update(tile_colors(values, mix))
         return STYLE_TEMPLATE.substitute(values) + TILE_STYLE_EXTRA.substitute(values)
     if look == "nexus":  # the Calm sheet with Nexus's rules after it: the later rule wins where both name the same thing
-        from .look_nexus import NEXUS_STYLE_EXTRA
+        from .look_nexus import NEXUS_STYLE_EXTRA, glass_values
+        values.update(glass_values(values))
         return STYLE_TEMPLATE.substitute(values) + NEXUS_STYLE_EXTRA.substitute(values)
     return STYLE_TEMPLATE.substitute(values)
 
@@ -589,8 +616,9 @@ def parse(data, fallback_name: str = "Imported theme") -> tuple:
         raise ThemeError("\"colors\" must be a list of name: colour pairs.")
     colors = dict(DARK if base == "dark" else LIGHT)
     notes = []
+    from .depth import DEPTH_TOKENS  # the depth colours (0.11.5) are optional: worked out from the others when a file leaves them out
     for key, value in given.items():
-        if key not in TOKEN_NAMES:
+        if key not in TOKEN_NAMES and key not in DEPTH_TOKENS:
             notes.append(f"ignored “{str(key)[:40]}”: not a colour Sluice uses")
             continue
         try:
@@ -750,7 +778,10 @@ def remove_custom(theme_id: str, folder: Optional[Path]) -> bool:
 
 
 def export_dict(theme: Theme) -> dict:
-    return {"name": theme.name, "base": theme.base, "colors": {k: theme.colors[k] for k in TOKEN_NAMES}}
+    from .depth import DEPTH_TOKENS
+    colors = {k: theme.colors[k] for k in TOKEN_NAMES}
+    colors.update({k: theme.colors[k] for k in DEPTH_TOKENS if k in theme.colors})  # depth colours the theme set by hand
+    return {"name": theme.name, "base": theme.base, "colors": colors}
 
 
 def canonical_id(theme_id: str, folder: Optional[Path] = None) -> str:
@@ -764,6 +795,14 @@ def canonical_id(theme_id: str, folder: Optional[Path] = None) -> str:
     return theme_id
 
 
+# Themes the pack no longer ships (0.11.5). A file someone imported stays in their themes folder and keeps working; only if the file is
+# gone does the saved choice fall back, and then to the closest built-in theme.
+RETIRED_THEMES = {
+    "amber-console": "amber", "halloween": "amber", "midnight-blue": "midnight", "ocean": "midnight",
+    "paper": "paper", "cassette": "paper", "sepia-reader": "paper", "studio-slate": "dark", "vintage-hi-fi": "dark",
+}
+
+
 def resolve(theme_id: str, system_dark: bool = True, folder: Optional[Path] = None) -> Theme:
     """The theme to show for a saved choice. Anything unknown or damaged is the default dark theme."""
     if theme_id == SYSTEM:
@@ -774,4 +813,7 @@ def resolve(theme_id: str, system_dark: bool = True, folder: Optional[Path] = No
         for theme in custom_themes(folder, hide_duplicates=False):
             if theme.id == theme_id:
                 return theme
+        nearest = RETIRED_THEMES.get(theme_id[len(CUSTOM_PREFIX):])
+        if nearest:  # a theme from the old pack whose file has gone: the closest built-in one, not plain Dark
+            return BUILT_IN[nearest]
     return BUILT_IN[DEFAULT]

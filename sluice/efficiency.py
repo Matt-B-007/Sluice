@@ -158,15 +158,6 @@ def _thread_cpu(tid: int) -> float:
         return 0.0
 
 
-def _process_age() -> Optional[float]:
-    """Seconds since this process started (from /proc), so thread CPU, which counts from each thread's birth, has a fair denominator."""
-    try:
-        start = int(Path("/proc/self/stat").read_text(encoding="utf-8").rsplit(")", 1)[1].split()[19]) / _CLOCK_TICKS
-        return max(0.0, float(Path("/proc/uptime").read_text(encoding="utf-8").split()[0]) - start)
-    except (OSError, ValueError, IndexError):
-        return None
-
-
 def cpu_split(table: list, helper_cpu: float, total_cpu: Optional[float] = None) -> dict:
     """Where Sluice's CPU went during this run: the window, the audio callback, every other thread, helper programs, and what
     threads that have already ended used (the difference to the process total)."""

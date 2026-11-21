@@ -59,7 +59,9 @@ VALUE_FAMILIES = ["JetBrains Mono", "DejaVu Sans Mono", "Noto Sans Mono", "monos
 
 
 def channel_color(channel) -> str:
-    return CHANNEL_TINTS.get(channel.id, channel.color)
+    """The channel's colour as drawn in the theme in use (darker shades of it on light themes, so it stands out in a groove)."""
+    from . import depth, themes
+    return depth.channel_tint(CHANNEL_TINTS.get(channel.id, channel.color), themes._current)
 
 
 def channel_icon(channel) -> str:
@@ -78,26 +80,29 @@ def is_light(color: str) -> bool:
     return (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255 > 0.6
 
 
-def key_colors(values: dict, mix) -> dict:
-    """The colours of a key, made from a theme's own colours: its face (lighter at the top), the skirt under it, the small raised
-    keys on it (buttons), how they look pushed in, the groove pressed into it and the tray the keys sit in."""
-    panel, bg, raised = values["panel"], values["bg"], values["surface2"]
-    light = is_light(panel)
-    if light:
-        return {"face_top": mix(panel, "#ffffff", 0.7), "face_bottom": mix(panel, "#000000", 0.03),
-                "skirt": mix(panel, "#000000", 0.15), "skirt_dark": mix(panel, "#000000", 0.23),
-                "key_top": mix(raised, "#ffffff", 0.8), "key_bottom": mix(raised, "#000000", 0.02),
-                "key_edge": mix(panel, "#000000", 0.13), "key_skirt": mix(panel, "#000000", 0.2),
-                "key_pressed": mix(raised, "#000000", 0.06), "key_pressed_top": mix(panel, "#000000", 0.18),
-                "tray_top": mix(bg, "#ffffff", 0.6), "tray_bottom": mix(bg, "#000000", 0.04), "tray_lip": mix(bg, "#000000", 0.15),
-                "groove": values["track"]}
-    return {"face_top": mix(panel, "#ffffff", 0.05), "face_bottom": mix(panel, "#000000", 0.1),
-            "skirt": mix(panel, "#000000", 0.45), "skirt_dark": mix(panel, "#000000", 0.62),
-            "key_top": mix(raised, "#ffffff", 0.05), "key_bottom": mix(raised, "#000000", 0.1),
-            "key_edge": mix(panel, "#000000", 0.25), "key_skirt": mix(panel, "#000000", 0.5),
-            "key_pressed": mix(panel, "#000000", 0.18), "key_pressed_top": mix(panel, "#000000", 0.55),
-            "tray_top": mix(bg, "#ffffff", 0.11), "tray_bottom": mix(bg, "#ffffff", 0.035), "tray_lip": mix(bg, "#000000", 0.5),
-            "groove": values["track"]}
+def is_flat(values: dict) -> bool:
+    """High contrast (and any theme like it, with borders that stand out 3 to 1): plain fills, depth only from a thick lower edge."""
+    from .depth import contrast
+    return contrast(values["border"], values["panel"]) >= 3.0
+
+
+def key_colors(values: dict, mix=None) -> dict:
+    """The colours of a key, made from a theme's own colours by ``depth`` (0.11.5): its face (lit at the top), the skirt and rim
+    under it, the small raised keys on it (buttons), how they look pushed in, the groove pressed into it and the tray the keys sit in."""
+    from . import depth
+
+    d = depth.depth_colors(values, flat=is_flat(values) if "border" in values else False)
+    light = d["light"]
+    return {
+        "face_top": d["key_top"], "face_bottom": d["key_bottom"], "skirt": d["key_skirt"], "skirt_dark": d["key_rim"],
+        "key_top": d["button_top"], "key_bottom": d["button_bottom"], "key_edge": d["key_edge"], "key_skirt": d["key_skirt"],
+        "key_pressed": depth.shade(values["panel"], -0.06 if light else -0.3),
+        "key_pressed_top": depth.shade(values["panel"], -0.2 if light else -0.6),
+        "tray_top": d["tray_top"], "tray_bottom": d["tray_bottom"], "tray_lip": d["tray_lip"], "groove": d["groove"],
+        "shadow_color": d["shadow"], "shadow_alpha": d["shadow_alpha"], "contact_alpha": d["contact_alpha"],
+        "highlight_alpha": d["highlight_alpha"], "edge_light": d["edge_light"], "flat": d["flat"],
+        "knob_top": d["knob_top"], "knob_bottom": d["knob_bottom"], "knob_ring": d["knob_ring"],
+    }
 
 
 def tile_colors(values: dict, mix) -> dict:
@@ -122,14 +127,14 @@ def paint_colors() -> dict:
         return _paint_cache[1]
     c = themes.color
     light = is_light(c("panel"))
-    keys = key_colors({"panel": c("panel"), "bg": c("bg"), "surface2": c("surface2"), "track": c("track")}, themes.mix)
+    keys = key_colors(themes._current)
     colors = {
         **keys, "surface": c("panel"), "edge": keys["key_edge"], "raised": c("surface2"),
-        "track": c("track"), "stripe": themes.mix(c("track"), c("text"), 0.12 if not light else 0.16), "text": c("text"),
+        "track": keys["groove"], "stripe": themes.mix(keys["groove"], c("text"), 0.12 if not light else 0.16), "text": c("text"),
         "text2": c("text2"), "text_off": c("text_off"), "red": c("mute_fg"), "handle": "#ffffff" if light else c("handle"),
         "handle_bottom": "#e4e8ec" if light else themes.mix(c("handle"), "#000000", 0.16), "handle_edge": c("handle_edge"),
         "handle_muted": c("text_off"), "focus": c("focus"), "dashed": c("dashed"),
-        "shadow": 0.13 if light else 0.5, "groove_shadow": 0.2 if light else 0.6, "floor": c("bg"), "light": light,
+        "shadow": keys["shadow_alpha"] * 0.5, "groove_shadow": 0.22 if light else 0.65, "floor": c("bg"), "light": light,
     }
     _paint_cache = (generation, colors)
     return colors
@@ -184,6 +189,11 @@ QPushButton#tileadd { min-width: 0; min-height: 24px; max-height: 24px; padding:
     font-weight: 500; background: transparent; border: 1px dashed $dashed; color: $text2; }
 QPushButton#fxadd:hover, QPushButton#tileadd:hover { border-color: $text2; color: $text; }
 QPushButton#tileadd::menu-indicator { image: none; width: 0; }
+QPushButton#tilelimiter { min-width: 0; min-height: 18px; max-height: 18px; padding: 0 9px; border-radius: 8px; font-size: 11px;
+    font-weight: 600; color: $text2; """ + _KEY + """; }
+QPushButton#tilelimiter:hover { border-color: $hover; border-bottom-color: $key_skirt; }
+QPushButton#tilelimiter:checked { """ + _PUSHED + """; color: $accent_text; background: $accent_bg; }
+QPushButton#tilelimiter:focus { border-left-color: $focus; border-right-color: $focus; border-top-color: $focus; }
 QPushButton#tilemove { min-width: 0; min-height: 20px; max-height: 20px; padding: 0 9px; border-radius: 8px; font-size: 11px;
     font-weight: 500; color: $text; """ + _KEY + """; }
 QPushButton#tilemove:hover { border-color: $hover; border-bottom-color: $key_skirt; }
@@ -198,7 +208,6 @@ QWidget#topbar { border-bottom: 1px solid $key_edge; }
 QFrame#segmented { background: $groove; border: 1px solid $key_edge; border-radius: 10px; }
 QPushButton#segment:checked { color: $text; border-radius: 8px; """ + _KEY + """; }
 QFrame#statuschip { border: 1px solid $key_edge; border-radius: 10px; }
-QWidget#freecanvas { background: transparent; }
 QFrame#nexusnode { background: $panel; border: 1px solid $key_edge; border-radius: 12px; }
 QFrame#nexusnode:focus, QFrame#nexusnode[open="true"] { border-color: $focus; }
 QLabel#nodechips { font-family: $tile_value_font; font-size: 10px; color: $text2; background: transparent; }

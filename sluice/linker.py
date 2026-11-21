@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import subprocess
+import threading
 import time
 from abc import ABC, abstractmethod
 from typing import Callable, Iterable, Optional
@@ -111,11 +112,79 @@ class NullLinker(Linker):
         self.links = set()
 
 
+class GraphWatcher:
+    """Tells Sluice when the PipeWire graph changed (0.11.5), so the connections are checked then instead of on a clock.
+
+    One long-running ``pw-link --monitor`` prints every port and link that comes or goes; a thread reads it and raises a flag. Before,
+    Sluice ran three short ``pw-link`` processes about every six seconds just to look (some 28 a minute) whether anything had changed.
+    If the monitor cannot start, or stops, ``running()`` says so and the engine goes back to looking on a clock."""
+
+    COMMANDS = (["--monitor", "--links"], ["--monitor", "--output", "--input"])
+
+    def __init__(self, binary: str = "pw-link", popen: Optional[Callable] = None) -> None:
+        self._binary = binary
+        self._popen = popen or subprocess.Popen
+        self._processes: list = []
+        self._changed = threading.Event()
+        self._changed.set()  # the first look is always done
+        self._stop = False
+
+    def start(self) -> bool:
+        for args in self.COMMANDS:
+            try:
+                process = self._popen([self._binary, *args], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1)
+            except (OSError, ValueError) as exc:
+                log.info("cannot watch the PipeWire graph (%s); connections are checked every few seconds instead", exc)
+                self.stop()
+                return False
+            self._processes.append(process)
+            threading.Thread(target=self._read, args=(process,), name="sluice-graph-watch", daemon=True).start()
+        efficiency.helper_launched(0.0)
+        return True
+
+    def _read(self, process) -> None:
+        try:
+            for _line in process.stdout:
+                if self._stop:
+                    break
+                self._changed.set()
+        except (OSError, ValueError):
+            pass
+
+    def running(self) -> bool:
+        return bool(self._processes) and all(process.poll() is None for process in self._processes)
+
+    def take_changed(self) -> bool:
+        """True (once) if the graph changed since the last call."""
+        if self._changed.is_set():
+            self._changed.clear()
+            return True
+        return False
+
+    def stop(self) -> None:
+        self._stop = True
+        for process in self._processes:
+            try:
+                process.terminate()
+                process.wait(timeout=2)
+            except (OSError, subprocess.SubprocessError):
+                try:
+                    process.kill()
+                except OSError:
+                    pass
+        self._processes = []
+
+
 class PwLinker(Linker):
-    def __init__(self, run: Optional[Callable] = None, binary: str = "pw-link") -> None:
+    def __init__(self, run: Optional[Callable] = None, binary: str = "pw-link", watch: bool = False) -> None:
         self._binary = binary
         self._run = run or self._subprocess_run
         self._owned: set = set()
+        self.watcher: Optional[GraphWatcher] = None
+        if watch:  # the running app watches the graph; the tests and the bug report's checks do not
+            watcher = GraphWatcher(binary)
+            if watcher.start():
+                self.watcher = watcher
 
     def _subprocess_run(self, args: list) -> tuple:
         started = time.perf_counter()
@@ -157,6 +226,9 @@ class PwLinker(Linker):
         return failed
 
     def shutdown(self) -> None:
+        if self.watcher is not None:
+            self.watcher.stop()
+            self.watcher = None
         existing = self.current_links()
         for pair in sorted(self._owned):
             if pair in existing:

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Looks at a shown window and reports what would look wrong to a person: controls drawn over each other, text cut off, a sideways
-scroll bar, a top bar wider than the window, or anything outside it. Used by the size sweep in test_0113.py."""
+scroll bar, a top bar wider than the window, or anything outside it. Used by the size sweep in test_window_sizing.py."""
 import itertools
 
 from PySide6.QtCore import QRect
@@ -27,7 +27,7 @@ def problems(win, size, tag: str) -> list:
             found.append((tag, "overlap", a.objectName() or type(a).__name__, getattr(a, "text", lambda: "")(),
                           b.objectName() or type(b).__name__, getattr(b, "text", lambda: "")(), overlap.getRect()))
     scroll = getattr(win, "channel_scroll", None)
-    if scroll is not None and win.layout_mode != "free" and scroll.horizontalScrollBar().maximum() > 0:
+    if scroll is not None and scroll.horizontalScrollBar().maximum() > 0:
         found.append((tag, "sideways scrolling in the channel area", scroll.horizontalScrollBar().maximum()))
     for widget in shown:
         if isinstance(widget, (QLabel, QAbstractButton)) and type(widget).__name__ != "ElidedLabel":

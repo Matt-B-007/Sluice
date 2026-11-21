@@ -327,14 +327,6 @@ def hardware_summary() -> str:
     return "\n".join(lines)
 
 
-def _tail(path: Path, lines: int) -> str:
-    try:
-        content = path.read_text(encoding="utf-8", errors="replace").splitlines()
-    except OSError:
-        return "(file not found)"
-    return "\n".join(content[-lines:]) or "(empty)"
-
-
 def anonymize(text: str) -> str:
     """Replace details that identify a person or a machine with placeholders."""
     home = str(Path.home()).rstrip("/")
@@ -368,7 +360,7 @@ def _section(title: str, body: str) -> str:
 
 
 def look_summary() -> str:
-    """One line on what is on screen: the look, the layout actually shown (Free exists only in Nexus) and whether effects are reduced."""
+    """One line on what is on screen: the look, the layout shown (a saved Free, gone in 0.11.5, shows Columns) and whether effects are reduced."""
     from . import themes
     try:
         saved = json.loads(config_path().read_text(encoding="utf-8"))
@@ -376,8 +368,7 @@ def look_summary() -> str:
         saved = {}
     look = themes.current_look()
     chosen = saved.get("layout", "columns") if isinstance(saved, dict) else "columns"
-    chosen = chosen if chosen in ("columns", "rows", "free") else "columns"
-    shown = "columns" if chosen == "free" and look not in ("nexus", "tile") else chosen
+    shown = chosen if chosen in ("columns", "rows") else "columns"
     note = f" (saved as {chosen})" if shown != chosen else ""
     return f"Look: {look}. Layout shown: {shown}{note}. Effects reduced: {'yes' if themes.reduce_effects() else 'no'}.\n"
 
@@ -409,9 +400,9 @@ def window_summary() -> str:
     automatic = "yes" if info["mode"] != info["chosen"] else "no"
     return (f"Window: {info['width']}x{info['height']} px{' (full screen)' if info.get('fullscreen') else ''} on a {info['screen']} screen at scale "
             f"{info['scale']}. Size step: {info['step']}. Arrangement: {info['mode']}"
-            f"{'' if info['mode'] in ('mini', 'free') else ', ' + dock.get(info['dock'], info['dock'])} (chosen: {info['chosen']}; "
+            f"{'' if info['mode'] == 'mini' else ', ' + dock.get(info['dock'], info['dock'])} (chosen: {info['chosen']}; "
             f"switched by the window's size: {automatic}). Rearranged {info['relayouts']} times this session. "
-            f"Nexus colours: {'on' if info['nexus_colors'] else 'off'}. Tile colours: {'on' if info.get('tile_colors', True) else 'off'}.\n")
+            f"Look's own colours: {'on' if info.get('look_colors', True) else 'off'}.\n")
 
 
 def window_layout() -> str:

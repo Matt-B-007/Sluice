@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.11.5
+Every look and every theme cleaned up: real depth worked out from each theme, a redesigned Nexus with sound rings and glow, Tile keys that look like
+keys, a Settings window, new desktop widgets, and the Free layout gone.
+- **Depth from every theme.** Raised keys, glass cards, shadows, grooves and trays are now worked out from each theme's own colours (`sluice/depth.py`):
+  shading keeps the theme's colour instead of turning grey, shadows take a deep shade of the theme's background instead of plain black, very dark
+  themes (OLED Black, Terminal Green, Neon Tokyo, Aurora) get lit edges instead of shadows they could not show, and High contrast stays flat with solid
+  borders. A theme file can still set any of these colours by hand (see `themes/README.md`).
+- **Tile.** Full depth on every key: a face lit from above with a lit top edge, an 8 px lower edge with a dark rim, a tight shadow and a wide soft one,
+  and enough room round each key that no shadow is cut off. The keys sit in a sunken tray with a front lip, 28 px apart. **Listen and Broadcast** are now
+  short keys with a sideways slider, a Limiter switch and a chevron that folds out the device and the rest.
+- **Nexus.** Glass cards with a lit edge in each card's colour and an outline from the accent; each card **glows with its sound**. Every channel and mix
+  card has the **sound ring** at the top (36 bars round the app's icon). Listen is cyan and Broadcast coral (or the theme's own second colour). Light
+  themes get crisp coloured top edges and soft shadows, never glow. *Reduce effects* turns off the shimmer and the glow.
+- **Calm.** A light touch of depth: soft card shadows and grooves that look sunk in.
+- **The looks' own colours replace only Dark (and Light, for Tile).** Every other theme keeps its own colours in every look, so Retro Purple, Midnight
+  Blue, Amber Console and Paper look like themselves again. The Nexus colours and Tile colours switches are one: *Look's own colours on Dark and Light*.
+- **Easier to read.** Greyed-out text reads at 3 to 1 or better on every theme, the Live label and muted buttons at 4.5 to 1, slider handles have an edge
+  you can see on light themes, and channel colours are darker shades on light themes so yellow and green stand out in their grooves. One test checks
+  every look on every theme.
+- **A Settings window.** The ⚙ button beside ☰ opens it: Appearance (a live picture of each look in your theme, the theme, the look's own colours,
+  reduce effects, the layout), Audio, Startup and background, Controllers and Updates. ☰ keeps File, Mixer, View and Help, with Settings… (Ctrl+,)
+  at the bottom. The right of the top bar shows only status, and there is room between the top bar's buttons and the line under it.
+- **Desktop widgets.** Two new ones: a **channel** (a slider and mute for each mix) and a **mix** (its slider, Mute and the Limiter). Widgets snap to the
+  screen's edges and to each other and remember a place on each screen. On KDE Plasma under Wayland they use KDE's layer-shell when it is installed, so
+  they can place themselves and stay on top; otherwise Sluice can add a KWin rule that keeps them on top. Every widget follows the look in use.
+- **The Free layout is gone.** If you used it, Sluice opens in Columns; its saved positions are dropped. Nexus and Tile no longer need it.
+- **Themes.** The pack has 21 themes: the copies of built-in themes went, and so did six that looked almost the same as another (Cassette, Sepia Reader,
+  Studio Slate, Vintage Hi-Fi, Halloween, Ocean). One you already imported keeps working; if its file is gone, Sluice uses the closest built-in theme.
+- **Lighter.** Sluice watches PipeWire for changes (one `pw-link --monitor`) instead of starting three `pw-link` processes every few seconds to look.
+  With every meter moving, a meter update costs about 0.3 ms in Calm, 1 ms in Tile and Original and 1.1 ms in Nexus; a test keeps every look under 1.5 ms.
+  Meters and rings on a card paint what is behind them, so a frame redraws only them; rings out of sight are not redrawn.
+- **Tidier code.** `ui.py` is split into five modules and `ui_tile.py` into three; the tests are named by what they check, not by version; unused code
+  is gone.
+
 ## 0.11.4
 The Tile look becomes raised keys in a tray, light and dark; lighter meters in every look; and fixes to spacing, the Free layout and the command line.
 - **Tile: raised keys.** Each channel is a key: a face lit from above, a thick lower edge and a soft shadow, in a tray. Each mix has a groove

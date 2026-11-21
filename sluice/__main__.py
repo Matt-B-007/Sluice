@@ -32,7 +32,7 @@ def _real_parts():
     from .backend import PulseSystem
     from .linker import PwLinker
 
-    linker = PwLinker()
+    linker = PwLinker(watch=True)  # it watches the graph for changes (one pw-link --monitor) instead of looking on a clock
     if not linker.available():
         raise RuntimeError("pw-link not found or PipeWire is not running")
     from .model import Mixer, config_path

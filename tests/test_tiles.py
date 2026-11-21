@@ -8,7 +8,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import pytest
 
 pytest.importorskip("PySide6")
-from PySide6.QtCore import QEvent, QPoint, Qt
+from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import QApplication
 
@@ -241,25 +241,6 @@ def test_the_menu_moves_a_tile_earlier_or_later_from_the_keyboard(qapp, tmp_path
         assert [c.id for c in engine.mixer.channels][0] == "browser"
         tile(win, "browser").menu.aboutToShow.emit()
         assert not tile(win, "browser").earlier_action.isEnabled() and tile(win, "browser").later_action.isEnabled()
-    finally:
-        win.shutdown()
-
-
-def test_free_tiles_are_dragged_anywhere_and_remembered(qapp, tmp_path):
-    win, engine = make(qapp, tmp_path, layout="free")
-    try:
-        game = win.canvas.nodes["game"]
-        mover = win.tile_mover()
-        press = game.grip.mapToGlobal(game.grip.rect().center())
-        mover.begin(game, press)
-        target = press + QPoint(40, 300)
-        mover.move(target)
-        mover.drop(target)
-        settle(qapp)
-        assert engine.mixer.free_positions["game"] == [game.x(), game.y()]
-        assert game.y() > 200
-        win.canvas.tidy()
-        assert "game" not in engine.mixer.free_positions
     finally:
         win.shutdown()
 

@@ -11,6 +11,8 @@ from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QSizePol
 
 from . import themes
 from . import ui_icons as icons
+from .ui_base import ElidedLabel
+from .ui_meters import Fader
 
 
 def _db_text(db: float) -> str:
@@ -22,8 +24,6 @@ class MiniStrip(QWidget):
 
     def __init__(self, window, tile: bool = False) -> None:
         super().__init__()
-        from .ui import Fader  # here: ui imports this module
-
         self.tile = tile  # the Tile look: each line is a mini tile with one lane (fader and meter in one)
         self.window_ = window
         self.engine = window.engine
@@ -80,8 +80,6 @@ class MiniStrip(QWidget):
         dot.setFixedSize(10, 10)
         color = channel.color if channel is not None else themes.color("accent")
         dot.setStyleSheet(f"background: {color}; border-radius: 5px;")
-        from .ui import ElidedLabel  # here: ui imports this module
-
         name = ElidedLabel(text)
         name.setObjectName("name")
         name.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
@@ -109,7 +107,7 @@ class MiniStrip(QWidget):
 
     def _make_tile(self, text: str, channel) -> QWidget:
         from . import look_tile
-        from .ui_tile import MiniTile  # here: ui_tile imports ui, which imports this module
+        from .ui_tile import MiniTile  # here: ui_tile imports the channel cards, which the window imports with this module
 
         if channel is not None:
             row = MiniTile(text, look_tile.channel_color(channel), look_tile.channel_icon(channel))
@@ -219,7 +217,7 @@ class MiniStrip(QWidget):
             super().paintEvent(event)
             return
         if self._tray is None:
-            from .ui_tile import TrayPainter
+            from .ui_tile_paint import TrayPainter
             self._tray = TrayPainter()  # the same tray as behind the big tiles
         p = QPainter(self)
         self._tray.draw(self, p)

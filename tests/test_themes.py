@@ -455,3 +455,16 @@ def test_the_window_tick_sends_the_heartbeat(win, monkeypatch):
     monkeypatch.setattr(logs, "heartbeat", lambda: beats.append(1))
     win._tick_engine()
     assert beats == [1]
+
+
+def test_a_retired_pack_theme_whose_file_is_gone_falls_back_to_the_closest_built_in(tmp_path):
+    assert themes.resolve("custom:ocean", folder=tmp_path).id == "midnight"
+    assert themes.resolve("custom:cassette", folder=tmp_path).id == "paper"
+    assert themes.resolve("custom:halloween", folder=tmp_path).id == "amber"
+    assert themes.resolve("custom:something-else", folder=tmp_path).id == themes.DEFAULT
+
+
+def test_a_retired_pack_theme_that_was_imported_keeps_working(tmp_path):
+    theme = themes.Theme("x", "Ocean", "dark", dict(themes.BUILT_IN["dark"].colors, accent="#00ccdd"))
+    themes.save_custom(theme, tmp_path)
+    assert themes.resolve("custom:ocean", folder=tmp_path).colors["accent"] == "#00ccdd"

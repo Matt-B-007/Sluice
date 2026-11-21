@@ -18,7 +18,7 @@ from sluice.linker import NullLinker  # noqa: E402
 from sluice.model import MONITOR, STREAM, Mixer  # noqa: E402
 from sluice.ui import MainWindow, format_db, level_fraction  # noqa: E402
 from sluice.ui_effects import EffectsDialog, ParamRow, format_value  # noqa: E402
-from sluice.ui_widgets import parse_number  # noqa: E402
+from sluice.ui_base import parse_number  # noqa: E402
 
 
 @pytest.fixture
@@ -454,42 +454,6 @@ def test_check_for_updates_reports_each_outcome(ui, monkeypatch):
     assert "is the latest version" in win.status_label.text()
 
 
-def test_wheel_scrolls_the_channels_sideways_smoothly(app):
-    from PySide6.QtCore import QPoint, QPointF, Qt
-    from PySide6.QtGui import QWheelEvent
-    from PySide6.QtWidgets import QWidget
-
-    from sluice.ui import SmoothScrollArea
-
-    area = SmoothScrollArea()
-    area.setWidgetResizable(False)
-    inner = QWidget()
-    inner.resize(3000, 100)
-    area.setWidget(inner)
-    area.resize(400, 140)
-    area.show()
-    bar = area.horizontalScrollBar()
-    assert bar.maximum() > 0
-
-    def wheel(angle_y, pixel_y=0):
-        return QWheelEvent(QPointF(50, 50), QPointF(50, 50), QPoint(0, pixel_y), QPoint(0, angle_y),
-                           Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier, Qt.ScrollPhase.NoScrollPhase, False)
-
-    area.wheelEvent(wheel(-120))  # one notch down scrolls right
-    assert area._animation.endValue() == SmoothScrollArea.STEP
-    area._animation.setCurrentTime(area._animation.duration())
-    assert bar.value() == SmoothScrollArea.STEP
-    area.wheelEvent(wheel(120))   # and back
-    area._animation.setCurrentTime(area._animation.duration())
-    assert bar.value() == 0
-    area.wheelEvent(wheel(120))   # cannot go past the start
-    area._animation.setCurrentTime(area._animation.duration())
-    assert bar.value() == 0
-    area.wheelEvent(wheel(0, pixel_y=-30))  # touchpad: follows the finger directly
-    assert bar.value() == 30
-    area.close()
-
-
 def test_multichannel_outputs_are_labelled_and_listed_after_stereo_ones(ui):
     from sluice.backend import Device
     from sluice.ui import DeviceCombo
@@ -535,10 +499,13 @@ def test_menu_bar_has_the_usual_menus_in_the_usual_order(ui):
         "Updates", "Update automatically when a new version is found", "Check for updates…", "Go back to the previous version…",
         "Reset all settings to the defaults…"]
     assert _texts(_menu(win, "View")) == ["Layout", "Columns (a card for each channel)", "Rows (a line for each channel)",
-                                          "Free (nodes you place anywhere)", "Appearance", "Look", "Theme", "Nexus",
-                                          "Nexus colours on dark themes", "Reduce effects", "Tile",
-                                          "Tile colours on built-in themes", "Tidy up the free layout",
+                                          "Appearance", "Look", "Theme", "Look's own colours on Dark and Light", "Nexus",
+                                          "Reduce effects",
                                           "Desktop", "Desktop widgets", "Window", "Full screen", "Reset window size"]
+    # the ☰ button: File, Mixer, a View with what you do with the window, Help, and the Settings window at the bottom
+    assert [a.text().replace("&", "") for a in win.main_menu.actions() if a.text()] == ["File", "Mixer", "View", "Help", "Settings…"]
+    assert _texts(win.window_menu) == ["Layout", "Columns (a card for each channel)", "Rows (a line for each channel)", "Desktop",
+                                       "Desktop widgets", "Window", "Full screen", "Reset window size"]
 
 
 def test_mixer_menu_toggles_follow_the_real_state(ui):

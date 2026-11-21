@@ -15,7 +15,7 @@ from PySide6.QtWidgets import QMessageBox
 from . import ui_icons as icons
 from .engine import REFRESH_SECONDS
 from .model import config_path
-from .ui_constants import TALKING_HOLD, TALKING_LEVEL, TRAY_WATCH_MS
+from .ui_base import TALKING_HOLD, TALKING_LEVEL, TRAY_WATCH_MS
 
 HIDDEN_REFRESH_SECONDS = 4.0
 

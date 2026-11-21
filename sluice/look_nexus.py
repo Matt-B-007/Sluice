@@ -26,7 +26,8 @@ NEXUS_DARK = {
 
 NEXUS_EXTRA = """
 /* Nexus: glass cards with a thin cool outline, capital-letter headings, cyan light on what is on. */
-QFrame#strip, QFrame#row, QFrame#mix { background: $panel; border: 1px solid $accent_edge; border-radius: 20px; }
+QFrame#strip, QFrame#row, QFrame#mix { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 $glass_top, stop:0.4 $panel,
+    stop:1 $glass_bottom); border: 1px solid $glass_outline; border-radius: 20px; }
 QWidget#topbar { border-bottom: 1px solid $accent_soft; }
 QFrame#statuschip, QFrame#segmented { border-color: $accent_soft; }
 QFrame#mix[mix="monitor"] { border-color: $listen_edge; }
@@ -56,11 +57,37 @@ QLineEdit#readout:hover { border-color: $accent; }
 QMenu { border: 1px solid $border2; }
 QMenu::item:selected { background: $accent_bg; color: $accent_text; }
 QToolTip { border: 1px solid $accent; }
-QFrame#nexusnode { background: transparent; border: 1px solid $accent_soft; border-radius: 18px; }
-QFrame#nexusnode:hover { border-color: $accent_edge; }
-QFrame#nexusnode:focus, QFrame#nexusnode[open="true"] { border-color: $accent; background: $accent_bg; }
-QLabel#nodechips { font-family: monospace; font-size: 10px; color: $text2; background: transparent; }
-QWidget#freecanvas { background: transparent; }
+QWidget#channels, QWidget#masters { background: transparent; }
 """
 
 NEXUS_STYLE_EXTRA = Template(NEXUS_EXTRA)
+
+CORAL_DARK, CORAL_LIGHT = "#ff7a59", "#c4472a"   # Broadcast in Nexus, when the theme has no second colour of its own
+
+
+def glass_values(values: dict) -> dict:
+    """The colours of Nexus's glass for a theme: a lit top, a deeper bottom and an outline from the accent (``depth``)."""
+    from . import depth
+    d = depth.depth_colors(values)
+    light = d["light"]
+    return {"glass_top": depth.shade(values["panel"], 0.6 if light else 0.06),
+            "glass_bottom": depth.shade(values["panel"], -0.03 if light else -0.3),
+            "glass_outline": d["outline"]}
+
+
+def mix_pair(colors: dict) -> tuple:
+    """Listen and Broadcast in Nexus: Listen in the accent (cyan on Nexus's own colours), Broadcast in the theme's second colour
+    (its code colour) when that stands apart from the accent, otherwise coral."""
+    from . import depth
+    listen = colors["accent"]
+    second = colors["code"]
+    light = depth.luminance(colors["panel"]) >= depth.LIGHT_PANEL
+    if depth.contrast(second, listen) < 1.35 or abs(_hue(second) - _hue(listen)) < 0.08:
+        second = CORAL_LIGHT if light else CORAL_DARK
+    return listen, second
+
+
+def _hue(color: str) -> float:
+    import colorsys
+    from . import depth
+    return colorsys.rgb_to_hls(*depth._rgb(color))[0]
