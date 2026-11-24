@@ -450,10 +450,36 @@ class MenusMixin:
         for frames, action in self.buffer_actions.items():
             action.setChecked(frames == self.engine.mixer.buffer_frames)
 
-    def set_buffer(self, frames: int) -> None:
+    def set_buffer(self, frames: int, ask: bool = True) -> None:
+        """Save the buffer size. PipeWire fixes it when Sluice connects, so it takes effect at a restart: offer one now (0.12.1)."""
+        old = self.engine.mixer.buffer_frames
         self.engine.mixer.buffer_frames = frames
-        self.say(f"Audio buffer set to {frames} frames. It is used the next time Sluice starts "
-                 f"(running now: {self.engine.io.blocksize}).")
+        running = self.engine.io.blocksize
+        if frames != old:
+            log.info("audio buffer set to %s frames (running: %s; used from the next start)", frames, running)
+        self._refresh_buffer_menu()
+        self._show_perf()
+        if not self.engine.buffer_pending():
+            self.say(f"Audio buffer: {frames} frames.")
+            return
+        if ask and self.config_file is not None:
+            box = QMessageBox(self)
+            box.setWindowTitle("Audio buffer")
+            box.setText(f"Sluice runs at {running} frames now. {frames} frames takes effect when Sluice starts again.")
+            box.setInformativeText("Restart now? The sound stops for a moment, then everything comes back as it was.")
+            now = box.addButton("Restart now", QMessageBox.ButtonRole.AcceptRole)
+            box.addButton("At the next start", QMessageBox.ButtonRole.RejectRole)
+            box.exec()
+            if box.clickedButton() is now:
+                self.restart_for_buffer()
+                return
+        self.say(f"Audio buffer set to {frames} frames: used the next time Sluice starts (running now: {running}).")
+
+    def restart_for_buffer(self) -> None:
+        from . import reconnect
+
+        self.shutdown()  # saves the settings, stops the audio
+        reconnect.restart_self(show_window=True)
 
     def show_own_devices(self) -> None:
         from .ui_channel import OwnDevicesDialog  # here, not at the top: the window imports this module

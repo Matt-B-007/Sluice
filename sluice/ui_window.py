@@ -113,6 +113,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         self.engine = engine
         self.config_file = config_file
         self._closed = False
+        self.on_shut_down = None  # set by the program (__main__): called once the window has shut down
         self._quitting = False
         # What's new: a start with no settings and no record is a new install (nothing has changed for them), so that
         # is written down now; an older record, or settings without one, means an update, shown once the window is open.
@@ -1347,6 +1348,8 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         if self.controls is not None:
             self.controls.close()
         self.engine.shutdown(save_to=None if self._keep_settings_file else self.config_file)
+        if self.on_shut_down is not None:  # (the program's safety net: the process ends even if something holds it)
+            self.on_shut_down()
 
     def _should_ask_close_choice(self, saving: bool) -> bool:
         """The first time the window is closed with the default setting (Quit), on a desktop with a system tray, ask once whether to
@@ -1399,6 +1402,15 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
             return
         self.shutdown()
         event.accept()
+        # 0.12.1: end the program now. Qt ends it by itself only when the last *visible* window closes, and a window hidden in
+        # the tray is not visible: quitting from the tray left a process with no window and no audio, holding Sluice's lock.
+        app = QGuiApplication.instance()
+        from PySide6.QtCore import QThread
+        if app is not None and not saving and QThread.currentThread().loopLevel() > 0:  # (only inside the program's event loop)
+            for other in QApplication.topLevelWidgets():
+                if other is not self and other.isVisible():
+                    other.close()
+            app.quit()
 
     # Nobody can see the meters while the window is hidden or minimised, so they stop (and cost nothing).
     def _set_meters_running(self, on: bool) -> None:

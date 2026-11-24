@@ -764,7 +764,7 @@ def test_view_menu_picks_the_audio_buffer(ui):
     win._refresh_buffer_menu()
     assert [a.isChecked() for a in menu.actions()] == [False, True, False, False]  # 512 is the default
     next(a for a in menu.actions() if "1024" in a.text()).trigger()
-    assert engine.mixer.buffer_frames == 1024 and "next time" in win.status_label.text()
+    assert engine.mixer.buffer_frames == 1024 and "1024 frames" in win.status_label.text()  # (demo: nothing waits for a restart)
     win._refresh_buffer_menu()
     assert [a.isChecked() for a in menu.actions()] == [False, False, True, False]
 

@@ -303,7 +303,8 @@ class SettingsWindow(QDialog):
     def _audio(self, column: QVBoxLayout) -> None:
         w = self.window_
         group = self._group(column, "Audio buffer", "How much sound Sluice handles at a time. A smaller buffer means less delay; a "
-                            "larger one uses less CPU and is less likely to drop out. It is used the next time Sluice starts.")
+                            "larger one uses less CPU and is less likely to drop out. It takes effect when Sluice starts again: Sluice offers to "
+                            "restart now.")
         choice = QButtonGroup(self)
         for action in w.buffer_actions.values():
             self._bind(group, action, choice)

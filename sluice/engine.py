@@ -256,7 +256,15 @@ class Engine:
         """"48 kHz · 512 frames": the sample rate and the buffer."""
         rate = self.io.sample_rate
         khz = f"{rate / 1000:g}"
-        return f"{khz} kHz · {self.io.blocksize} frames"
+        text = f"{khz} kHz · {self.io.blocksize} frames"
+        if self.buffer_pending():  # 0.12.1: a new size chosen, used after a restart: say so where the size is shown
+            text += f" → {self.mixer.buffer_frames} after restart"
+        return text
+
+    def buffer_pending(self) -> bool:
+        """True when the saved buffer size differs from the running one (it takes effect when Sluice starts again)."""
+        running = int(getattr(self.io, "blocksize", 0) or 0)
+        return bool(running) and self.mixer.buffer_frames != running and not getattr(self.io, "demo", False)
 
     def status_text(self) -> str:
         io = self.io

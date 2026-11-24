@@ -56,22 +56,18 @@ The same mixer in the light theme, in the Rows layout, and the first-run screen:
 ![Rows layout](docs/screenshot-rows.png)
 ![First run](docs/first-run.png)
 
-## What's new in 0.12.0
+## What's new in 0.12.1
 
-A cleanup release.
+Fixes for what testing 0.12.0 found:
 
-- **Voice effects fixed.** The limiter now never goes past its Ceiling and adds no gain of its own, so your voice may be a little
-  quieter than in 0.11. The compressor and gate listen to both channels together. The gate has Hold and a steadier close, and its
-  Ratio is now called Depth. With the Rust engine 0.11.0, the High-pass is a proper 12 dB per octave Butterworth filter. The voice
-  sounds the same with or without Rust.
-- **Setup check** in Settings: what Sluice needs and what it can use, whether it is here, and the command that installs it, with a
-  Copy button. It opens by itself if something needed is missing.
-- **Nothing left in your download folder.** `install.sh` installs Sluice in `~/.local/share/sluice`, adds it to the
-  applications menu and writes the `sluice` command, then offers to delete the folder you downloaded. Installed before?
-  *Settings > Updates > Move* does it for you.
-- **The Original skin is retired** (its settings show Calm), along with the menu bar and everything that was in two places.
-- **Lined up:** faders and meters sit centred as pairs, Nexus names are centred under the ring, the Tile tray ends where the tiles end,
-  the effects window has no gap and opens without a stray focus ring, and device names are short (the full name is in the tooltip).
+- **Quit from the tray really quits.** Before, it could leave Sluice running invisibly, and every later start said "Sluice could
+  not start". A start that finds a Sluice that does not answer now offers to close it and start fresh.
+- **The audio buffer takes effect:** choosing a new size offers to restart now, the top bar shows a size that is waiting for a
+  restart, and a restart from inside Sluice no longer keeps the old size.
+
+0.12.0, the release before this, fixed the voice effects (the limiter holds its ceiling, a proper high-pass, the same sound with or
+without Rust), added the Setup check, installs Sluice in its own folder so nothing is left in the download, retired the Original
+skin and lined everything up.
 
 The full list, and every earlier version, is in [CHANGELOG.md](CHANGELOG.md) (also under *Help > What's new in this version*).
 
@@ -96,7 +92,7 @@ and other musl-based systems (the Python audio packages have no wheels for them)
 Open the [latest release](https://github.com/Matt-B-007/Sluice/releases) and download the zip named **`sluice-vX.Y.Z.zip`** from the *Assets* list (not the green *Code* button, and not the *Source code* links, which unpack into a differently named folder). Or `git clone` the repository. Then:
 
 ```bash
-unzip sluice-v0.12.0.zip && cd sluice
+unzip sluice-v0.12.1.zip && cd sluice
 ./install.sh              # shows the package command for your distribution and asks before running it
 ./install.sh --dry-run    # only shows what it would do
 ```

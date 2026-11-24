@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.12.1
+Fixes for what testing 0.12.0 found: Quit from the tray, a Sluice that would not start again, and the audio buffer.
+- **Quit from the tray really quits.** With *keep running in the tray*, Quit with the window hidden shut the audio down but left
+  the program running with no window (Qt ends a program only when its last visible window closes). It kept Sluice's lock, so
+  every later start said "Sluice could not start". Quit now always ends the program, and if anything still holds it 10 seconds
+  after a clean shutdown, it ends itself anyway.
+- **A Sluice that does not answer can be replaced.** When a start finds another Sluice holding the lock that does not answer, it
+  asks *Close it and start* instead of failing. Only a process that really is a Sluice is offered; nothing is closed without asking.
+- **The audio buffer takes effect.** Choosing a new size now asks *Restart now* or *At the next start*. Before, a restart from inside
+  Sluice (after an update or a Move) kept the old size from the first start; Sluice now replaces its own value, and a
+  `PIPEWIRE_LATENCY` you set yourself still wins. Until the restart, the top bar shows the waiting size ("512 frames → 1024 after
+  restart"), and the change is in the log for bug reports.
+- **The automatic tests on GitHub** try installing Qt's system libraries three times on each mirror, and if Ubuntu's servers still
+  do not answer, stop with one plain message ("the test machine is missing libraries, not a Sluice bug: re-run the job") instead
+  of dozens of "libEGL.so.1" errors.
+
 ## 0.12.0
 A cleanup: the voice effects fixed and made the same with or without Rust, a setup check that says what to install, the Original skin
 retired with everything that was there twice, and things lined up where they belong.

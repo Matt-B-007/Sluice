@@ -37,8 +37,9 @@ def _real_parts():
         raise RuntimeError("pw-link not found or PipeWire is not running")
     from .model import Mixer, config_path
 
-    # The block size the user chose (Settings > Audio). A PIPEWIRE_LATENCY set in the environment still wins.
-    os.environ.setdefault("PIPEWIRE_LATENCY", f"{Mixer.load(config_path()).buffer_frames}/48000")
+    # The block size the user chose (Settings > Audio). A PIPEWIRE_LATENCY you set yourself still wins; the one Sluice set at an
+    # earlier start (a restart keeps the environment) is replaced (0.12.1: a restart kept the old size).
+    _set_latency(Mixer.load(config_path()).buffer_frames)
     system = PulseSystem()
     try:
         io = make_jack_io()
@@ -53,6 +54,17 @@ def _real_parts():
         retry_with_pipewire_jack()  # starts Sluice again with PipeWire's JACK library first, if that can help
         raise
     return system, io, linker
+
+
+def _set_latency(frames: int, env=None) -> str:
+    """Put the buffer size in PIPEWIRE_LATENCY, unless the person set that variable themselves. Returns the value in use."""
+    env = os.environ if env is None else env
+    current, ours = env.get("PIPEWIRE_LATENCY"), env.get("SLUICE_OWN_LATENCY")
+    if current and current != ours:
+        return current  # theirs
+    value = f"{frames}/48000"
+    env["PIPEWIRE_LATENCY"] = env["SLUICE_OWN_LATENCY"] = value
+    return value
 
 
 def _lock_path() -> str:
@@ -115,6 +127,109 @@ def _already_running_message() -> str:
         return (f"{who}\nClose it with:  kill {pid}\n"
                 f"If it is still listed afterwards:  kill -9 {pid}\nThen start Sluice again.")
     return f"{who}\nFind it with:  pgrep -af sluice   and stop it with kill NUMBER, then start Sluice again."
+
+
+def _is_sluice_process(pid: int) -> bool:
+    """True when that process is a Sluice (read from /proc), so only a Sluice is ever offered to be closed."""
+    try:
+        parts = [p for p in Path(f"/proc/{pid}/cmdline").read_bytes().decode("utf-8", "replace").split("\0") if p]
+    except OSError:
+        return False
+    return any(a == "-m" and b == "sluice" for a, b in zip(parts, parts[1:])) or any(Path(p).name == "sluice" for p in parts[:2])
+
+
+def _stop_process(pid: int, wait: float = 5.0) -> bool:
+    """Ask a process to end (SIGTERM), then make it (SIGKILL). True once it is gone."""
+    import time
+
+    for sig, seconds in ((signal.SIGTERM, wait), (signal.SIGKILL, 2.0)):
+        try:
+            os.kill(pid, sig)
+        except ProcessLookupError:
+            return True
+        except OSError:
+            return False
+        end = time.monotonic() + seconds
+        while time.monotonic() < end:
+            if not Path(f"/proc/{pid}").exists() or "zombie" in _proc_state(pid):
+                return True
+            time.sleep(0.1)
+    return not Path(f"/proc/{pid}").exists()
+
+
+def _proc_state(pid: int) -> str:
+    try:
+        for line in Path(f"/proc/{pid}/status").read_text().splitlines():
+            if line.startswith("State:"):
+                return line.lower()
+    except OSError:
+        pass
+    return ""
+
+
+def _replace_stuck_copy(ask=None):
+    """0.12.1: a Sluice holds the lock but does not answer (before 0.12.1, quitting from the tray could leave one like that).
+    Ask, in a window (there is no terminal when started from the menu), whether to close it and start fresh. Returns the lock
+    once the stuck copy is gone, or None (not a Sluice, the answer was no, or it would not end)."""
+    pid, _version = _lock_holder()
+    if not pid or pid == os.getpid() or not _is_sluice_process(pid):
+        return None
+    if ask is None:
+        def ask() -> bool:
+            from PySide6.QtWidgets import QApplication, QMessageBox
+
+            _replace_stuck_copy.app = QApplication.instance() or QApplication(sys.argv[:1])  # kept: the box needs it
+            box = QMessageBox()
+            box.setIcon(QMessageBox.Icon.Warning)
+            box.setWindowTitle("Sluice is not responding")
+            box.setText("Another Sluice is still running but does not answer, so this one cannot start.")
+            box.setInformativeText("Close it and start Sluice again? Its settings were saved when it last changed.")
+            restart = box.addButton("Close it and start", QMessageBox.ButtonRole.AcceptRole)
+            box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+            box.exec()
+            return box.clickedButton() is restart
+    try:
+        if not ask():
+            return None
+    except Exception as exc:  # no display to ask on: the printed message says what to do
+        log.info("could not ask whether to close the stuck Sluice: %s", exc)
+        return None
+    log.warning("closing the Sluice that does not answer (process %s) to start again", pid)
+    if not _stop_process(pid):
+        return None
+    import time
+
+    for _ in range(20):  # the lock is released as the process ends
+        lock = _acquire_lock()
+        if lock is not None:
+            return lock
+        time.sleep(0.1)
+    return None
+
+
+_AS_COMMAND = False  # True when started as the sluice command (run() below)
+
+
+def _exit_safety_net(seconds: float = 10.0) -> None:
+    """0.12.1: once the window has shut down, the process must end. If something keeps it alive (a window Qt still counts, a
+    thread that will not stop), end it after ``seconds``, so it can never hold the lock with nothing running."""
+    import threading
+    import time
+
+    if not _AS_COMMAND:  # Sluice run inside another program (the tests): that program decides when it ends
+        return
+
+    def later() -> None:
+        time.sleep(seconds)
+        if not _AS_COMMAND:  # the command has returned meanwhile (a test calling run()): nothing to end
+            return
+        log.warning("Sluice had shut down but was still running %.0f s later; ending it now", seconds)
+        try:
+            logs.shutdown()
+        finally:
+            os._exit(0)
+
+    threading.Thread(target=later, name="sluice-exit-safety-net", daemon=True).start()
 
 
 def _cleanup() -> int:
@@ -244,10 +359,12 @@ def _run_gui(args, log_file: Optional[Path]) -> int:
                 send({"cmd": "show"}, timeout=2.0)
                 print("sluice is already running; its window was brought to the front.", file=sys.stderr)
                 return 0
-            except Exception as exc:  # the other copy does not answer: the message below says what to do
-                log.debug("could not ask the running Sluice to show its window: %s", exc)
-                print(_already_running_message(), file=sys.stderr)
-                return 1
+            except Exception as exc:  # the other copy does not answer
+                log.info("the running Sluice does not answer (%s)", exc)
+                lock = _replace_stuck_copy()  # 0.12.1: offer to close it and start fresh
+                if lock is None:
+                    print(_already_running_message(), file=sys.stderr)
+                    return 1
         try:
             parts = _real_parts()
         except Exception as exc:  # missing packages, no server, permission problems...
@@ -310,6 +427,7 @@ def _run_gui(args, log_file: Optional[Path]) -> int:
         moved = update_install.finish_move(Path(args.finish_move))
         notice = f"{notice} {moved}".strip()
     window = MainWindow(engine, config_file=config_file, notice=notice)
+    window.on_shut_down = _exit_safety_net
     from .ui_controllers import Controls
 
     window.attach_controls(Controls(engine, window, config_file.with_name("controls.json") if config_file else None, demo=is_demo))
@@ -419,10 +537,14 @@ def run() -> None:
 
     A normal Python exit tears down Qt, JACK and the effects engine one library at a time, and that teardown has
     crashed with a segmentation fault on some systems after a perfectly clean shutdown. Skipping it loses nothing."""
+    global _AS_COMMAND
+    _AS_COMMAND = True
     try:
         code = main()
     except SystemExit as exc:  # --version, --help and bad options exit this way
         code = exc.code
+    finally:
+        _AS_COMMAND = False  # main has returned: the exit below is immediate, the safety net has nothing left to do
     if code is None:
         code = 0
     if not isinstance(code, int):
