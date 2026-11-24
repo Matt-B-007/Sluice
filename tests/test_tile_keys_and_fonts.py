@@ -21,9 +21,9 @@ from sluice.ui import ElidedLabel, MainWindow
 from layout_checks import problems
 
 
-def make(qapp, tmp_path, look="tile", layout="columns", size=(1456, 860), theme="dark", recording=False, setup=None):
+def make(qapp, tmp_path, skin="tile", layout="columns", size=(1456, 860), theme="dark", recording=False, setup=None):
     mixer = Mixer.demo()
-    mixer.look, mixer.layout, mixer.theme = look, layout, theme
+    mixer.skin, mixer.layout, mixer.theme = skin, layout, theme
     mixer.hints_seen.append("firstrun")
     if recording:
         mixer.set_recording_mix(True)
@@ -75,16 +75,16 @@ def test_release_lock_closes_a_file_and_ignores_the_others(tmp_path):
 def test_the_look_colours_are_saved_and_switched(qapp, tmp_path):
     win, engine = make(qapp, tmp_path)
     try:
-        assert engine.mixer.look_colors is True and themes.color("panel") == skin_tile.TILE_DARK["panel"]
+        assert engine.mixer.skin_colors is True and themes.color("panel") == skin_tile.TILE_DARK["panel"]
         win._refresh_view_menu()
-        assert win.look_colors_action.isVisible() and win.look_colors_action.isChecked()
-        win.look_colors_action.trigger()
-        assert engine.mixer.look_colors is False and themes.color("panel") == themes.BUILT_IN["dark"].colors["panel"]
-        assert Mixer.from_dict(engine.mixer.to_dict()).look_colors is False
-        win.look_colors_action.trigger()
-        win.choose_look("calm"); settle(qapp)
+        assert win.skin_colors_action.isVisible() and win.skin_colors_action.isChecked()
+        win.skin_colors_action.trigger()
+        assert engine.mixer.skin_colors is False and themes.color("panel") == themes.BUILT_IN["dark"].colors["panel"]
+        assert Mixer.from_dict(engine.mixer.to_dict()).skin_colors is False
+        win.skin_colors_action.trigger()
+        win.choose_skin("calm"); settle(qapp)
         win._refresh_view_menu()
-        assert not win.look_colors_action.isVisible()
+        assert not win.skin_colors_action.isVisible()
     finally:
         win.shutdown()
 
@@ -166,7 +166,7 @@ def test_the_desktop_widgets_follow_the_look(qapp, tmp_path):
         for widget in win.desktop.open_widgets.values():
             widget.tick()
             widget.grab()
-        win.choose_look("calm"); settle(qapp)
+        win.choose_skin("calm"); settle(qapp)
         assert not strip.strip.tile
         win.desktop.open_widgets[("mic", None, None)].grab()
     finally:
@@ -182,19 +182,19 @@ def test_the_bundled_fonts_load():
 
 # ---------------------------------------------------------------- the Free layout
 # ---------------------------------------------------------------- spacing in every look
-@pytest.mark.parametrize("look", ["calm", "original", "nexus", "tile"])
-def test_a_long_channel_name_ends_in_an_ellipsis_and_the_tooltip_has_it_whole(qapp, tmp_path, look):
+@pytest.mark.parametrize("skin", ["calm", "glass", "nexus", "tile"])
+def test_a_long_channel_name_ends_in_an_ellipsis_and_the_tooltip_has_it_whole(qapp, tmp_path, skin):
     long_name = "Music and podcasts from the second room"
 
     def rename(mixer):
         mixer.channel("music").label = long_name
 
-    win, engine = make(qapp, tmp_path, look=look, setup=rename)
+    win, engine = make(qapp, tmp_path, skin=skin, setup=rename)
     try:
         strip = next(s for s in win.strips if s.channel.id == "music")
         assert isinstance(strip.title, ElidedLabel) and strip.title.text() == long_name
         assert long_name in strip.title.toolTip()
-        assert problems(win, (1456, 860), look) == []
+        assert problems(win, (1456, 860), skin) == []
     finally:
         win.shutdown()
 
@@ -210,19 +210,19 @@ def test_rows_with_three_mixes_get_a_window_wide_enough_or_the_compact_list():
     assert sizing.plan_for(1920, 1080, "rows", "calm", mixes=3).dock == "right"
 
 
-@pytest.mark.parametrize("look", ["calm", "original", "nexus", "tile"])
+@pytest.mark.parametrize("skin", ["calm", "glass", "nexus", "tile"])
 @pytest.mark.parametrize("size", [(1456, 860), (1280, 860), (1100, 800), (1920, 1080)])
-def test_rows_with_three_mixes_never_overlap(qapp, tmp_path, look, size):
-    win, engine = make(qapp, tmp_path, look=look, layout="rows", size=size, recording=True)
+def test_rows_with_three_mixes_never_overlap(qapp, tmp_path, skin, size):
+    win, engine = make(qapp, tmp_path, skin=skin, layout="rows", size=size, recording=True)
     try:
-        found = problems(win, size, f"{look} {size}")
+        found = problems(win, size, f"{skin} {size}")
         for strip in win.strips:  # the level never sits on the slider (the shared check skips text boxes)
             for mix_id, readout in strip.readouts.items():
                 fader = strip.faders[mix_id]
                 if readout.isVisible() and fader.isVisible():
                     a = QRect(readout.mapTo(win, QPoint(0, 0)), readout.size())
                     b = QRect(fader.mapTo(win, QPoint(0, 0)), fader.size())
-                    assert not a.intersects(b), (look, size, strip.channel.id, mix_id)
+                    assert not a.intersects(b), (skin, size, strip.channel.id, mix_id)
         assert found == [], found[:5]
     finally:
         win.shutdown()
@@ -232,7 +232,7 @@ def test_the_report_says_whether_the_look_colours_are_on(qapp, tmp_path):
     from sluice import report
     win, engine = make(qapp, tmp_path)
     try:
-        assert win._report_info()["look_colors"] is True
+        assert win._report_info()["skin_colors"] is True
         assert "Skin's own colours: on." in report.window_summary()
     finally:
         win.shutdown()
@@ -252,11 +252,11 @@ def test_a_yellow_lane_stays_yellow_on_a_dark_groove():
     assert depth.position_fill(blue, groove, 0.28) == depth.mix(groove, blue, 0.28)  # other colours look as they did
 
 
-@pytest.mark.parametrize("look", list(themes.LOOKS))
-def test_a_channel_widget_has_no_empty_band_at_the_bottom(qapp, tmp_path, look):
+@pytest.mark.parametrize("skin", list(themes.SKINS))
+def test_a_channel_widget_has_no_empty_band_at_the_bottom(qapp, tmp_path, skin):
     """0.11.6: the lane widgets were a fixed 16 px (10 in Tile) taller than their lanes needed."""
     from sluice.ui_widgets import LANE_H
-    win, engine = make(qapp, tmp_path, look=look)
+    win, engine = make(qapp, tmp_path, skin=skin)
     try:
         win.desktop.open("channel", channel="system")
         settle(qapp)

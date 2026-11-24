@@ -31,7 +31,7 @@ DOCS = (  # file, look, theme, layout, size
 SOUND = {"game": 0.7, "chat": 0.45, "music": 0.55, "browser": 0.3, "mic": 0.6}
 
 
-def shoot(app, look: str, theme_id: str, layout: str, size: tuple, theme_file: Path = None):
+def shoot(app, skin: str, theme_id: str, layout: str, size: tuple, theme_file: Path = None):
     from sluice import themes
     from sluice.audio_io import NullIO
     from sluice.backend import MockSystem
@@ -41,7 +41,7 @@ def shoot(app, look: str, theme_id: str, layout: str, size: tuple, theme_file: P
     from sluice.ui import MainWindow
 
     mixer = Mixer.demo()
-    mixer.look, mixer.layout = look, layout
+    mixer.skin, mixer.layout = skin, layout
     engine = Engine(mixer, MockSystem(), NullIO(realtime=False), NullLinker())
     engine.start()
     window = MainWindow(engine, None)
@@ -74,8 +74,8 @@ def shoot(app, look: str, theme_id: str, layout: str, size: tuple, theme_file: P
 def main(which: str = "both") -> None:
     app = QApplication.instance() or QApplication(sys.argv)
     if which in ("both", "docs"):
-        for name, look, theme, layout, size in DOCS:
-            shoot(app, look, theme, layout, size).save(str(ROOT / "docs" / name))
+        for name, skin, theme, layout, size in DOCS:
+            shoot(app, skin, theme, layout, size).save(str(ROOT / "docs" / name))
             print("wrote docs/" + name)
     if which in ("both", "previews"):
         for path in sorted((ROOT / "themes").glob("*.json")):

@@ -8,10 +8,12 @@
 What is removed (all of it is inside your own home folder or your runtime folder; nothing needs root):
 
 1. leftover virtual audio devices (only when PipeWire answers),
-2. the applications-menu entry, the start-at-login entry, the launcher script and the icons,
+2. the applications-menu entry, the start-at-login entry, the launcher script, the icons and the ``sluice`` command in
+   ``~/.local/bin`` (only the one install.sh wrote),
 3. your settings (not when you keep them), logs and notes, the crash log, and the old ``pwmix`` folders,
 4. the lock and control-socket files,
-5. the Sluice folder itself: the program, its virtual environment, the Rust build folder, ``.update`` and ``.previous``,
+5. the Sluice folder itself: the program, its virtual environment, the Rust build folder, ``.update`` and ``.previous``
+   (since 0.12.0 that is ``~/.local/share/sluice/program``; ``~/.local/share/sluice`` goes too once it is empty),
 6. optionally the download caches of pip and cargo. Other programs share those, so this is only done when asked.
 
 It only removes a folder that really is a Sluice folder, never your home folder. A folder that is a git clone is only
@@ -123,6 +125,8 @@ def plan(keep_settings: bool = False, root: Optional[Path] = None, clear_caches:
                        *[(p, "icon") for p in launcher.png_icon_paths()]):
         if path.exists():
             result.items.append(Item(path, what))
+    if launcher.is_our_command():
+        result.items.append(Item(launcher.command_path(), "the sluice command"))
     settings = config_path().parent
     if settings.exists():
         if keep_settings:
@@ -253,6 +257,12 @@ def execute(result: Plan, cleanup_devices: Optional[Callable[[], int]] = None, s
         problem = _remove(result.install_root)
         if problem:
             failures.append((result.install_root, problem))
+    home = launcher.sluice_home()  # Sluice's own data folder, once the program and the launcher script are out of it
+    try:
+        if home.is_dir() and not any(home.iterdir()):
+            home.rmdir()
+    except OSError as exc:
+        log.debug("could not remove the empty %s: %s", home, exc)
     for path, problem in failures:
         say(f"Could not remove {logs.short_path(path)}: {problem}")
     if check:

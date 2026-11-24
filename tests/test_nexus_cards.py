@@ -15,12 +15,12 @@ from sluice.linker import NullLinker  # noqa: E402
 from sluice.skin_nexus import CORAL_DARK, mix_pair  # noqa: E402
 from sluice.model import Mixer  # noqa: E402
 from sluice.ui import MainWindow  # noqa: E402
-from sluice.ui_nexus import GlassFloor  # noqa: E402
+from sluice.ui_nexus import CardFloor  # noqa: E402
 
 
-def make(qapp, tmp_path, look="nexus", theme="dark"):
+def make(qapp, tmp_path, skin="nexus", theme="dark"):
     mixer = Mixer.demo()
-    mixer.look, mixer.layout, mixer.theme = look, "columns", theme
+    mixer.skin, mixer.layout, mixer.theme = skin, "columns", theme
     engine = Engine(mixer, MockSystem(), NullIO(realtime=False), NullLinker())
     engine.start()
     win = MainWindow(engine, tmp_path / "config.json")
@@ -46,7 +46,7 @@ def test_the_cards_sit_on_a_glass_floor_and_the_glow_follows_the_sound(qapp, tmp
     win, _ = make(qapp, tmp_path)
     try:
         floor = win.channels_widget
-        assert isinstance(floor, GlassFloor) and not floor.soft
+        assert isinstance(floor, CardFloor) and not floor.soft
         game = _loud(win, qapp, "game", 0.9)
         quiet = next(s for s in win.strips if s.channel.id == "browser")
         assert floor.glow_of(game) > 0.5 and floor.glow_of(quiet) == 0.0
@@ -143,10 +143,10 @@ def test_six_moving_rings_stay_within_the_drawing_budget(qapp, tmp_path):
 
 
 def test_calm_gets_soft_shadows_and_no_glow(qapp, tmp_path):
-    win, _ = make(qapp, tmp_path, look="calm")
+    win, _ = make(qapp, tmp_path, skin="calm")
     try:
         floor = win.channels_widget
-        assert isinstance(floor, GlassFloor) and floor.soft and floor._cards
+        assert isinstance(floor, CardFloor) and floor.soft and floor._cards
         assert all(s.ring is None for s in win.strips)
         win.grab()
     finally:

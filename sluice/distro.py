@@ -11,28 +11,38 @@ PACKAGES = {
         "pipewire": "pipewire", "pulse": "pipewire-pulse", "session": "wireplumber", "jack": "pipewire-jack",
         "pwlink": "pipewire", "pactl": "libpulse", "libpulse": "libpulse", "xcb": "xcb-util-cursor",
         "python": "python", "gl": "", "venv": "",
+        # 0.12.0: the optional parts of the setup check (setup_check.py)
+        "layershell": "layer-shell-qt", "kwindowsystem": "kwindowsystem", "kconfig": "kconfig", "rust": "rust", "tray": "gnome-shell-extension-appindicator",
     },
     "debian": {
         "pipewire": "pipewire", "pulse": "pipewire-pulse", "session": "wireplumber", "jack": "pipewire-jack",
         "pwlink": "pipewire-bin", "pactl": "pulseaudio-utils", "libpulse": "libpulse0", "xcb": "libxcb-cursor0",
         "python": "python3 python3-pip", "gl": "libgl1 libegl1 libxkbcommon-x11-0 libfontconfig1", "venv": "python3-venv",
+        # 0.12.0: the optional parts of the setup check (setup_check.py)
+        "layershell": "liblayershellqtinterface6", "kwindowsystem": "libkf6windowsystem6", "kconfig": "libkf6config-bin", "rust": "cargo", "tray": "gnome-shell-extension-appindicator",
     },
     "fedora": {
         "pipewire": "pipewire", "pulse": "pipewire-pulseaudio", "session": "wireplumber",
         "jack": "pipewire-jack-audio-connection-kit", "pwlink": "pipewire-utils", "pactl": "pulseaudio-utils",
         "libpulse": "pulseaudio-libs", "xcb": "xcb-util-cursor", "python": "python3 python3-pip",
         "gl": "mesa-libGL mesa-libEGL libxkbcommon-x11 fontconfig", "venv": "",
+        # 0.12.0: the optional parts of the setup check (setup_check.py)
+        "layershell": "layer-shell-qt", "kwindowsystem": "kf6-kwindowsystem", "kconfig": "kf6-kconfig", "rust": "cargo", "tray": "gnome-shell-extension-appindicator",
     },
     "suse": {
         "pipewire": "pipewire", "pulse": "pipewire-pulseaudio", "session": "wireplumber",
         "jack": "pipewire-libjack-0_3", "pwlink": "pipewire-tools", "pactl": "pulseaudio-utils",
         "libpulse": "libpulse0", "xcb": "libxcb-cursor0", "python": "python3 python3-pip",
         "gl": "libGL1 libEGL1 libxkbcommon-x11-0 fontconfig", "venv": "",
+        # 0.12.0: the optional parts of the setup check (setup_check.py)
+        "layershell": "libLayerShellQtInterface6", "kwindowsystem": "libKF6WindowSystem6", "kconfig": "kf6-kconfig", "rust": "cargo", "tray": "gnome-shell-extension-appindicator",
     },
     "void": {
         "pipewire": "pipewire", "pulse": "", "session": "wireplumber", "jack": "libjack-pipewire",
         "pwlink": "pipewire", "pactl": "pulseaudio-utils", "libpulse": "libpulseaudio", "xcb": "xcb-util-cursor",
         "python": "python3 python3-pip", "gl": "libGL libEGL libxkbcommon-x11 fontconfig", "venv": "",
+        # 0.12.0: the optional parts of the setup check (setup_check.py)
+        "layershell": "layer-shell-qt", "kwindowsystem": "kf6-kwindowsystem", "kconfig": "kf6-kconfig", "rust": "cargo", "tray": "",
     },
 }
 

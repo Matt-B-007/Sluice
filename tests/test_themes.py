@@ -253,7 +253,7 @@ def win(qapp, tmp_path):
 
 
 def _theme_menu(win):
-    view = next(a.menu() for a in win.menuBar().actions() if a.text().replace("&", "") == "View")
+    view = next(m for m in win.action_groups if m.title().replace("&", "") == "Window")
     menu = next(a.menu() for a in view.actions() if a.menu() and a.text().replace("&", "") == "Theme")
     win._fill_theme_menu()
     return menu

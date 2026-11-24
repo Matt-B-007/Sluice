@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""The Nexus look: a deep blue-black window with cyan and coral light, rounded glassy cards, thin glowing outlines and capital-letter
+"""The Nexus look: a deep blue-black window with cyan and coral light, rounded lit cards, thin glowing outlines and capital-letter
 headings. It starts from the Calm style sheet and adds to it, so every part of the window is styled and nothing is left bare.
 
 Part of the Look setting (View > Look). Nexus has its own colours for the built-in Dark theme; every other theme keeps its own colours
@@ -25,9 +25,9 @@ NEXUS_DARK = {
 }
 
 NEXUS_EXTRA = """
-/* Nexus: glass cards with a thin cool outline, capital-letter headings, cyan light on what is on. */
-QFrame#strip, QFrame#row, QFrame#mix { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 $glass_top, stop:0.4 $panel,
-    stop:1 $glass_bottom); border: 1px solid $glass_outline; border-radius: 20px; }
+/* Nexus: lit cards with a thin cool outline, capital-letter headings, cyan light on what is on. */
+QFrame#strip, QFrame#row, QFrame#mix { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 $card_top, stop:0.4 $panel,
+    stop:1 $card_bottom); border: 1px solid $card_outline; border-radius: 20px; }
 QWidget#topbar { border-bottom: 1px solid $accent_soft; }
 QFrame#statuschip, QFrame#segmented { border-color: $accent_soft; }
 QFrame#mix[mix="monitor"] { border-color: $listen_edge; }
@@ -65,14 +65,14 @@ NEXUS_STYLE_EXTRA = Template(NEXUS_EXTRA)
 CORAL_DARK, CORAL_LIGHT = "#ff7a59", "#c4472a"   # Broadcast in Nexus, when the theme has no second colour of its own
 
 
-def glass_values(values: dict) -> dict:
-    """The colours of Nexus's glass for a theme: a lit top, a deeper bottom and an outline from the accent (``depth``)."""
+def card_values(values: dict) -> dict:
+    """The colours of a Nexus card for a theme: a lit top, a deeper bottom and an outline from the accent (``depth``)."""
     from . import depth
     d = depth.depth_colors(values)
     light = d["light"]
-    return {"glass_top": depth.shade(values["panel"], 0.6 if light else 0.06),
-            "glass_bottom": depth.shade(values["panel"], -0.03 if light else -0.3),
-            "glass_outline": d["outline"]}
+    return {"card_top": depth.shade(values["panel"], 0.6 if light else 0.06),
+            "card_bottom": depth.shade(values["panel"], -0.03 if light else -0.3),
+            "card_outline": d["outline"]}
 
 
 def mix_pair(colors: dict) -> tuple:

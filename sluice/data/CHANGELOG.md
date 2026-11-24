@@ -1,5 +1,56 @@
 # Changelog
 
+## 0.12.0
+A cleanup: the voice effects fixed and made the same with or without Rust, a setup check that says what to install, the Original skin
+retired with everything that was there twice, and things lined up where they belong.
+- **The limiter holds its ceiling.** It copied pedalboard's limiter, which adds make-up gain after limiting (about 4 dB) and then clips,
+  behind a hidden 4:1 compressor. It is now a true peak limiter: nothing passes the Ceiling, and below it the sound is untouched. **Your
+  voice may be a little quieter** than in 0.11 where the old limiter was lifting it; raise Gain or the Compressor's makeup if you miss it.
+- **The compressor and gate hear both channels together** (pedalboard's followed each channel apart), so a sound louder on one side is
+  turned down on both alike and stays where it was. The compressor has a 6 dB soft knee.
+- **The gate has hold and hysteresis.** It stays open for the Hold time after you stop (120 ms), so word endings are not cut, and closes
+  only 4 dB below where it opens, so a voice near the threshold does not make it flutter. "Ratio" became **Depth** (how far the room is
+  turned down, 24 dB). The default threshold is -40 dB. A saved gate keeps its threshold; its old ratio is not used.
+- **A proper high-pass.** With the Rust engine 0.11.0 the High-pass is a 12 dB per octave Butterworth filter: 3 dB down at the cutoff and
+  flat above it (the two simpler filters before were already 6 dB down there). An older engine keeps the old filters until it is rebuilt
+  (*Settings > Updates > Rebuild the audio engine*, or *Settings > Setup check*).
+- **No doubled limiting.** The voice limiter's ceiling (-2 dB) sits under each mix's limiter (-1 dB), so a voice is limited once.
+- **The same sound with or without Rust.** The gate, compressor and limiter are one implementation for both engines, with tests that
+  compare them.
+- **Nothing is left in the folder you downloaded.** `install.sh` installs Sluice in its own folder,
+  `~/.local/share/sluice/program` (with its own Python environment and the Rust engine), adds it to the applications menu by
+  default and writes a `sluice` command in `~/.local/bin`. At the end it offers to delete the download folder: it asks first,
+  never for a git clone, and `--yes` keeps it. Updates, *Go back*, *Rebuild the audio engine* and *Uninstall* work on the new
+  folder, and Uninstall also removes the command and leaves no empty Sluice folder. `--in-place` keeps the old way for
+  working on the code; `--no-desktop` skips the menu entry.
+- **Installed before 0.12.0?** Sluice then runs from its download folder and says so once. *Settings > Updates > Move*
+  closes Sluice, runs install.sh to put it in its own folder, starts the new copy and deletes the old folder. Your settings
+  stay. If the move fails, Sluice starts again from where it was, and the reason is in `~/.local/state/sluice/move.log`.
+- **Setup check.** *Settings > Setup check* lists what Sluice uses from your system: what each part is for, whether Sluice needs it,
+  whether it is here (and why not), and the command that installs it on your distribution, with a Copy button and *Check again*. It opens
+  by itself when Sluice cannot start audio because a needed part is missing; an optional part is mentioned once, when it would first be
+  used (Glass's blur, KDE widgets, VST3). `sluice --diagnose`, the bug report and `install.sh` (which now lists the optional extras at the
+  end) read the same list. Sluice never installs anything itself.
+- **The Original skin is retired.** Its settings show Calm. With it went the menu bar and the old File / Mixer / View / Help menus (the ☰
+  panel and Settings hold everything), its style sheet, its sizes and 63 special cases in the shared code. It stays in the project's
+  history at the 0.11.7 tag.
+- **Everything in one place.** Columns and Rows are in the top bar and Settings only (not the ☰ panel too); the skin, theme and Reduce
+  effects in Settings only; the version in About and at the foot of Settings only (not the title bar and the top bar). Faders, grooves,
+  handles and shadows are drawn by one piece of code for every skin and the desktop widgets; the effects' names are written once; one
+  helper turns menu labels into plain text. Inside the code, "look" is now "skin" (old settings still load, and the old keys are still
+  written so *Go back* to 0.11 keeps your skin), and "glass" means only the Glass skin.
+- **Lined up.** Each fader and its meter are one pair, centred under the mix's name and over its level (they sat 15 px to one side);
+  Listen and Broadcast's fader and meter are 16 px apart, not 40. In Nexus the name and the small heading are centred under the ring, and
+  the chain badge for linked levels moved off the ring into the card's header. The Tile tray ends with the tiles instead of filling the
+  window. Calm's lists of sources are as tall as the longest one needs (one chip at least, two before they scroll), the same on every
+  card.
+- **The effects window** opens with the chain selected (no focus ring on *Quiet*), without the 140 px gap under the cards, says *Switch
+  an effect off* rather than *Untick*, and shows ◀ ▶ only for an effect that can move (a VST3 plugin).
+- **Short device names** on the cards and in the output lists ("Blue Yeti" for "Blue Yeti Analog Stereo", "HDMI 3" for a graphics card's
+  "Navi 21/23 HDMI/DP Audio Controller Digital Stereo (HDMI 3)", "Built-in audio" for the computer's own sound chip); the whole name is
+  in the tooltip.
+- **Bug report:** the engine's version is said once, at the top.
+
 ## 0.11.7
 A new ☰ panel and Settings window in one design, Glass that looks like glass, smooth widget dragging on KDE, the tray on Wayland, and the
 fixes from the 0.11.6 bug report.

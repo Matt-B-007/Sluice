@@ -18,9 +18,9 @@ MASTERS_SIDE = 328        # Listen and Broadcast docked at the right: their colu
 THREE_MASTERS_HEIGHT = 1000  # three mix cards stacked at the right need this much height; shorter, they go in the bar below
 
 
-def rows_min_width(mixes: int, look: str = "") -> int:
+def rows_min_width(mixes: int, skin: str = "") -> int:
     """The narrowest window that shows the Rows layout with this many mixes, Listen and Broadcast in the bar below."""
-    return ROW_FIXED + (ROW_RING if look == "nexus" else 0) + max(2, mixes) * (ROW_CELL_MIN + 16) + ROW_SLACK
+    return ROW_FIXED + (ROW_RING if skin == "nexus" else 0) + max(2, mixes) * (ROW_CELL_MIN + 16) + ROW_SLACK
 
 
 class Plan(NamedTuple):
@@ -29,28 +29,27 @@ class Plan(NamedTuple):
     step: str            # roomy, standard, compact or mini: how much of the top bar and spacing is shown
 
 
-def _base(width: int, height: int, layout: str, look: str, mixes: int = 2) -> Plan:
-    original = look == "original"
+def _base(width: int, height: int, layout: str, skin: str, mixes: int = 2) -> Plan:
     mode = layout if layout in ("columns", "rows") else "columns"  # anything else (Free, gone in 0.11.5) shows Columns
     step = "roomy" if width >= 1600 else "standard" if width >= 1180 else "compact" if width >= 820 else "mini"
-    narrowest = {"rows": rows_min_width(mixes, look)}.get(mode, 760)  # 0.11.6: Original's strips are as wide as the other skins' now
+    narrowest = {"rows": rows_min_width(mixes, skin)}.get(mode, 760)
     if width < narrowest or height < MINI_HEIGHT:
         return Plan("mini", "right", "mini")
     dock = "right"
-    if mode == "columns" and not original and width < 1180:
+    if mode == "columns" and width < 1180:
         dock = "bottom"
-    if mode == "rows" and (width < rows_min_width(mixes, look) + MASTERS_SIDE or (mixes > 2 and height < THREE_MASTERS_HEIGHT)):
+    if mode == "rows" and (width < rows_min_width(mixes, skin) + MASTERS_SIDE or (mixes > 2 and height < THREE_MASTERS_HEIGHT)):
         dock = "bottom"
     if dock == "bottom" and height < BOTTOM_DOCK_HEIGHT:
         return Plan("mini", "right", "mini")  # a bar under the channels would leave them no room: the compact list is clearer
     return Plan(mode, dock, step)
 
 
-def plan_for(width: int, height: int, layout: str, look: str, previous: Optional[Plan] = None, mixes: int = 2) -> Plan:
+def plan_for(width: int, height: int, layout: str, skin: str, previous: Optional[Plan] = None, mixes: int = 2) -> Plan:
     """The plan for a window of this size. ``previous`` (the plan in use) is kept while the width is within ``HYSTERESIS`` of the edge.
     ``mixes`` is how many mixes there are (2, or 3 with Recording): a third needs a wider window for Rows."""
-    plan = _base(width, height, layout, look, mixes)
+    plan = _base(width, height, layout, skin, mixes)
     if previous is not None and previous != plan:
-        if previous in (_base(width - HYSTERESIS, height, layout, look, mixes), _base(width + HYSTERESIS, height, layout, look, mixes)):
+        if previous in (_base(width - HYSTERESIS, height, layout, skin, mixes), _base(width + HYSTERESIS, height, layout, skin, mixes)):
             return previous
     return plan

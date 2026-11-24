@@ -54,8 +54,38 @@ def _quote(arg: str) -> str:
     return f'"{escaped}"'
 
 
+def sluice_home() -> Path:
+    """Sluice's own folder in your data folder: the program (0.12.0) and the menu's launcher script."""
+    return data_home() / "sluice"
+
+
+def program_dir() -> Path:
+    """Where install.sh puts the program (0.12.0), so nothing is left in the folder you downloaded."""
+    return sluice_home() / "program"
+
+
+def bin_home() -> Path:
+    return Path(os.environ.get("XDG_BIN_HOME") or (Path.home() / ".local" / "bin"))
+
+
+def command_path() -> Path:
+    """The ``sluice`` command install.sh writes (0.12.0)."""
+    return bin_home() / "sluice"
+
+
+COMMAND_MARK = "# Written by Sluice's install.sh"
+
+
+def is_our_command(path: Optional[Path] = None) -> bool:
+    """True when the ``sluice`` command there is the one install.sh wrote (another program's is never touched)."""
+    try:
+        return COMMAND_MARK in (path or command_path()).read_text(encoding="utf-8", errors="replace")[:400]
+    except OSError:
+        return False
+
+
 def script_path() -> Path:
-    return data_home() / "sluice" / "sluice-launch"
+    return sluice_home() / "sluice-launch"
 
 
 def script_text(python: Optional[str] = None) -> str:

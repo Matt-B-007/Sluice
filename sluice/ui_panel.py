@@ -5,13 +5,12 @@ before: the panel only shows the actions and triggers them.
 
 - three tiles: Mute my microphone, Add channel, Refresh
 - Quick mutes: Listen, Broadcast, Hear Broadcast
-- Layout: Columns or Rows
 - Mixer and desktop: desktop widgets, show or hide them, the Recording mix, devices for OBS, full screen, hide to tray
 - Help: shortcuts, what's new, a glitch, a bug report, a problem; GitHub, Discord and About
 - at the bottom: Settings… and Quit
 
-What is set once and left alone (the skin, the theme, the buffer, startup, updates, your settings files) is in the Settings window.
-The Original skin keeps its classic menu bar. Up and Down move between the rows, Enter or Space uses one, Escape closes."""
+Columns and Rows are in the top bar (and Settings). What is set once and left alone (the skin, the theme, the buffer, startup, updates, your settings files) is in the Settings window.
+Up and Down move between the rows, Enter or Space uses one, Escape closes."""
 from __future__ import annotations
 
 from PySide6.QtCore import QPoint, QSize, Qt
@@ -19,10 +18,7 @@ from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import QAbstractButton, QCheckBox, QFrame, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QVBoxLayout, QWidget
 
 from . import themes, ui_icons as icons
-
-
-def plain(text: str) -> str:
-    return text.split("\t")[0].replace("&&", "\0").replace("&", "").replace("\0", "&")
+from .ui_base import plain
 
 
 class Switch(QCheckBox):
@@ -98,7 +94,7 @@ class PanelRow(QPushButton):
 
     def refresh(self) -> None:
         a = self.action
-        text = plain(a.text()) if a is not None else self.accessibleName()
+        text = plain(a.text(), keep_dots=True) if a is not None else self.accessibleName()
         if a is not None:
             text = text.split(" (")[0]  # "Recording mix (a third mix)" reads "Recording mix" here
         self.name.setText(text)
@@ -228,27 +224,6 @@ class MenuPanel(QWidget):
         column.addLayout(mutes)
         column.addSpacing(4)
 
-        self._section(column, "Layout")
-        segments = QFrame()
-        segments.setObjectName("segmented")
-        seg = QHBoxLayout(segments)
-        seg.setContentsMargins(3, 3, 3, 3)
-        seg.setSpacing(4)
-        self.layout_buttons = {}
-        for key, icon in (("columns", "columns"), ("rows", "rows")):
-            action = w.layout_actions[key]
-            button = QPushButton()
-            button.setObjectName("segment")
-            button.setCheckable(True)
-            button.setCursor(Qt.CursorShape.PointingHandCursor)
-            button.setIcon(icons.icon(icon, themes.color("text2"), 16))
-            button.setText(f"{plain(action.text()).split(' (')[0]}   {action.shortcut().toString()}")
-            button.setAccessibleName(plain(action.text()).split(" (")[0])
-            button.clicked.connect(lambda _c=False, a=action: (a.trigger(), self.refresh()))
-            self.layout_buttons[key] = button
-            seg.addWidget(button)
-        column.addWidget(segments)
-        column.addSpacing(4)
 
         self._section(column, "Mixer and desktop")
         self._row(column, None, "widgets", submenu=w.widgets_menu, name="Desktop widgets")
@@ -322,18 +297,16 @@ class MenuPanel(QWidget):
         for button in self.mute_buttons:
             a = button.action
             button.setChecked(a.isChecked())
-            label = plain(a.text())
+            label = plain(a.text(), keep_dots=True)
             short = label.replace("Mute ", "") if label.startswith("Mute ") else label
             button.setText(short)
             button.setIcon(icons.icon(button.icon_name, themes.color("mute") if a.isChecked() else themes.color("text2"), 14))
             button.setAccessibleName(label)
             button.setAccessibleDescription(("on" if a.isChecked() else "off") + (f", {a.shortcut().toString()}" if a.shortcut().toString() else ""))
             button.setVisible(a.isVisible())
-        for key, button in self.layout_buttons.items():
-            button.setChecked(w.layout_actions[key].isChecked())
 
     def focusable(self) -> list:
-        order = self.tiles + self.mute_buttons + list(self.layout_buttons.values()) + [r for r in self.rows if r is not self.quit_row]
+        order = self.tiles + self.mute_buttons + [r for r in self.rows if r is not self.quit_row]
         order.append(self.quit_row)
         return [item for item in order if item.isVisible() and item.isEnabled()]
 

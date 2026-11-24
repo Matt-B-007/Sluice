@@ -293,12 +293,11 @@ def test_help_menu_saves_a_bug_report(ui, tmp_path, monkeypatch):
     win, _, _ = ui
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
-    help_menu = next(a.menu() for a in win.menuBar().actions() if a.menu() and a.text().replace("&", "") == "Help")
-    from sluice import __version__
+    help_menu = next(m for m in win.action_groups if m.title().replace("&", "") == "Help")
 
     assert [a.text().replace("&", "") for a in help_menu.actions() if a.text()] == [
         "Learn", "Keyboard shortcuts", "What's new in this version", "Something wrong", "I heard a glitch", "Save bug report…",
-        "Report a problem", "Community", "Join the Discord", "Project page on GitHub", "About", f"About Sluice {__version__}",
+        "Report a problem", "Community", "Join the Discord", "Project page on GitHub", "About", "About Sluice",
         "Uninstall Sluice…"]
     target = tmp_path / "report.txt"
     win.save_report_to(target)
@@ -420,12 +419,13 @@ def test_version_is_shown_and_about_and_update_menu_exist(ui):
     from sluice import __version__
 
     win, *_ = ui
-    assert __version__ in win.windowTitle()
-    assert any(label.text() == f"v{__version__}" for label in win.findChildren(QLabel))  # small, grey, beside the name
-    help_menu = next(a.menu() for a in win.menuBar().actions() if a.text().replace("&", "") == "Help")
+    # 0.12.0: the version is in About and at the foot of Settings only, not in the title or the top bar
+    assert win.windowTitle() == "Sluice"
+    assert not any(__version__ in label.text() for label in win.findChildren(QLabel))
+    help_menu = next(m for m in win.action_groups if m.title().replace("&", "") == "Help")
     help_actions = [a.text() for a in help_menu.actions()]
-    assert f"&About Sluice {__version__}" in help_actions
-    settings = next(a.menu() for a in win.menuBar().actions() if a.text().replace("&", "") == "Settings")
+    assert "&About Sluice" in help_actions
+    settings = next(m for m in win.action_groups if m.title().replace("&", "") == "Settings")
     assert "Check for updates\u2026" in [a.text().replace("&", "") for a in settings.actions()]
 
 
@@ -468,7 +468,7 @@ def test_multichannel_outputs_are_labelled_and_listed_after_stereo_ones(ui):
 
 
 def _menu(win, name):
-    return next(a.menu() for a in win.menuBar().actions() if a.menu() and a.text().replace("&", "") == name)
+    return next(m for m in win.action_groups if m.title().replace("&", "") == name)
 
 
 def _texts(menu):
@@ -487,10 +487,10 @@ def test_menu_bar_has_the_usual_menus_in_the_usual_order(ui):
             pass
 
     win.attach_controls(FakeControls())
-    names = [a.text().replace("&", "") for a in win.menuBar().actions()]
-    assert names == ["File", "Mixer", "View", "Settings", "Help"]
+    names = [m.title().replace("&", "") for m in win.action_groups]
+    assert names == ["File", "Mixer", "Window", "Settings", "Help"]  # 0.12.0: groups of actions; no menu bar shows them
     assert _texts(_menu(win, "File")) == ["Save settings", "Import settings…", "Export settings…", "Restore earlier settings",
-                                          "Reset all settings to the defaults…", "Open folder", "Quit"]
+                                          "Reset all settings to the defaults…", "Open folder", "Quit", "Settings…"]
     assert _texts(_menu(win, "Mixer")) == ["Channels", "Add channel…", "Refresh devices and apps", "Mixes", "Recording mix (a third mix)",
                                            "Recording devices for OBS…", "Quick mutes", "Mute my microphone", "Mute Listen",
                                            "Mute Broadcast", "Hear Broadcast"]
@@ -498,17 +498,13 @@ def test_menu_bar_has_the_usual_menus_in_the_usual_order(ui):
         "Startup and background", "Running in the background", "Add Sluice to the applications menu",
         "Audio", "Audio buffer", "Controllers", "MIDI controllers and Stream Deck…",
         "Updates", "Update automatically when a new version is found", "Check for updates…", "Go back to the previous version…"]
-    assert _texts(_menu(win, "View")) == ["Layout", "Columns (a card for each channel)", "Rows (a line for each channel)",
+    assert _texts(_menu(win, "Window")) == ["Layout", "Columns (a card for each channel)", "Rows (a line for each channel)",
                                           "Themes and skins", "Skin", "Theme", "Skin's own colours on Dark and Light",
                                           "Reduce effects", "See-through window (Glass on KDE Plasma)", "Desktop", "Desktop widgets",
                                           "Show or hide my widgets", "Window", "Full screen", "Reset window size", "Hide to tray"]
-    # the ☰ button: File, Mixer, a View with what you do with the window, Help, and the Settings window at the bottom
-    assert [a.text().replace("&", "") for a in win.main_menu.actions() if a.text()] == ["File", "Mixer", "View", "Help", "Settings…"]
-    assert _texts(win.window_menu) == ["Layout", "Columns (a card for each channel)", "Rows (a line for each channel)", "Desktop",
-                                       "Desktop widgets", "Show or hide my widgets", "Window", "Full screen", "Reset window size", "Hide to tray"]
     # a heading is words over a group, never a blank band: the first thing in a menu with groups is a heading
     from sluice.ui_menus import MENU_HEADING
-    for name in ("Mixer", "View", "Settings", "Help"):
+    for name in ("Mixer", "Window", "Settings", "Help"):
         first = _menu(win, name).actions()[0]
         assert first.property("heading") and first.defaultWidget().objectName() == MENU_HEADING
         assert first.defaultWidget().property("first") is True
@@ -909,7 +905,7 @@ def test_the_mic_strip_button_and_menu_item_mute_the_microphone(ui):
 
 def test_the_mixer_menu_offers_the_recording_mix_and_the_mic_mute(ui):
     win, _, engine = ui
-    menu = next(a.menu() for a in win.menuBar().actions() if a.menu() and a.text().replace("&", "") == "Mixer")
+    menu = next(m for m in win.action_groups if m.title().replace("&", "") == "Mixer")
     texts = [a.text().replace("&", "") for a in menu.actions() if a.text()]
     assert "Mute my microphone" in texts and any(t.startswith("Recording mix") for t in texts)
     assert not win.recording_action.isChecked()

@@ -22,9 +22,9 @@ from sluice.ui import MainWindow
 from layout_checks import problems
 
 
-def make(qapp, tmp_path, look="calm", layout="columns", size=(1456, 800), many_apps=False, theme="dark"):
+def make(qapp, tmp_path, skin="calm", layout="columns", size=(1456, 800), many_apps=False, theme="dark"):
     mixer = Mixer.demo()
-    mixer.look, mixer.layout, mixer.theme = look, layout, theme
+    mixer.skin, mixer.layout, mixer.theme = skin, layout, theme
     if many_apps:
         mixer.channels[2].apps = ["steam:1091500", "cs2", "steam:5335510", "steam:1240440", "steam:949230"]
     engine = Engine(mixer, MockSystem(), NullIO(realtime=False), NullLinker())
@@ -42,7 +42,7 @@ def settle(qapp):
 
 
 # ---------------------------------------------------------------- the plan (pure)
-@pytest.mark.parametrize("size,layout,look,expected", [
+@pytest.mark.parametrize("size,layout,skin,expected", [
     ((1456, 800), "columns", "calm", ("columns", "right", "standard")),
     ((1920, 1080), "columns", "nexus", ("columns", "right", "roomy")),
     ((1100, 800), "columns", "calm", ("columns", "bottom", "compact")),
@@ -56,11 +56,9 @@ def settle(qapp):
     ((1500, 800), "free", "nexus", ("columns", "right", "standard")),  # Free is gone (0.11.5): a saved Free shows Columns
     ((1500, 800), "free", "calm", ("columns", "right", "standard")),
     ((1500, 800), "nonsense", "calm", ("columns", "right", "standard")),
-    ((760, 800), "columns", "original", ("columns", "right", "mini")),
-    ((700, 800), "columns", "original", ("mini", "right", "mini")),  # 0.11.6: Original's cards are as wide as the others'
 ])
-def test_the_plan_for_a_size(size, layout, look, expected):
-    plan = sizing.plan_for(size[0], size[1], layout, look)
+def test_the_plan_for_a_size(size, layout, skin, expected):
+    plan = sizing.plan_for(size[0], size[1], layout, skin)
     assert tuple(plan) == expected
 
 
@@ -79,8 +77,8 @@ def test_every_plan_is_one_of_the_known_values():
     for width in range(300, 2700, 37):
         for height in range(280, 1500, 61):
             for layout in ("columns", "rows", "free", "?"):
-                for look in themes.LOOKS:
-                    plan = sizing.plan_for(width, height, layout, look)
+                for skin in themes.SKINS:
+                    plan = sizing.plan_for(width, height, layout, skin)
                     assert plan.mode in ("columns", "rows", "mini") and plan.dock in ("right", "bottom")
                     assert plan.step in sizing.STEPS
 
@@ -150,9 +148,9 @@ def test_the_window_can_be_made_small_and_keeps_its_choices(qapp, tmp_path):
 def test_a_look_change_in_a_small_window_keeps_the_compact_list(qapp, tmp_path):
     win, _ = make(qapp, tmp_path, "calm", "columns", (560, 900))
     try:
-        win.choose_look("nexus"); settle(qapp)
+        win.choose_skin("nexus"); settle(qapp)
         assert win.layout_mode == "mini"
-        win.choose_look("original"); settle(qapp)
+        win.choose_skin("glass"); settle(qapp)
         assert win.layout_mode == "mini"
         win.set_layout("rows"); settle(qapp)
         assert win.engine.mixer.layout == "rows" and win.layout_mode == "mini"
@@ -206,18 +204,18 @@ def test_adding_and_removing_a_channel_updates_the_compact_list(qapp, tmp_path):
 SIZES = [(1456, 800), (1280, 800), (1100, 800), (900, 800), (800, 600), (700, 900), (480, 700), (1920, 1080), (1280, 430), (380, 320)]
 
 
-@pytest.mark.parametrize("look,layout,theme", [("calm", "columns", "dark"), ("calm", "rows", "dark"), ("original", "columns", "dark"),
-                                               ("original", "rows", "dark"), ("nexus", "columns", "dark"), ("nexus", "rows", "dark"),
+@pytest.mark.parametrize("skin,layout,theme", [("calm", "columns", "dark"), ("calm", "rows", "dark"),
+                                               ("nexus", "columns", "dark"), ("nexus", "rows", "dark"),
                                                ("tile", "columns", "dark"), ("tile", "rows", "dark"),
                                                ("tile", "columns", "light"), ("tile", "rows", "light"),
                                                ("calm", "columns", "light"), ("glass", "columns", "dark"),
                                                ("glass", "rows", "light")])
-def test_no_look_or_layout_overlaps_or_cuts_off_at_any_size(qapp, tmp_path, look, layout, theme):
+def test_no_look_or_layout_overlaps_or_cuts_off_at_any_size(qapp, tmp_path, skin, layout, theme):
     found = []
     for size in SIZES:
-        win, _ = make(qapp, tmp_path, look, layout, size, many_apps=True, theme=theme)
+        win, _ = make(qapp, tmp_path, skin, layout, size, many_apps=True, theme=theme)
         try:
-            found += problems(win, size, f"{look}/{layout}/{size[0]}x{size[1]} [{win.layout_mode},{win._dock},{win._plan.step}]")
+            found += problems(win, size, f"{skin}/{layout}/{size[0]}x{size[1]} [{win.layout_mode},{win._dock},{win._plan.step}]")
         finally:
             win.shutdown()
     assert found == [], "\n".join(map(str, found[:12]))
@@ -228,12 +226,12 @@ def test_the_nexus_items_are_only_in_view_while_the_look_is_nexus(qapp, tmp_path
     win, engine = make(qapp, tmp_path, "calm", "columns")
     try:
         win._refresh_view_menu()
-        for action in (win.look_colors_action, win.reduce_action, win.nexus_section):
+        for action in (win.skin_colors_action, win.reduce_action, win.nexus_section):
             assert not action.isVisible()
-        win.choose_look("nexus"); settle(qapp)
-        for action in (win.look_colors_action, win.reduce_action, win.nexus_section):
+        win.choose_skin("nexus"); settle(qapp)
+        for action in (win.skin_colors_action, win.reduce_action, win.nexus_section):
             assert action.isVisible()
-        win.choose_look("calm"); settle(qapp)
+        win.choose_skin("calm"); settle(qapp)
         assert not win.reduce_action.isVisible()
     finally:
         win.shutdown()
@@ -245,11 +243,11 @@ def test_the_look_colours_switch_is_one_item_and_not_in_the_theme_menu(qapp, tmp
         win._fill_theme_menu()
         assert not any("colours" in a.text().lower() and "look" in a.text().lower() for a in win.theme_menu.actions())
         win._refresh_view_menu()
-        assert win.look_colors_action.isChecked() and engine.mixer.look_colors
-        win.look_colors_action.trigger()
-        assert engine.mixer.look_colors is False
+        assert win.skin_colors_action.isChecked() and engine.mixer.skin_colors
+        win.skin_colors_action.trigger()
+        assert engine.mixer.skin_colors is False
         win._refresh_view_menu()
-        assert not win.look_colors_action.isChecked()
+        assert not win.skin_colors_action.isChecked()
     finally:
         win.shutdown()
 
@@ -300,14 +298,14 @@ def test_a_machine_name_in_a_kernel_log_line_is_hidden_whatever_it_was(monkeypat
 
 
 # ---------------------------------------------------------------- easy for everyone
-@pytest.mark.parametrize("look,layout,size", [("calm", "columns", (1456, 800)), ("calm", "rows", (1456, 900)), ("nexus", "columns", (1456, 800)),
-                                              ("nexus", "rows", (1456, 800)), ("calm", "columns", (500, 800)), ("original", "columns", (1456, 800)),
-                                              ("original", "rows", (1456, 900))])
-def test_every_control_has_a_name_a_tooltip_and_can_be_reached_with_the_keyboard(qapp, tmp_path, look, layout, size):
+@pytest.mark.parametrize("skin,layout,size", [("calm", "columns", (1456, 800)), ("calm", "rows", (1456, 900)), ("nexus", "columns", (1456, 800)),
+                                              ("nexus", "rows", (1456, 800)), ("calm", "columns", (500, 800)), ("glass", "columns", (1456, 800)),
+                                              ("tile", "rows", (1456, 900))])
+def test_every_control_has_a_name_a_tooltip_and_can_be_reached_with_the_keyboard(qapp, tmp_path, skin, layout, size):
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QAbstractButton, QAbstractSlider, QComboBox
 
-    win, _ = make(qapp, tmp_path, look, layout, size)
+    win, _ = make(qapp, tmp_path, skin, layout, size)
     try:
         lacking = []
         for widget in win.findChildren(QWidget):
@@ -351,7 +349,7 @@ def test_the_first_run_card_offers_a_look_and_a_note_says_why_the_list_is_compac
 
 # ---------------------------------------------------------------- the Tile look
 def test_the_tile_look_is_a_look_with_its_own_sheet_for_every_theme():
-    assert themes.LOOKS["tile"] == "Tile" and themes.valid_look("tile") == "tile"
+    assert themes.SKINS["tile"] == "Tile" and themes.valid_skin("tile") == "tile"
     for theme in themes.BUILT_IN.values():
         sheet = themes.build_style(theme.colors, "tile")
         assert "$" not in sheet.replace("$$", "") and "QFrame#strip" in sheet and "QFrame#tileframe" in sheet, theme.id
@@ -363,18 +361,18 @@ def test_tiles_take_their_own_key_colours_on_dark_and_light_while_the_look_colou
     from sluice import skin_tile
     dark, light, contrast = themes.BUILT_IN["dark"], themes.BUILT_IN["light"], themes.BUILT_IN["contrast"]
     try:
-        themes.set_look_colors(True)
-        tiled = themes.look_colors(dark, "tile")
+        themes.set_skin_colors(True)
+        tiled = themes.skin_colors(dark, "tile")
         assert tiled["panel"] == skin_tile.TILE_DARK["panel"] and tiled["text"] == "#eef2f5" and tiled["track"] == "#14171b"
         midnight = themes.BUILT_IN["midnight"]
-        assert themes.look_colors(midnight, "tile")["panel"] == midnight.colors["panel"]  # option A: only Dark and Light
-        assert themes.look_colors(light, "tile")["panel"] == skin_tile.TILE_LIGHT["panel"]
-        assert themes.look_colors(contrast, "tile") == themes.finish(contrast.colors)
-        assert themes.look_colors(dark, "calm") == themes.finish(dark.colors)
-        themes.set_look_colors(False)
-        assert themes.look_colors(dark, "tile") == themes.finish(dark.colors)
+        assert themes.skin_colors(midnight, "tile")["panel"] == midnight.colors["panel"]  # option A: only Dark and Light
+        assert themes.skin_colors(light, "tile")["panel"] == skin_tile.TILE_LIGHT["panel"]
+        assert themes.skin_colors(contrast, "tile") == themes.finish(contrast.colors)
+        assert themes.skin_colors(dark, "calm") == themes.finish(dark.colors)
+        themes.set_skin_colors(False)
+        assert themes.skin_colors(dark, "tile") == themes.finish(dark.colors)
     finally:
-        themes.set_look_colors(True)
+        themes.set_skin_colors(True)
     assert not skin_tile.is_light(tiled["panel"]) and skin_tile.is_light(light.colors["panel"]) and skin_tile.is_light("#fff")
     d, l = skin_tile.tile_colors(tiled, themes.mix), skin_tile.tile_colors(light.colors, themes.mix)
     assert d["tile_edge"] != l["tile_edge"] and d["skirt"] != l["skirt"]
@@ -385,7 +383,7 @@ def test_the_tile_look_has_no_glow_and_no_nexus_items(qapp, tmp_path):
     try:
         assert all(getattr(s, "ring", None) is None for s in win.strips)
         win._refresh_view_menu()
-        assert not win.reduce_action.isVisible() and win.look_colors_action.isVisible()
+        assert not win.reduce_action.isVisible() and win.skin_colors_action.isVisible()
     finally:
         win.shutdown()
 
@@ -567,7 +565,7 @@ def test_control_watch_streams_and_cleans_up(qapp, tmp_path):
         engine.shutdown()
 
 
-def test_original_look_fits_in_a_wider_fallback_font(qapp, tmp_path):
+def test_calm_fits_in_a_wider_fallback_font(qapp, tmp_path):
     """CI draws with DejaVu Sans, wider than the fonts on most desktops: nothing may be cut off there either."""
     from PySide6.QtGui import QFont
 
@@ -576,9 +574,9 @@ def test_original_look_fits_in_a_wider_fallback_font(qapp, tmp_path):
     try:
         found = []
         for size in ((1456, 800), (900, 800), (1920, 1080)):
-            win, _ = make(qapp, tmp_path, "original", "columns", size, many_apps=True)
+            win, _ = make(qapp, tmp_path, "calm", "columns", size, many_apps=True)
             try:
-                found += problems(win, size, f"original/{size}")
+                found += problems(win, size, f"calm/{size}")
             finally:
                 win.shutdown()
         assert found == [], "\n".join(map(str, found[:8]))
@@ -586,15 +584,15 @@ def test_original_look_fits_in_a_wider_fallback_font(qapp, tmp_path):
         qapp.setFont(saved)
 
 
-@pytest.mark.parametrize("look", ["calm", "glass", "nexus", "original"])
-def test_the_default_window_shows_five_channels_in_one_row(qapp, tmp_path, look):
+@pytest.mark.parametrize("skin", ["calm", "glass", "nexus"])
+def test_the_default_window_shows_five_channels_in_one_row(qapp, tmp_path, skin):
     """0.11.7: the default window was meant to fit five channels beside Listen and Broadcast; from 0.11.5 it fitted four, and a
     report showed System pushed to a second row with the channel area scrolling."""
     from sluice.ui_base import DEFAULT_SIZE, default_size
-    win, _ = make(qapp, tmp_path, look, "columns", DEFAULT_SIZE)
+    win, _ = make(qapp, tmp_path, skin, "columns", DEFAULT_SIZE)
     try:
         tops = {strip.mapTo(win, strip.rect().topLeft()).y() for strip in win.strips[:5]}
-        assert len(win.strips) >= 5 and len(tops) == 1, (look, sorted(tops))
+        assert len(win.strips) >= 5 and len(tops) == 1, (skin, sorted(tops))
         assert win._dock == "right"
     finally:
         win.shutdown()

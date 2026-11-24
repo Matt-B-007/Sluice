@@ -130,9 +130,9 @@ def test_the_kwin_rule_keeps_the_widgets_above_and_is_found_by_title():
 
 
 # ---------------------------------------------------------------- the widgets in the window
-def make(qapp, tmp_path, look="calm"):
+def make(qapp, tmp_path, skin="calm"):
     mixer = Mixer.demo()
-    mixer.look = look
+    mixer.skin = skin
     engine = Engine(mixer, MockSystem(), NullIO(realtime=False), NullLinker())
     engine.start()
     win = MainWindow(engine, tmp_path / "config.json")
@@ -160,8 +160,8 @@ def test_a_channel_widget_changes_levels_and_mutes_in_every_mix(qapp, tmp_path):
         before = engine.mixer.channel("game").levels[engine.mixer.mixes[1].id]
         widget.wheelEvent(event)
         assert engine.mixer.channel("game").levels[engine.mixer.mixes[1].id] == before + 1.0
-        for look in ("calm", "nexus", "tile", "original"):  # it is drawn in every look
-            win.choose_look(look)
+        for skin in ("calm", "nexus", "tile", "glass"):  # it is drawn in every look
+            win.choose_skin(skin)
             widget.grab()
     finally:
         win.shutdown()

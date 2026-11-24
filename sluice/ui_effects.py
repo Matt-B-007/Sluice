@@ -427,7 +427,8 @@ class EffectsDialog(QDialog):
         right.addWidget(self.error)
         right.addWidget(self.editor_button, 0, Qt.AlignmentFlag.AlignLeft)
         right.addWidget(self.params_area, 1)
-        foot = QLabel("Untick an effect to bypass it. Built-in effects start in the best order; VST3 plugins can be moved.")
+        foot = QLabel("Switch an effect off to skip it. The built-in effects stay in the best order; VST3 plugins can be moved "
+                      "with ◀ and ▶.")
         foot.setObjectName("hint")
         foot.setWordWrap(True)
         right.addWidget(foot)
@@ -462,14 +463,22 @@ class EffectsDialog(QDialog):
             button.setDefault(False)
 
     def _fit_list(self) -> None:
-        """As tall as the rows of cards need: one row, or more when a long chain wraps."""
-        per_row = max(1, self.list.viewport().width() // (CARD_W + ARROW_W))
+        """As tall as the rows of cards need: one row, or more when a long chain wraps. (0.12.0: measured from the list's own
+        width once the layout has given it, not the viewport's width before that, which counted two rows and left a 140 px gap.)"""
+        width = self.list.width() or self.list.viewport().width()
+        per_row = max(1, width // (CARD_W + ARROW_W))
         rows = max(1, -(-self.list.count() // per_row))
         self.list.setFixedHeight(rows * (CARD_H + 8) + 16)
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._fit_list()
+        QTimer.singleShot(0, self._fit_list)  # again once the list has its new width
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        QTimer.singleShot(0, self._fit_list)
+        self.list.setFocus(Qt.FocusReason.OtherFocusReason)  # 0.12.0: the chain has the keyboard at first, not the Quiet button
 
     def keyPressEvent(self, event) -> None:
         if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
@@ -736,6 +745,8 @@ class EffectsDialog(QDialog):
     def _build_params(self) -> None:
         effect = self._current_effect()
         movable = effect is not None and effect.kind == "vst3"
+        self.up.setVisible(movable)  # 0.12.0: shown only for an effect that can move (a VST3 plugin), not greyed out for the rest
+        self.down.setVisible(movable)
         self.up.setEnabled(movable)
         self.down.setEnabled(movable)
         panel = QWidget()
@@ -997,7 +1008,9 @@ class EffectsDialog(QDialog):
             QApplication.restoreOverrideCursor()
         if instance.error:
             self.engine.remove_effect(self.channel.id, effect.id)
-            QMessageBox.warning(self, "Could not load plugin", instance.error)
+            extra = ("\n\nVST3 plugins need pedalboard: Settings > Setup check has the command that installs it."
+                     if "pedalboard" in instance.error.lower() else "")
+            QMessageBox.warning(self, "Could not load plugin", instance.error + extra)
             self._reload()
             return
         self._reload(select=len(self.channel.effects) - 1)

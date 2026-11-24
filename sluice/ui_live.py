@@ -438,7 +438,7 @@ class LivePanel(QFrame):
         if self.effect is None:
             return
         if self.kind == "noise_gate":
-            self.wave.set_markers([self._value("threshold_db", -30.0)])
+            self.wave.set_markers([self._value("threshold_db", -40.0)])
         elif self.kind == "limiter":
             self.wave.set_markers([self._value("threshold_db", -2.0)])
         elif self.kind == "compressor":
@@ -502,7 +502,7 @@ class LivePanel(QFrame):
         self.reduction_bar.set_value(self._reduction)
 
     def _tick_gate(self, in_db: float, quiet: bool) -> None:
-        threshold = self._value("threshold_db", -30.0)
+        threshold = self._value("threshold_db", -40.0)
         if in_db >= threshold:
             self._gate_hold = 10                      # stays "open" for a third of a second after the last loud block
         elif self._gate_hold:

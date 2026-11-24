@@ -8,7 +8,7 @@ from typing import Optional
 
 from PySide6.QtCore import QEvent, QSize, Qt, Signal
 from PySide6.QtGui import QFontMetrics
-from PySide6.QtWidgets import QLabel, QLineEdit, QPushButton, QSizePolicy, QSlider, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QLabel, QLineEdit, QPushButton, QSizePolicy, QSlider, QWidget
 
 from . import sizing, themes
 from .model import MAX_DB, MIN_DB, MONITOR, RECORDING, STREAM, linear_to_db
@@ -39,13 +39,8 @@ def default_size(available=None) -> tuple:
     return width, height
 
 NONE_DATA = "__none__"  # combo item data for "no device" (Qt dislikes None)
-ORIGINAL_CHANNEL_WIDTH = 200        # the Original look: a channel strip with two mixes, as in 0.9.7
-ORIGINAL_CHANNEL_WIDTH_THREE = 256  # ...and with the third mix
-ORIGINAL_MIX_WIDTH = 184  # 0.11.6: room for the same text sizes as the other skins
-ORIGINAL_SOURCES_HEIGHT = 84
-MIC_ROW = 26                 # the Original look's mic button row
-ADD_MIX_WIDTH = 100          # the Original look's "+ Recording mix" strip
-SOURCES_HEIGHT = 80  # the list of a channel's devices and apps: always this tall, so every card is the same height
+SOURCES_HEIGHT = 80  # the list of a channel's devices and apps: at most this tall (then it scrolls)...
+SOURCES_MIN = 32     # ...and at least one chip tall (0.12.0). Every card in the window takes the tallest list any of them needs.
 COLUMN_WIDTH = 80            # one mix's column on a channel card: the fader, its meter, the level and the mute button
 CHANNEL_WIDTH = 2 * COLUMN_WIDTH + 32     # a channel card with two mixes (Listen and Broadcast)
 CHANNEL_WIDTH_THREE = 3 * COLUMN_WIDTH + 32   # ...and with the optional third one
@@ -64,25 +59,50 @@ MIX_NAMES = {MONITOR: "Listen: what you hear", STREAM: "Broadcast: what your aud
              RECORDING: "Recording: what your recorder hears"}
 
 
+def plain(text: str, keep_dots: bool = False) -> str:
+    """A menu item's name as plain text (0.12.0: the one helper for this): no Alt-key mark, no shortcut after a tab, and no
+    trailing "…" unless ``keep_dots`` (a row that opens a window keeps them)."""
+    text = text.split("\t")[0].replace("&&", "\0").replace("&", "").replace("\0", "&")
+    return text if keep_dots else text.rstrip("\u2026")
+
+
+_PROFILE = re.compile(r"\s+(?:(?:Analog|Digital|Pro|Multichannel)(?:\s+(?:Stereo|Mono|Surround\s+[\d.]+|Input|Output))?|Mono)"
+                      r"(?:\s+\(([^)]*)\))?$")
+
+
+def short_device_name(description: str) -> str:
+    """A device's name short enough for a card (0.12.0; the full one goes in its tooltip): PipeWire's profile words go
+    ("Analog Stereo", "Digital Stereo (IEC958)"), a chipset's model numbers go, and a sound chip built into the computer is called
+    what it is. "Navi 21/23 HDMI/DP Audio Controller Digital Stereo (HDMI 3)" becomes "HDMI 3"; "Family 17h (Models 00h-0fh) HD
+    Audio Controller Analog Stereo" becomes "Built-in audio"; "Blue Yeti Analog Stereo" becomes "Blue Yeti"."""
+    text = (description or "").strip()
+    match = _PROFILE.search(text)
+    detail = ""
+    if match:
+        detail = match.group(1) or ""
+        text = text[:match.start()].strip()
+    text = re.sub(r"\s*\((?:Models?|Rev)[^)]*\)", "", text).strip()
+    hdmi = re.match(r"HDMI\s*\d*", detail)
+    if re.search(r"HDMI|DisplayPort|\bDP\b", text) and "Controller" in text:
+        return hdmi.group(0) if hdmi else "HDMI"
+    if re.search(r"\bHD Audio Controller\b|\bHigh Definition Audio\b|^Built-in Audio$", text):
+        return "Built-in audio" + (" (digital)" if detail == "IEC958" else f" ({detail})" if detail and not hdmi else "")
+    return text or description
+
+
 def channel_width(mix_count: int) -> int:
-    if themes.current_look() == "original":
-        return ORIGINAL_CHANNEL_WIDTH if mix_count <= 2 else ORIGINAL_CHANNEL_WIDTH_THREE
     return CHANNEL_WIDTH if mix_count <= 2 else CHANNEL_WIDTH_THREE
 
 
 def _is_nexus(rows: bool = False) -> bool:
     """True in the Nexus look (the Columns layout; the Rows layout keeps its own shape until Nexus has one)."""
-    return themes.current_look() == "nexus" and not rows
+    return themes.current_skin() == "nexus" and not rows
 
 
 def _is_tile() -> bool:
     """True in the Tile look (raised keys)."""
-    return themes.current_look() == "tile"
+    return themes.current_skin() == "tile"
 
-
-def _is_original(rows: bool = False) -> bool:
-    """True in the Original look (the Columns layout only: the Rows layout did not exist in 0.9.7)."""
-    return themes.current_look() == "original" and not rows
 
 STYLE = themes.build_style(themes.DARK)  # the default look; MainWindow.apply_theme() sets the chosen one
 
@@ -160,26 +180,6 @@ def db_to_fader_position(db: float) -> float:
         if db <= d1:
             return p0 + (p1 - p0) * (db - d0) / (d1 - d0)
     return 1.0
-
-
-def _toggle(text: str, object_name: str, tooltip: str = "") -> QPushButton:
-    button = QPushButton(text)
-    button.setCheckable(True)
-    button.setObjectName(object_name)
-    button.setCursor(Qt.CursorShape.PointingHandCursor)
-    if tooltip:
-        button.setToolTip(tooltip)
-    return button
-
-
-def _slot(widget: QWidget, height: int = 40) -> QWidget:
-    """Fixed-height holder so faders line up across strips with different headers."""
-    box = QWidget()
-    box.setFixedHeight(height)
-    inner = QVBoxLayout(box)
-    inner.setContentsMargins(0, 0, 0, 0)
-    inner.addWidget(widget, 0, Qt.AlignmentFlag.AlignVCenter)
-    return box
 
 
 def _label(text: str, name: str = "", center: bool = True) -> QLabel:

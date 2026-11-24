@@ -10,9 +10,9 @@ from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap, QRadialGradient
 from PySide6.QtWidgets import QAbstractSlider, QSizePolicy, QWidget
 
-from . import themes, ui_icons as icons
+from . import themes, ui_paint, ui_icons as icons
 from .model import MAX_DB, MIN_DB
-from .ui_base import _is_nexus, _is_original, _is_tile, db_to_fader_position, fader_position_to_db, FADER_STEPS, level_fraction
+from .ui_base import _is_nexus, _is_tile, db_to_fader_position, fader_position_to_db, FADER_STEPS, level_fraction
 
 log = logging.getLogger("sluice.ui")
 
@@ -35,26 +35,25 @@ class LevelMeter(QWidget):
     def __init__(self, parent: Optional[QWidget] = None, horizontal: bool = False, thickness: int = 8) -> None:
         super().__init__(parent)
         self.horizontal = horizontal
-        self.original = _is_original() and not horizontal  # the 0.9.7 meter: square, segmented, a 12-pixel column
         if horizontal:
             self.setFixedHeight(thickness)
             self.setMinimumWidth(48)
             self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         else:
-            self.setFixedWidth(12 if self.original else thickness)
-            self.setMinimumHeight(140 if self.original else 96)
+            self.setFixedWidth(thickness)
+            self.setMinimumHeight(96)
             self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
         self._level = 0.0
         self._peak = 0.0
         self._peak_age = 0
         self._lit: Optional[QPixmap] = None  # the full-length coloured bar, drawn once per size and theme
         self._painted = None  # (bar length, peak line) as last drawn: nothing is repainted unless this changes
-        self._well = _glass_well() or QColor(themes.color("well" if self.original else "meter_bg"))
+        self._well = _glass_well() or QColor(themes.color("meter_bg"))
         self._peak_color = QColor(themes.color("strong"))
 
     def refresh_theme(self) -> None:
         """Pick up the colours of the theme in use (the track behind the bar, the peak line)."""
-        self._well = _glass_well() or QColor(themes.color("well" if self.original else "meter_bg"))
+        self._well = _glass_well() or QColor(themes.color("meter_bg"))
         self._peak_color = QColor(themes.color("strong"))
         self._lit = None
         self._rounded = None
@@ -113,17 +112,7 @@ class LevelMeter(QWidget):
             gradient.setColorAt(0.60, QColor(green))
             gradient.setColorAt(0.80, QColor(yellow))
             gradient.setColorAt(1.00, QColor(red))
-            if self.original:  # 0.9.7: a deeper green, and thin lines in the colour of the well make the segments
-                gradient = QLinearGradient(0, height, 0, 0)
-                gradient.setColorAt(0.00, QColor("#1c9a58"))
-                gradient.setColorAt(0.68, QColor("#3ddc84"))
-                gradient.setColorAt(0.84, QColor("#f5c542"))
-                gradient.setColorAt(1.00, QColor("#ef5258"))
             p.fillRect(QRectF(0, 0, width, height), gradient)
-            if self.original:
-                p.setPen(self._well)
-                for y in range(0, height, 3):
-                    p.drawLine(0, y, width, y)
             p.end()
             self._lit = pixmap
         return self._lit
@@ -140,32 +129,13 @@ class LevelMeter(QWidget):
         if self._shown() != self._painted:  # a silent, settled meter costs nothing
             self.update()
 
-    def _paint_original(self) -> None:
-        p = QPainter(self)
-        rect = self.rect()
-        p.fillRect(rect, self._well)
-        height = rect.height()
-        fill, peak = self._shown()
-        ratio = self.devicePixelRatioF()
-        if fill > 0:
-            top = height - fill + 1
-            p.drawPixmap(0, top, self._lit_pixmap(), 0, int(top * ratio), int(rect.width() * ratio), int(fill * ratio))
-        if peak >= 0:
-            p.setPen(self._peak_color)
-            p.drawLine(rect.left(), rect.bottom() - peak, rect.right(), rect.bottom() - peak)
-        p.end()
-        self._painted = (fill, peak)
-
     def showEvent(self, event) -> None:
         super().showEvent(event)
         from .ui_nexus import card_backdrop
-        self._backdrop = not self.original and card_backdrop(self) is not None  # on a card: paint what is behind, be opaque (cheap)
+        self._backdrop = card_backdrop(self) is not None  # on a card: paint what is behind, be opaque (cheap)
         self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, self._backdrop)
 
     def paintEvent(self, _event) -> None:
-        if self.original:
-            self._paint_original()
-            return
         p = QPainter(self)
         if getattr(self, "_backdrop", False):
             from .ui_nexus import card_backdrop
@@ -200,7 +170,7 @@ class LevelMeter(QWidget):
 
 def _glass_well():
     """Glass (0.11.7): a track or meter well is a see-through shade, not a solid colour, so the frosted pane shows in it."""
-    if themes.current_look() != "glass":
+    if themes.current_skin() != "glass":
         return None
     from . import depth
     light = depth.luminance(themes.color("panel")) >= depth.LIGHT_PANEL
@@ -220,7 +190,6 @@ class Fader(QAbstractSlider):
     def __init__(self, horizontal: bool = False, thumb: Optional[tuple] = None) -> None:
         super().__init__()
         self.horizontal = horizontal
-        self.original = _is_original() and not horizontal  # the 0.9.7 fader: a grey groove, a dark green fill, a squarish handle
         self.nexus = _is_nexus() and not horizontal  # the Nexus fader: reach for it and it shows the sound it carries
         self.tile = _is_tile()
         self._reveal = False
@@ -230,14 +199,14 @@ class Fader(QAbstractSlider):
         self.setValue(round(db_to_fader_position(0.0) * FADER_STEPS))
         self.setSingleStep(8)
         self.setPageStep(60)
-        self.thumb = thumb or ((16, 24) if horizontal else ((28, 22) if self.original else (32, 16)))  # (width, height) of the handle
+        self.thumb = thumb or ((16, 24) if horizontal else (32, 16))  # (width, height) of the handle
         if horizontal:
             self.setMinimumWidth(96)
             self.setFixedHeight(self.thumb[1] + 4)
             self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         else:
-            self.setMinimumHeight(140 if self.original else 96)
-            self.setFixedWidth(34 if self.original else self.thumb[0] + 4)
+            self.setMinimumHeight(96)
+            self.setFixedWidth(self.thumb[0] + 4)
             self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setToolTip("Double-click to reset to 0 dB")
@@ -349,7 +318,7 @@ class Fader(QAbstractSlider):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         centre = float(round(self._centre()))  # whole pixels: a handle on a half pixel is blurry
         tw, th = self.thumb
-        track = 10 if self.original else self.TRACK
+        track = self.TRACK
         if self.horizontal:
             y = (self.height() - track) / 2.0
             track_rect = QRectF(0, y, self.width(), track)
@@ -361,28 +330,18 @@ class Fader(QAbstractSlider):
             fill_rect = QRectF(x, centre, track, self.height() - centre)
             thumb_rect = QRectF((self.width() - tw) / 2.0, centre - th / 2.0, tw, th)
         p.setPen(Qt.PenStyle.NoPen)
-        groove = 3.0 if self.original else track / 2.0
-        glass = themes.current_look() == "glass"
-        p.setBrush(_glass_well() if glass else QColor(themes.color("well" if self.original else "track")))
-        p.drawRoundedRect(track_rect, groove, groove)
-        if not self.original and not self.tile:  # Calm and Nexus: the groove looks sunk in, a shade along its top inside edge
-            p.save()
-            clip = QPainterPath()
-            clip.addRoundedRect(track_rect, groove, groove)
-            p.setClipPath(clip)
-            shade = QLinearGradient(track_rect.topLeft(), track_rect.topLeft() + QPointF(0, 3) if self.horizontal
-                                    else track_rect.topLeft() + QPointF(3, 0))
-            shade.setColorAt(0.0, QColor(0, 0, 0, 60))
-            shade.setColorAt(1.0, QColor(0, 0, 0, 0))
-            p.fillRect(track_rect, shade)
-            p.restore()
+        groove = track / 2.0
+        glass = themes.current_skin() == "glass"
+        # Calm, Nexus and Glass: the groove looks sunk in, a shade along its top inside edge (Tile shades its own below)
+        ui_paint.groove(p, track_rect, _glass_well() if glass else QColor(themes.color("track")), 0 if self.tile else 60,
+                        across=not self.horizontal)
         if glass and not themes.reduce_effects() and fill_rect.height() > 0 and fill_rect.width() > 0:  # Glass: the fill glows softly
             halo = QColor(self.fill_color)
             for grow, alpha in ((5, 0.10), (3, 0.16), (1.5, 0.24)):
                 halo.setAlphaF(alpha)
                 p.setBrush(halo)
                 p.drawRoundedRect(fill_rect.adjusted(-grow, -grow, grow, grow), groove + grow, groove + grow)
-        p.setBrush(QColor(themes.color("fill") if self.original else self.fill_color))
+        p.setBrush(QColor(self.fill_color))
         p.drawRoundedRect(fill_rect, groove, groove)
         if self.tile:  # the Tile look: the track is a groove pressed into the key, the handle a raised white pill
             from . import skin_tile, ui_tile_paint as ui_tile
@@ -390,29 +349,15 @@ class Fader(QAbstractSlider):
             shape = QPainterPath()
             shape.addRoundedRect(track_rect, groove, groove)
             ui_tile.paint_groove(p, shape, track_rect, pc)
-            ui_tile.paint_handle(p, thumb_rect, pc, False)
-            if self.hasFocus():
-                radius = min(tw, th) / 2.0
-                p.setBrush(Qt.BrushStyle.NoBrush)
-                p.setPen(QPen(QColor(themes.color("focus")), 2))
-                p.drawRoundedRect(thumb_rect.adjusted(-2, -2, 2, 2), radius + 2, radius + 2)
+            ui_tile.paint_handle(p, thumb_rect, pc, False, focus=QColor(themes.color("focus")) if self.hasFocus() else None)
             p.end()
             return
         if self.nexus and self._reveal:
             self._paint_wave(p, track_rect)
-        radius = 4.0 if self.original else min(tw, th) / 2.0
         if self.nexus and self._reveal and not themes.reduce_effects():  # a halo round the handle while it is in use
             p.drawPixmap(QPointF(thumb_rect.center().x() - 28, thumb_rect.center().y() - 28), _glow(QColor(self.fill_color).name(), 56, self.devicePixelRatioF(), 80))
-        if not self.original:
-            p.setBrush(QColor(0, 0, 0, 70))
-            p.drawRoundedRect(thumb_rect.translated(0, 1.5), radius, radius)
-        p.setBrush(QColor(themes.color("handle_hover" if self.underMouse() else "handle")))
-        p.setPen(QPen(QColor(themes.color("handle_edge")), 1))
-        p.drawRoundedRect(thumb_rect, radius, radius)
-        if self.hasFocus():
-            p.setBrush(Qt.BrushStyle.NoBrush)
-            p.setPen(QPen(QColor(themes.color("focus")), 2))
-            p.drawRoundedRect(thumb_rect.adjusted(-2, -2, 2, 2), radius + 2, radius + 2)
+        ui_paint.handle(p, thumb_rect, themes.color("handle_hover" if self.underMouse() else "handle"), themes.color("handle_edge"),
+                        focus=QColor(themes.color("focus")) if self.hasFocus() else None)
         p.end()
 
     def enterEvent(self, event) -> None:
@@ -583,7 +528,7 @@ class NexusRing(QWidget):
             if backdrop is not None:
                 p.fillRect(self.rect(), backdrop)
         ratio = self.devicePixelRatioF()
-        halo = self._step > 0 and not themes.reduce_effects() and themes.current_look() == "nexus" and _glows()
+        halo = self._step > 0 and not themes.reduce_effects() and themes.current_skin() == "nexus" and _glows()
         key = (self._step, self._phase % self.PHASES if self._step else 0, self.color, self.muted, self.linked, halo,
                round(ratio * 100), themes.generation(), id(self._pix), self.size_)
         picture = _RING_CACHE.get(key)
@@ -629,14 +574,7 @@ class NexusRing(QWidget):
         p.setOpacity(1.0 if alive and not self.muted else 0.45)
         p.drawPixmap(QPointF(c - 18, c - 18), self._pix)
         p.setOpacity(1.0)
-        if self.linked and not small:  # (a row shows it on its own link button)
-            if self._badge is None:
-                self._badge = icons.render("link", themes.color("accent"), round(14 * ratio))
-                self._badge.setDevicePixelRatio(ratio)
-            p.setBrush(QColor(themes.color("accent_bg")))
-            p.setPen(QPen(QColor(themes.color("accent")), 1))
-            p.drawEllipse(QPointF(14, 14), 10.0, 10.0)
-            p.drawPixmap(QPointF(7, 7), self._badge)
+        # (0.12.0: the chain badge for linked levels is in the card's header now, beside the name, not on the ring)
         if self.muted and small:  # too small for the word: the inner circle in the mute colour says it
             p.setBrush(Qt.BrushStyle.NoBrush)
             p.setPen(QPen(QColor(themes.color("mute")), 3))

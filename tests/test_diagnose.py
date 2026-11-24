@@ -6,7 +6,7 @@ from sluice.__main__ import main
 def test_report_lists_every_check_and_never_raises():
     results = diagnose.run_checks()
     names = [name for name, _, _ in results]
-    assert "pedalboard (effects + VST3)" in names
+    assert "pedalboard" in names
     assert "pw-link" in names
     assert all(isinstance(ok, bool) and isinstance(detail, str) and detail for _, ok, detail in results)
     text, ok = diagnose.report()
@@ -20,7 +20,7 @@ def test_a_crashing_check_is_reported_as_a_failure(monkeypatch):
 
     monkeypatch.setattr(diagnose, "_pulse", boom)
     results = {name: (ok, detail) for name, ok, detail in diagnose.run_checks()}
-    ok, detail = results["PulseAudio protocol (pipewire-pulse)"]
+    ok, detail = results["PipeWire's PulseAudio service (pipewire-pulse)"]
     assert not ok and "kaput" in detail
 
 

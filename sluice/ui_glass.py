@@ -24,7 +24,7 @@ SHAPES = ((0.10, 0.10, 0.45), (0.45, 0.55, 0.42), (0.88, 0.05, 0.38), (0.92, 0.8
 
 def wants_see_through(mixer, env=None, blur=None) -> bool:
     """Whether the main window should be made see-through: Glass, the setting on, effects not reduced, and KWin's blur usable."""
-    if themes.valid_look(mixer.look) != "glass" or not getattr(mixer, "see_through", True) or mixer.reduce_effects:
+    if themes.valid_skin(mixer.skin) != "glass" or not getattr(mixer, "see_through", True) or mixer.reduce_effects:
         return False
     if not desktop_place.kde(env):
         return False
@@ -94,7 +94,7 @@ class GlassBackdrop(QObject):
             part.installEventFilter(self)
 
     def active(self) -> bool:
-        return themes.current_look() == "glass" and not themes.see_through() and not themes.reduce_effects()
+        return themes.current_skin() == "glass" and not themes.see_through() and not themes.reduce_effects()
 
     def eventFilter(self, obj, event) -> bool:
         if event.type() == QEvent.Type.Paint and obj in self.parts and self.active():

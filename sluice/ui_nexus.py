@@ -1,11 +1,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""The Nexus look's glass (0.11.5): the floor under the cards paints each card's shadow and its glow, and the glow grows with the
-sound coming through the card. The cards themselves are styled glass (a lit top edge, an outline from the accent colour); on light
+"""The Nexus cards (0.11.5; called "glass" inside until 0.12.0, when that word became the Glass skin's alone): the floor under the
+cards paints each card's shadow and its glow, and the glow grows with the sound coming through the card. The cards are lit at the
+top and have an outline from the accent colour (also Calm's soft floor, without the glow); on light
 themes there is no glow, and each card has a 3 px top edge in its channel's colour instead.
 
 Painting the glow on the floor, round the card and never under it, keeps it cheap: when the sound changes, only the ring of floor
 round that card is repainted, so no control on the card is redrawn. The glow and shadow pictures are blurred once per size and colour
-and kept (``ui_tile_paint.soft_shape``); a frame of glow is one copy of a picture at some opacity."""
+and kept (``ui_paint.soft_shape``); a frame of glow is one copy of a picture at some opacity."""
 from __future__ import annotations
 
 from PySide6.QtCore import QPoint, QPointF
@@ -20,7 +21,7 @@ GLOW_HZ = 10        # a card's glow follows its sound ten times a second at most
 RADIUS = 20
 
 
-class GlassFloor(QWidget):
+class CardFloor(QWidget):
     """The floor under Nexus cards: a shadow under each card and a glow round it that follows its sound."""
 
     def __init__(self, object_name: str = "channels", soft: bool = False) -> None:
@@ -139,8 +140,8 @@ class GlassFloor(QWidget):
         p.end()
 
 
-def glass_edge_sheet(object_name: str, tint: str) -> str:
-    """The per-card part of the glass: a top edge in the card's colour (3 px on light themes, a 1 px lit line on dark ones)."""
+def card_edge_sheet(object_name: str, tint: str) -> str:
+    """The per-card part of a Nexus card: a top edge in the card's colour (3 px on light themes, a 1 px lit line on dark ones)."""
     d = depth.depth_colors(themes._current)
     if d["light"]:
         return f"QFrame#{object_name} {{ border-top: 3px solid {tint}; }}"
@@ -148,33 +149,33 @@ def glass_edge_sheet(object_name: str, tint: str) -> str:
 
 
 def floor_of(widget: QWidget):
-    """The GlassFloor a card sits on, or None."""
+    """The CardFloor a card sits on, or None."""
     parent = widget.parentWidget()
-    while parent is not None and not isinstance(parent, GlassFloor):
+    while parent is not None and not isinstance(parent, CardFloor):
         parent = parent.parentWidget()
     return parent
 
 
 
-_glass_cache: tuple = (None, None)
+_card_cache: tuple = (None, None)
 
 
-def _glass() -> dict:
-    global _glass_cache
-    if _glass_cache[0] != themes.generation():
-        from .skin_nexus import glass_values
-        _glass_cache = (themes.generation(), glass_values(themes._current))
-    return _glass_cache[1]
+def _card_colors() -> dict:
+    global _card_cache
+    if _card_cache[0] != themes.generation():
+        from .skin_nexus import card_values
+        _card_cache = (themes.generation(), card_values(themes._current))
+    return _card_cache[1]
 
 
 def card_backdrop(widget: QWidget):
-    """What is behind ``widget`` on its card, as a brush in its own coordinates: the glass gradient in Nexus, the card's plain colour
+    """What is behind ``widget`` on its card, as a brush in its own coordinates: the card gradient in Nexus, the card's plain colour
     in Calm, or None (another look, or not on a card). A widget that paints this first can be opaque, so a meter frame redraws only
     the meter, not the card and the floor under it (0.11.5)."""
-    look = themes.current_look()
-    if look == "nexus":
+    skin = themes.current_skin()
+    if skin == "nexus":
         return card_gradient(widget)
-    if look != "calm":
+    if skin != "calm":
         return None
     card = widget.parentWidget()
     while card is not None and not (isinstance(card, QFrame) and card.objectName() in ("strip", "mix")):
@@ -185,7 +186,7 @@ def card_backdrop(widget: QWidget):
 
 
 def card_gradient(widget: QWidget):
-    """The glass card's own gradient (as the style sheet paints it) in ``widget``'s coordinates, or None when it is not on a card.
+    """The Nexus card's own gradient (as the style sheet paints it) in ``widget``'s coordinates, or None when it is not on a card.
     A widget that paints this behind itself can be opaque, so Qt redraws only that widget, not the card under it, when it changes:
     the Nexus ring does, so a moving ring costs one small picture instead of the whole card."""
     card = widget.parentWidget()
@@ -195,9 +196,9 @@ def card_gradient(widget: QWidget):
         return None
     top = widget.mapFrom(card, QPoint(0, 0)).y()
     bottom = top + card.height()
-    g = _glass()
+    g = _card_colors()
     gradient = QLinearGradient(QPointF(0, top), QPointF(0, bottom))
-    gradient.setColorAt(0.0, QColor(g["glass_top"]))
+    gradient.setColorAt(0.0, QColor(g["card_top"]))
     gradient.setColorAt(0.4, QColor(themes.color("panel")))
-    gradient.setColorAt(1.0, QColor(g["glass_bottom"]))
+    gradient.setColorAt(1.0, QColor(g["card_bottom"]))
     return gradient

@@ -133,7 +133,7 @@ def test_the_button_is_on_the_noise_gate_page_only_and_applies_through_the_slide
     shown = []
     monkeypatch.setattr(MeasureRoomDialog, "exec", lambda self: shown.append(self) or 0)
     measure_buttons()[0].click()
-    assert len(shown) == 1 and shown[0].old_threshold == -30
+    assert len(shown) == 1 and shown[0].old_threshold == -40
     shown[0]._on_use(-31.5)  # what pressing "Use ... dB" does
     gate = mic.effects[names.index("noise_gate")]
     assert gate.params["threshold_db"] == -31.5

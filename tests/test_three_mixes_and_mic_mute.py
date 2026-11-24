@@ -59,7 +59,7 @@ def strip_for(win, channel_id):
 
 
 def menu_of(win, name):
-    return next(a.menu() for a in win.menuBar().actions() if a.menu() and a.text().replace("&", "") == name)
+    return next(m for m in win.action_groups if m.title().replace("&", "") == name)
 
 
 def texts(menu):
@@ -152,7 +152,7 @@ def test_only_strips_with_a_microphone_show_the_mute_button_and_every_card_is_th
     QTest.qWait(50)
     mic, browser = strip_for(win, "mic"), strip_for(win, "browser")
     assert mic.mic_button.isVisibleTo(win) and not browser.mic_button.isVisibleTo(win)
-    assert mic.sources_scroll.height() == browser.sources_scroll.height() == ui_module.SOURCES_HEIGHT
+    assert mic.sources_scroll.height() == browser.sources_scroll.height() == max(s.sources_needed() for s in win.strips)
     assert len({s.frame.height() for s in win.strips}) == 1
     # give the Browser channel a microphone: it gets the button, and nothing else moves
     browser.engine.add_device("browser", "")
@@ -379,6 +379,8 @@ def test_the_compressor_hint_waits_for_sound_and_stops_when_the_page_changes(two
 
 def test_the_hint_follows_the_threshold_slider(two):
     win, engine, io = two
+    for effect in engine.mixer.channel("mic").effects:  # the compressor alone: a steady tone is "noise" to the reducers and gate
+        engine.set_effect_bypass("mic", effect.id, effect.type in ("echo_reducer", "noise_reducer", "noise_gate"))
     dialog = compressor_page(win, engine)
     feed(io, engine, 0.03)  # about -30 dB
     dialog._update_activity()
@@ -461,15 +463,15 @@ def test_the_voice_button_is_on_the_gate_and_the_compressor_pages_of_a_microphon
 # ------------------------------------------------------------------- the reorganised menus
 def test_the_menus_hold_the_agreed_items(two):
     win, _, _ = two
-    assert [a.text().replace("&", "") for a in win.menuBar().actions()] == ["File", "Mixer", "View", "Settings", "Help"]
+    assert [m.title().replace("&", "") for m in win.action_groups] == ["File", "Mixer", "Window", "Settings", "Help"]
     assert texts(menu_of(win, "Help"))[-7:] == ["Report a problem", "Community", "Join the Discord", "Project page on GitHub",
-                                                "About", f"About Sluice {ui_module.__version__}", "Uninstall Sluice\u2026"]
+                                                "About", "About Sluice", "Uninstall Sluice\u2026"]
 
 
 def test_every_shortcut_survived_the_move(two):
     win, _, _ = two
     keys = {}
-    for name in ("File", "Mixer", "View", "Help"):
+    for name in ("File", "Mixer", "Window", "Help"):
         for action in menu_of(win, name).actions():
             if action.shortcut().toString():
                 keys[action.text().replace("&", "")] = action.shortcut().toString()
@@ -520,7 +522,7 @@ def test_the_controllers_item_lives_in_settings_under_its_own_heading(two):
     assert "Reset all settings to the defaults…" in texts(menu_of(win, "File"))  # 0.11.6: with the other settings-file items
     next(a for a in settings.actions() if a.text().startswith("&MIDI")).trigger()
     assert Controls.shown == 1
-    assert "Controllers" not in [a.text().replace("&", "") for a in win.menuBar().actions()]
+    assert "Controllers" not in [m.title().replace("&", "") for m in win.action_groups]
 
 
 # ------------------------------------------------------------------- reset to defaults
@@ -646,3 +648,20 @@ def test_a_larger_buffer_is_offered_after_three_dropouts_and_taken_with_one_clic
     win.buffer_offer.click()
     assert engine.mixer.buffer_frames == bigger
     assert not win.buffer_offer.isVisibleTo(win)  # the choice waits for the next start: no second offer
+
+
+def test_the_lists_of_sources_shrink_to_the_longest_one_and_stay_equal(two):
+    """0.12.0: one chip on every card leaves no 80 px band; a second chip anywhere makes every list two chips tall; past two, scroll."""
+    win, engine, _ = two
+    for channel in engine.mixer.channels:
+        channel.apps[:] = channel.apps[:1]
+        channel.devices[:] = channel.devices[:1] if not channel.apps else []
+    win.refresh_sources()
+    assert {s.sources_scroll.height() for s in win.strips} == {ui_module.SOURCES_MIN}
+    game = strip_for(win, "game")
+    game.channel.apps[:] = ["one", "two"]
+    game.refresh_sources()
+    assert {s.sources_scroll.height() for s in win.strips} == {72}
+    game.channel.apps[:] = ["one", "two", "three", "four"]
+    game.refresh_sources()
+    assert {s.sources_scroll.height() for s in win.strips} == {ui_module.SOURCES_HEIGHT}

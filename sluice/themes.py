@@ -240,7 +240,6 @@ QFrame#firstrun { background: $panel; border: 1px solid $border2; border-radius:
 QFrame#accent { border: none; border-radius: 2px; }
 QLabel { background: transparent; }
 QLabel#appname { font-size: 20px; font-weight: 700; color: $title; }
-QLabel#version { font-size: 12px; color: $text_dim; }
 QLabel#title { font-size: 20px; font-weight: 700; color: $title; }
 QLabel#name { font-size: 20px; font-weight: 600; color: $title; }
 QLabel#tag { font-size: 12px; font-weight: 600; letter-spacing: 0.5px; color: $text_faint; }
@@ -404,6 +403,12 @@ QDialog QFrame#settingsrow[first="true"] { border-top: none; }
 QDialog QFrame#settingsrow QLabel#rowname { font-size: 14px; font-weight: 500; color: $text; background: transparent; }
 QDialog QFrame#settingsrow QLabel#rowhint { font-size: 12px; color: $text_dim; background: transparent; }
 QDialog QLabel#settingstitle { font-size: 22px; font-weight: 700; color: $text; }
+QDialog QFrame#settingsrow QLabel#setupok { font-size: 13px; font-weight: 600; color: $ok; background: transparent; }
+QDialog QFrame#settingsrow QLabel#setupmissing { font-size: 13px; font-weight: 600; color: $warn; background: transparent; }
+QDialog QFrame#settingsrow QLabel#setupneeded { font-size: 13px; font-weight: 600; color: $error; background: transparent; }
+QDialog QFrame#settingsrow QLabel#setupidle { font-size: 13px; color: $text_dim; background: transparent; }
+QDialog QFrame#settingsrow QLabel#setupcommand { font-family: monospace; font-size: 12px; color: $code; background: $well;
+    border: 1px solid $border_soft; border-radius: 8px; padding: 6px 10px; }
 QDialog QLabel#grouphead { font-size: 11px; font-weight: 700; letter-spacing: 0.8px; color: $text_dim; padding: 4px 4px 0 4px; }
 QMenuBar { background: $bg; color: $button_text; }
 QMenuBar::item { padding: 8px 12px; border-radius: 8px; }
@@ -469,11 +474,11 @@ QPushButton#themepicker::menu-indicator { image: none; width: 0; }
 """)
 
 
-def mix_colors(colors: dict, look: Optional[str] = None) -> dict:
+def mix_colors(colors: dict, skin: Optional[str] = None) -> dict:
     """The two colours that tell the mixes apart in the Rows layout: Listen (what you hear) and Broadcast (what your audience hears),
     each with a tint for its background, an edge, and a text colour that reads on the panel. They come from the theme's own colours;
     if the theme's link and accent colours are close, Broadcast takes the theme's warm colour instead so the two stay apart."""
-    if valid_look(look if look is not None else _look) == "nexus":  # Nexus: Listen cyan (its accent), Broadcast coral or the 2nd colour
+    if valid_skin(skin if skin is not None else _skin) == "nexus":  # Nexus: Listen cyan (its accent), Broadcast coral or the 2nd colour
         from .skin_nexus import mix_pair
         listen, broadcast = mix_pair(colors)
     else:
@@ -489,48 +494,48 @@ def mix_colors(colors: dict, look: Optional[str] = None) -> dict:
     return out
 
 
-LOOKS = {"calm": "Calm", "original": "Original", "nexus": "Nexus", "tile": "Tile", "glass": "Glass"}  # the Look setting: shapes, sizes and painting, apart from colour
-DEFAULT_LOOK = "calm"
+SKINS = {"calm": "Calm", "nexus": "Nexus", "tile": "Tile", "glass": "Glass"}  # the Look setting: shapes, sizes and painting, apart from colour
+DEFAULT_SKIN = "calm"
 
 
-_look = DEFAULT_LOOK
+_skin = DEFAULT_SKIN
 
 
-def set_look(look) -> None:
+def set_skin(skin) -> None:
     """Remember the look in use, for the widgets that draw or lay themselves out differently from one look to another."""
-    global _look
-    _look = valid_look(look)
+    global _skin
+    _skin = valid_skin(skin)
 
 
-def current_look() -> str:
-    return _look
+def current_skin() -> str:
+    return _skin
 
 
 _dressings: dict = {}
 
 
 @contextmanager
-def dressed_as(look: Optional[str], colors: Optional[dict]):
+def dressed_as(skin: Optional[str], colors: Optional[dict]):
     """Draw in another skin and colours for a moment (0.11.6: desktop widgets may have their own). Inside, ``current_look``,
     ``color`` and ``generation`` answer for that skin and those colours; afterwards they are the window's again. Each skin and
     colour set has its own (negative) generation, so caches keyed on it keep one entry for the window and one for the widgets."""
-    global _look, _current, _generation
-    if look is None and colors is None:
+    global _skin, _current, _generation
+    if skin is None and colors is None:
         yield
         return
-    saved = (_look, _current, _generation)
-    new_look = valid_look(look) if look else _look
+    saved = (_skin, _current, _generation)
+    new_skin = valid_skin(skin) if skin else _skin
     new_colors = dict(colors) if colors is not None else _current
-    key = (new_look, tuple(sorted(new_colors.items())))
-    _look, _current, _generation = new_look, new_colors, _dressings.setdefault(key, -(len(_dressings) + 1))
+    key = (new_skin, tuple(sorted(new_colors.items())))
+    _skin, _current, _generation = new_skin, new_colors, _dressings.setdefault(key, -(len(_dressings) + 1))
     try:
         yield
     finally:
-        _look, _current, _generation = saved
+        _skin, _current, _generation = saved
 
 
 _reduce = False
-_look_colors = True
+_skin_colors = True
 # With "Look's own colours" on (the default), a look may show its own colours on the plain Dark theme, and Tile on Light too (0.11.5,
 # option A). Every other theme keeps its own colours in every look, with full depth worked out from them (``depth``).
 NEXUS_THEMES = ("dark",)
@@ -548,34 +553,29 @@ def reduce_effects() -> bool:
     return _reduce
 
 
-def set_look_colors(on: bool) -> None:
+def set_skin_colors(on: bool) -> None:
     """Whether a look shows its own colours on Dark (and Tile on Light): Settings > Themes and skins > Skin's own colours."""
-    global _look_colors
-    _look_colors = bool(on)
+    global _skin_colors
+    _skin_colors = bool(on)
 
 
-def look_colors_on() -> bool:
-    return _look_colors
+def skin_colors_on() -> bool:
+    return _skin_colors
 
 
-def look_colors(theme: "Theme", look: str) -> dict:
-    """The colours to show for a theme in a look. Nexus and Tile may show their own colours on Dark (and Tile on Light); the Original
-    look shows the built-in themes as they were in 0.9.7; every other theme shows its own colours. Then ``finish`` makes sure the
+def skin_colors(theme: "Theme", skin: str) -> dict:
+    """The colours to show for a theme in a look. Nexus and Tile may show their own colours on Dark (and Tile on Light); every other
+    theme shows its own colours. Then ``finish`` makes sure the
     small and drawn things can be seen."""
-    look = valid_look(look)
+    skin = valid_skin(skin)
     colors = theme.colors
-    if look == "nexus" and theme.id in NEXUS_THEMES and _look_colors:
+    if skin == "nexus" and theme.id in NEXUS_THEMES and _skin_colors:
         from .skin_nexus import NEXUS_DARK
         colors = complete({**theme.colors, **NEXUS_DARK}, given=NEXUS_DARK.keys())
-    elif look == "tile" and _look_colors and theme.id in TILE_DARK_THEMES + TILE_LIGHT_THEMES:
+    elif skin == "tile" and _skin_colors and theme.id in TILE_DARK_THEMES + TILE_LIGHT_THEMES:
         from .skin_tile import TILE_DARK, TILE_LIGHT
         own = TILE_DARK if theme.id in TILE_DARK_THEMES else TILE_LIGHT
         colors = complete({**theme.colors, **own}, given=own.keys())
-    elif look == "original" and theme.id in BUILT_IN:
-        from .skin_original import ORIGINAL_PALETTES
-        old = ORIGINAL_PALETTES.get(theme.id)
-        if old is not None:
-            colors = complete({**theme.colors, **old}, given=old.keys())
     return finish(colors)
 
 
@@ -598,33 +598,29 @@ def finish(colors: dict) -> dict:
     return c
 
 
-def valid_look(look) -> str:
+def valid_skin(skin) -> str:
     """A saved look id that exists, or the default (an id from a newer or older Sluice never breaks the window)."""
-    return look if isinstance(look, str) and look in LOOKS else DEFAULT_LOOK
+    return skin if isinstance(skin, str) and skin in SKINS else DEFAULT_SKIN
 
 
 @lru_cache(maxsize=16)
-def _style_for(items: tuple, look: str = DEFAULT_LOOK) -> str:
+def _style_for(items: tuple, skin: str = DEFAULT_SKIN) -> str:
     values = dict(items)
-    values.update(mix_colors(values, look.split("+")[0]))
+    values.update(mix_colors(values, skin.split("+")[0]))
     values["accent_edge"] = mix(values["panel"], values["accent"], 0.5)  # a thin neon outline for Nexus
     values["accent_soft"] = mix(values["panel"], values["accent"], 0.22)
     values["menu_off"] = mix(values["text_off"], values["text_dim"], 0.45)  # a greyed-out menu item: plainly off, still easy to read
-    if look == "original":  # 0.9.7's own sheet, with the menus and tooltips every skin shares after it
-        from .skin_original import ORIGINAL_STYLE
-        shared = "\n".join(line for line in STYLE_TEMPLATE.substitute(values).splitlines() if line.startswith(("QMenu", "QToolTip", "QLabel#menuheading", "    padding: 12px 24px")))
-        return ORIGINAL_STYLE.substitute(values) + "\n" + shared + "\n"
-    if look == "tile":  # the Calm sheet with the Tile rules after it: flat surfaces with a hairline edge
+    if skin == "tile":  # the Calm sheet with the Tile rules after it: flat surfaces with a hairline edge
         from .skin_tile import TILE_STYLE_EXTRA, tile_colors
         values.update(tile_colors(values, mix))
         return STYLE_TEMPLATE.substitute(values) + TILE_STYLE_EXTRA.substitute(values)
-    if look == "nexus":  # the Calm sheet with Nexus's rules after it: the later rule wins where both name the same thing
-        from .skin_nexus import NEXUS_STYLE_EXTRA, glass_values
-        values.update(glass_values(values))
+    if skin == "nexus":  # the Calm sheet with Nexus's rules after it: the later rule wins where both name the same thing
+        from .skin_nexus import NEXUS_STYLE_EXTRA, card_values
+        values.update(card_values(values))
         return STYLE_TEMPLATE.substitute(values) + NEXUS_STYLE_EXTRA.substitute(values)
-    if look in ("glass", "glass+see"):  # the Calm sheet with Glass's frosted panes after it (0.11.6; see-through window 0.11.7)
+    if skin in ("glass", "glass+see"):  # the Calm sheet with Glass's frosted panes after it (0.11.6; see-through window 0.11.7)
         from .skin_glass import GLASS_STYLE_EXTRA, glass_values as frosted
-        values.update(frosted(values, look == "glass+see"))
+        values.update(frosted(values, skin == "glass+see"))
         return STYLE_TEMPLATE.substitute(values) + GLASS_STYLE_EXTRA.substitute(values)
     return STYLE_TEMPLATE.substitute(values)
 
@@ -641,13 +637,13 @@ def see_through() -> bool:
     return _see_through
 
 
-def build_style(colors: dict, look: str = DEFAULT_LOOK, see: Optional[bool] = None) -> str:
+def build_style(colors: dict, skin: str = DEFAULT_SKIN, see: Optional[bool] = None) -> str:
     """The window's style sheet for a complete colour set in a look (cached: switching back costs nothing). Glass has a second
     form for a see-through window (``see``; the window's own state when not given)."""
-    look = valid_look(look)
-    if look == "glass" and (_see_through if see is None else see):
-        look = "glass+see"
-    return _style_for(tuple(sorted(colors.items())), look)
+    skin = valid_skin(skin)
+    if skin == "glass" and (_see_through if see is None else see):
+        skin = "glass+see"
+    return _style_for(tuple(sorted(colors.items())), skin)
 
 
 # Menus, tooltips and their headings are windows of their own: these rules reach them wherever they open.

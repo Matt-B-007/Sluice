@@ -312,6 +312,9 @@ macro_rules! effect_class {
 effect_class!("Gain", GainFx, native::Gain, (gain_db), native::Gain { gain_db }, [(gain_db, set_gain_db, gain_db)]);
 effect_class!("HighpassFilter", HighpassFx, native::HighPass, (cutoff_frequency_hz), native::HighPass::new(cutoff_frequency_hz),
     [(cutoff_frequency_hz, set_cutoff_frequency_hz, cutoff_hz)]);
+effect_class!("ButterworthHighPass", ButterHighPassFx, native::Biquad, (cutoff_frequency_hz),
+    native::Biquad::new(Shape::HighPass, cutoff_frequency_hz, 0.0, std::f64::consts::FRAC_1_SQRT_2),
+    [(cutoff_frequency_hz, set_cutoff_frequency_hz, freq)]);
 effect_class!("LowShelfFilter", LowShelfFx, native::Biquad, (cutoff_frequency_hz, gain_db, q),
     native::Biquad::new(Shape::LowShelf, cutoff_frequency_hz, gain_db, q),
     [(cutoff_frequency_hz, set_cutoff_frequency_hz, freq), (gain_db, set_gain_db, gain_db), (q, set_q, q)]);
@@ -347,6 +350,7 @@ impl Run {
             let b = p.bind(py);
             let ok = b.extract::<PyRef<GainFx>>().is_ok()
                 || b.extract::<PyRef<HighpassFx>>().is_ok()
+                || b.extract::<PyRef<ButterHighPassFx>>().is_ok()
                 || b.extract::<PyRef<LowShelfFx>>().is_ok()
                 || b.extract::<PyRef<HighShelfFx>>().is_ok()
                 || b.extract::<PyRef<PeakFx>>().is_ok()
@@ -372,7 +376,7 @@ impl Run {
                     }
                 )*};
             }
-            try_run!(GainFx, HighpassFx, LowShelfFx, HighShelfFx, PeakFx, CompressorFx, NoiseGateFx, LimiterFx);
+            try_run!(GainFx, HighpassFx, ButterHighPassFx, LowShelfFx, HighShelfFx, PeakFx, CompressorFx, NoiseGateFx, LimiterFx);
         }
         Ok(from_stereo(py, &buf))
     }
@@ -508,6 +512,7 @@ fn sluice_dsp(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<LowShelfFx>()?;
     m.add_class::<HighShelfFx>()?;
     m.add_class::<PeakFx>()?;
+    m.add_class::<ButterHighPassFx>()?;
     m.add_class::<CompressorFx>()?;
     m.add_class::<NoiseGateFx>()?;
     m.add_class::<LimiterFx>()?;

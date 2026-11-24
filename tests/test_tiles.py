@@ -23,7 +23,7 @@ from sluice.ui import MainWindow
 
 def make(qapp, tmp_path, layout="columns", size=(1456, 860), recording=False, theme="dark"):
     mixer = Mixer.demo()
-    mixer.look, mixer.layout, mixer.theme = "tile", layout, theme
+    mixer.skin, mixer.layout, mixer.theme = "tile", layout, theme
     mixer.hints_seen.append("firstrun")
     if recording:
         mixer.set_recording_mix(True)

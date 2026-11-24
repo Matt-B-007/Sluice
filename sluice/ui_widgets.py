@@ -76,13 +76,13 @@ class DesktopWidget(QWidget):
         """Every event (painting, the mouse, showing) in the widgets' own skin and theme, when they have one (0.11.6)."""
         if event.type() == QEvent.Type.UpdateRequest and self._drag_waiting:
             self._drag_frame()  # the last step is on screen: take the next
-        look, colors = self.manager.dressing()
-        with themes.dressed_as(look, colors):
+        skin, colors = self.manager.dressing()
+        with themes.dressed_as(skin, colors):
             return super().event(event)
 
     def tick(self) -> None:
-        look, colors = self.manager.dressing()
-        with themes.dressed_as(look, colors):
+        skin, colors = self.manager.dressing()
+        with themes.dressed_as(skin, colors):
             state = self.state()
         if state != self._state:
             self._state = state
@@ -272,7 +272,7 @@ class DesktopWidget(QWidget):
 
     def _colors(self) -> tuple:
         panel = QColor(themes.color("panel"))
-        if themes.current_look() == "glass":  # a frosted pane: see-through (blurred behind on KDE)
+        if themes.current_skin() == "glass":  # a frosted pane: see-through (blurred behind on KDE)
             panel.setAlphaF(glass_alpha())
         return panel, QColor(themes.color("text")), QColor(themes.color("accent"))
 
@@ -286,7 +286,7 @@ class DesktopWidget(QWidget):
 
     def glass_edge(self, p: QPainter, rect: QRectF) -> None:
         """A round widget's hairline in the Glass skin (the pane itself is the see-through fill)."""
-        if themes.current_look() != "glass":
+        if themes.current_skin() != "glass":
             return
         from . import depth
         light = depth.luminance(themes.color("panel")) >= depth.LIGHT_PANEL
@@ -296,7 +296,7 @@ class DesktopWidget(QWidget):
 
     def update_blur(self) -> None:
         """Blur behind the pane in the Glass skin (KDE only); stop when the skin changes away from Glass. Runs dressed."""
-        wanted = themes.current_look() == "glass" and not themes.reduce_effects()
+        wanted = themes.current_skin() == "glass" and not themes.reduce_effects()
         if wanted == getattr(self, "_blurred", False) and getattr(self, "_blur_size", None) == self.size():
             return
         glass = desktop_place.blur()
@@ -345,7 +345,7 @@ class MicWidget(_Round, DesktopWidget):
         self.window_.toggle_mic_mute()
 
     def paintEvent(self, _event) -> None:
-        if themes.current_look() == "tile":
+        if themes.current_skin() == "tile":
             self._paint_key()
             return
         muted, glow = self._state or (False, 0)
@@ -477,7 +477,7 @@ class DialWidget(_Round, DesktopWidget):
         from .ui_base import db_to_fader_position
 
         db, muted, level = self._state or (0.0, False, 0)
-        if themes.current_look() == "tile":
+        if themes.current_skin() == "tile":
             self._paint_key(db, muted, level, db_to_fader_position(db))
             return
         panel, text, accent = self._colors()
@@ -576,8 +576,8 @@ class StripWidget(DesktopWidget):
         the plain list. The window's style sheet does not reach a window of its own, so the skin's sheet is given here."""
         from .ui_mini import MiniStrip
 
-        tile = themes.current_look() == "tile"
-        self.setStyleSheet(themes.build_style(themes._current, themes.current_look(), see=False))
+        tile = themes.current_skin() == "tile"
+        self.setStyleSheet(themes.build_style(themes._current, themes.current_skin(), see=False))
         if self.strip is None or self.strip.tile != tile:
             mix = self.strip.mix_id if self.strip is not None else self.spec.get("mix")
             if self.strip is not None:
@@ -602,12 +602,12 @@ class StripWidget(DesktopWidget):
     def eventFilter(self, obj, event) -> bool:
         if event.type() != QEvent.Type.Paint or getattr(self, "_painting_child", False):
             return False
-        look, colors = self.manager.dressing()
-        if look is None:
+        skin, colors = self.manager.dressing()
+        if skin is None:
             return False
         self._painting_child = True
         try:
-            with themes.dressed_as(look, colors):
+            with themes.dressed_as(skin, colors):
                 obj.event(event)  # painted here, in the widgets' skin and colours...
         finally:
             self._painting_child = False
@@ -646,7 +646,7 @@ class StripWidget(DesktopWidget):
             return
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        if themes.current_look() == "glass":
+        if themes.current_skin() == "glass":
             from . import depth
             paint_glass(p, QRectF(self.rect()), 16, themes._current, depth.luminance(themes.color("panel")) >= depth.LIGHT_PANEL)
             p.end()
@@ -701,17 +701,17 @@ def paint_card(widget: QWidget, p: QPainter, tint: str) -> QRectF:
     (Nexus) or a soft card (Calm, Original). Every colour comes from the theme, with its depth worked out (``depth``)."""
     from . import depth
 
-    look = themes.current_look()
+    skin = themes.current_skin()
     colors = themes._current
     d = depth.depth_colors(colors)
     rect = QRectF(widget.rect())
-    if look == "tile":
+    if skin == "tile":
         from . import ui_tile_paint
         key = rect.adjusted(8, 4, -8, -16)
         ui_tile_paint.paint_surface(p, key, widget.devicePixelRatioF(), radius=14, skirt=6)
         return key.adjusted(12, 10, -12, -16)
     card = rect.adjusted(6, 4, -6, -10)
-    if look == "glass":  # a frosted pane: see-through, a bright hairline along the top and a faint one round the rest
+    if skin == "glass":  # a frosted pane: see-through, a bright hairline along the top and a faint one round the rest
         paint_glass(p, card, 16, colors, d["light"])
         p.setPen(QPen(QColor(tint), 2))
         p.drawLine(QPointF(card.left() + 18, card.top() + 1), QPointF(card.left() + 46, card.top() + 1))  # a dash of the card's colour
@@ -721,7 +721,7 @@ def paint_card(widget: QWidget, p: QPainter, tint: str) -> QRectF:
         pixmap, pad = soft_shape(card.width() - 8, card.height() - 4, 6, d["shadow_alpha"] * 1.2, d["shadow"],
                                  widget.devicePixelRatioF(), 16)
         p.drawPixmap(QPointF(card.x() + 4 - pad, card.y() + 2 - pad + 5), pixmap)
-    if look == "nexus":
+    if skin == "nexus":
         gradient = QLinearGradient(card.topLeft(), card.bottomLeft())
         gradient.setColorAt(0.0, QColor(depth.shade(colors["panel"], 0.6 if d["light"] else 0.06)))
         gradient.setColorAt(0.4, QColor(colors["panel"]))
@@ -731,9 +731,9 @@ def paint_card(widget: QWidget, p: QPainter, tint: str) -> QRectF:
     else:
         p.setBrush(QColor(colors["panel"]))
         p.setPen(QPen(QColor(colors["border"]), 1))
-    radius = 6 if look == "original" else 16
+    radius = 16
     p.drawRoundedRect(card.adjusted(0.5, 0.5, -0.5, -0.5), radius, radius)
-    if look == "nexus":  # the top edge in the card's colour: a lit line on dark themes, a 3 px band on light ones
+    if skin == "nexus":  # the top edge in the card's colour: a lit line on dark themes, a 3 px band on light ones
         p.setPen(QPen(QColor(tint), 3 if d["light"] else 1))
         p.drawLine(QPointF(card.left() + radius, card.top() + (1.5 if d["light"] else 0.5)),
                    QPointF(card.right() - radius, card.top() + (1.5 if d["light"] else 0.5)))
@@ -747,10 +747,10 @@ def paint_lane(p: QPainter, rect: QRectF, position: float, live: float, muted: b
 
     colors = themes._current
     d = depth.depth_colors(colors)
+    from . import ui_paint
     groove = QRectF(rect.left(), rect.center().y() - 4, rect.width(), 8)
     p.setPen(Qt.PenStyle.NoPen)
-    p.setBrush(stripe_brush(d["groove"], themes.mix(d["groove"], colors["text"], 0.14)) if muted else QColor(d["groove"]))
-    p.drawRoundedRect(groove, 4, 4)
+    ui_paint.groove(p, groove, stripe_brush(d["groove"], themes.mix(d["groove"], colors["text"], 0.14)) if muted else QColor(d["groove"]))
     if not muted:
         p.setBrush(QColor(depth.position_fill(tint, d["groove"], 0.35)))  # solid: yellow stays yellow (0.11.6)
         p.drawRoundedRect(QRectF(groove.left(), groove.top(), max(8.0, groove.width() * position), groove.height()), 4, 4)
@@ -758,11 +758,7 @@ def paint_lane(p: QPainter, rect: QRectF, position: float, live: float, muted: b
             p.setBrush(QColor(tint))
             p.drawRoundedRect(QRectF(groove.left(), groove.top(), max(6.0, groove.width() * position * live), groove.height()), 4, 4)
     handle = QRectF(groove.left() + groove.width() * position - 6, rect.center().y() - 9, 12, 18)
-    p.setBrush(QColor(0, 0, 0, 80))
-    p.drawRoundedRect(handle.translated(0, 1.5), 6, 6)
-    p.setBrush(QColor(colors["text_off"] if muted else "#ffffff"))
-    p.setPen(QPen(QColor(colors["handle_edge"]), 1) if d["light"] else Qt.PenStyle.NoPen)
-    p.drawRoundedRect(handle, 6, 6)
+    ui_paint.handle(p, handle, colors["text_off"] if muted else "#ffffff", colors["handle_edge"] if d["light"] else None, 80)
 
 
 def paint_icon_button(p: QPainter, rect: QRectF, name: str, color: str, pushed: bool, red: bool) -> None:
@@ -807,10 +803,10 @@ class LaneWidget(DesktopWidget):
         return 34
 
     def _inner(self) -> QRectF:
-        look = themes.current_look()
+        skin = themes.current_skin()
         rect = QRectF(self.rect())
         top, bottom = self.insets()
-        if look == "tile":
+        if skin == "tile":
             return rect.adjusted(8 + 12, top, -8 - 12, -bottom)
         return rect.adjusted(6 + 12, top, -6 - 12, -bottom)
 
@@ -827,7 +823,7 @@ class LaneWidget(DesktopWidget):
 
     def insets(self) -> tuple:
         """(top, bottom): the card's edge, shadow and padding above the header and below the last lane."""
-        return (4 + 10, 16 + 16) if themes.current_look() == "tile" else (4 + 10, 10 + 10)
+        return (4 + 10, 16 + 16) if themes.current_skin() == "tile" else (4 + 10, 10 + 10)
 
     def fit(self) -> None:
         """As tall as the header and the lanes need, and no taller (0.11.6: a fixed extra left an empty band at the bottom)."""
@@ -837,7 +833,7 @@ class LaneWidget(DesktopWidget):
         self.setFixedSize(self.WIDTH, top + self.header_height() + lanes + bottom)
 
     def state(self) -> tuple:
-        return (themes.current_look(), themes.generation(), tuple((m, round(db, 1), muted, round(live * 16))
+        return (themes.current_skin(), themes.generation(), tuple((m, round(db, 1), muted, round(live * 16))
                                                                for m, _l, _i, db, muted, live in self.lanes()))
 
     def restyle(self) -> None:
@@ -955,7 +951,7 @@ class ChannelWidget(LaneWidget):
         channel = self.channel()
         if channel is None:
             return themes.color("accent")
-        base = skin_tile.channel_color(channel) if themes.current_look() == "tile" else channel.color
+        base = skin_tile.channel_color(channel) if themes.current_skin() == "tile" else channel.color
         return depth.channel_tint(base, themes._current)
 
     def lanes(self) -> list:
@@ -995,7 +991,7 @@ class ChannelWidget(LaneWidget):
         p.drawText(well, Qt.AlignmentFlag.AlignCenter, (channel.label[:1] if channel is not None else "?").upper())
         p.setPen(QColor(themes.color("text")))
         name = channel.label if channel is not None else "This channel was removed"
-        if themes.current_look() == "nexus":
+        if themes.current_skin() == "nexus":
             name = name.upper()
         p.drawText(QRectF(well.right() + 10, inner.top(), inner.width() - 34, 24), Qt.AlignmentFlag.AlignVCenter, name)
 
@@ -1074,7 +1070,7 @@ class MixWidget(LaneWidget):
         p.setPen(QColor(themes.color("text")))
         label = (mix.label if mix else "Mix")
         p.drawText(QRectF(inner.left() + 30, inner.top(), inner.width() - 100, 24), Qt.AlignmentFlag.AlignVCenter,
-                   label.upper() if themes.current_look() == "nexus" else label)
+                   label.upper() if themes.current_skin() == "nexus" else label)
         on = bool(mix.limiter) if mix else False
         rect = self._limiter_rect()
         p.setPen(QPen(QColor(themes.color("accent") if on else themes.color("border2")), 1))
@@ -1101,16 +1097,16 @@ class DesktopWidgetManager:
         """(skin, colours) the widgets draw in, or (None, None) when they look like the window (the default). Settings > Themes and
         skins > Desktop widgets (0.11.6). Worked out once per change: it is asked on every event and meter frame."""
         mixer = self.window.engine.mixer
-        look, theme_id = getattr(mixer, "widget_look", ""), getattr(mixer, "widget_theme", "")
-        if not look and not theme_id:
+        skin, theme_id = getattr(mixer, "widget_skin", ""), getattr(mixer, "widget_theme", "")
+        if not skin and not theme_id:
             return None, None
-        key = (look, theme_id, mixer.look, mixer.theme, themes.look_colors_on())
+        key = (skin, theme_id, mixer.skin, mixer.theme, themes.skin_colors_on())
         if self._dressing is None or self._dressing[0] != key:
-            skin = themes.valid_look(look or mixer.look)
+            skin = themes.valid_skin(skin or mixer.skin)
             window = self.window
             theme = (themes.resolve(theme_id, window._system_is_dark(), window._themes_folder()) if theme_id
                      else window.current_theme())
-            self._dressing = (key, (skin, themes.look_colors(theme, skin)))
+            self._dressing = (key, (skin, themes.skin_colors(theme, skin)))
         return self._dressing[1]
 
     @property
@@ -1165,6 +1161,8 @@ class DesktopWidgetManager:
                 spot = (100 + 20 * n, 100 + 20 * n)
         spec["x"], spec["y"] = int(spot[0]), int(spot[1])
         widget.attach_layer_shell()  # KDE Plasma on Wayland: a real desktop widget, before it is first shown
+        if not widget.layered and hasattr(self.window, "hint_missing_part"):
+            self.window.hint_missing_part("layershell")  # once, and only on Plasma (Wayland) without LayerShellQt
         widget.move(spec["x"], spec["y"])
         widget.show()
         if widget.layered:
@@ -1189,10 +1187,10 @@ class DesktopWidgetManager:
     def restyle(self) -> None:
         """The look or the colours changed (the window's, or the widgets' own): every open widget follows."""
         self._dressing = None
-        look, colors = self.dressing()
+        skin, colors = self.dressing()
         for widget in self.open_widgets.values():
             restyle = getattr(widget, "restyle", None)
-            with themes.dressed_as(look, colors):
+            with themes.dressed_as(skin, colors):
                 if restyle is not None:
                     restyle()
                 widget.update_blur()

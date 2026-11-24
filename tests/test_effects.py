@@ -180,16 +180,19 @@ def _level_db(audio: np.ndarray) -> float:
     return 20 * np.log10(float(np.sqrt(np.mean(audio[:, SR // 4:] ** 2))) + 1e-12)
 
 
-def test_the_high_pass_falls_twelve_db_per_octave_and_one_slider_moves_both_stages():
+def test_the_high_pass_falls_twelve_db_per_octave_and_one_slider_moves_it():
+    """0.12.0: a Butterworth (-3 dB at the cutoff) with the Rust engine 0.11.0 or later; else two first-order stages (-6 dB at
+    it) as before. Both fall 12 dB per octave below it, and one slider moves the whole filter."""
     instance = make("highpass")
-    assert len(instance.plugins) == 2
+    butterworth = len(instance.plugins) == 1
+    assert len(instance.plugins) in (1, 2)
     tone = lambda f: sine(0.1, seconds=1.0, freq=f)  # noqa: E731
     at_cutoff = _level_db(run(instance, tone(100))) - _level_db(tone(100))
     octave_down = _level_db(run(make("highpass"), tone(50))) - _level_db(tone(50))
-    assert at_cutoff == pytest.approx(-6.0, abs=0.7)
-    assert octave_down < at_cutoff - 6  # a single stage would only fall another 3-4 dB
+    assert at_cutoff == pytest.approx(-3.0 if butterworth else -6.0, abs=0.7)
+    assert octave_down < at_cutoff - 6  # a single first-order stage would only fall another 3-4 dB
     instance.apply_param("cutoff_frequency_hz", 200.0)
-    assert [p.cutoff_frequency_hz for p in instance.plugins] == [200.0, 200.0]
+    assert all(p.cutoff_frequency_hz == 200.0 for p in instance.plugins)
     assert abs(_level_db(run(make("highpass"), tone(1000))) - _level_db(tone(1000))) < 0.2  # the voice is untouched
 
 
@@ -197,7 +200,7 @@ def test_the_defaults_suit_a_noisy_echoing_room():
     values = {key: {p.key: p.default for p in d.params} for key, d in BUILTINS.items()}
     assert values["highpass"]["cutoff_frequency_hz"] == 100
     gate = values["noise_gate"]
-    assert (gate["threshold_db"], gate["ratio"], gate["attack_ms"], gate["release_ms"]) == (-30, 4, 3, 100)
+    assert (gate["threshold_db"], gate["depth_db"], gate["attack_ms"], gate["hold_ms"], gate["release_ms"]) == (-40, 24, 2, 120, 150)
     assert values["eq"]["mid_hz"] == 250 and values["eq"]["mid_db"] == -4 and values["eq"]["low_db"] == -2
     assert values["compressor"]["makeup_db"] == 2  # unchanged: more makeup or squash did not help in the tests
 

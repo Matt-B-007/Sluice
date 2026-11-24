@@ -41,9 +41,9 @@ def _machine_factor() -> float:
     return max(1.0, best / REFERENCE_MS)
 
 
-def _window(qapp, look):
+def _window(qapp, skin):
     mixer = Mixer.demo()
-    mixer.look, mixer.theme = look, "dark"
+    mixer.skin, mixer.theme = skin, "dark"
     engine = Engine(mixer, MockSystem(), NullIO(realtime=False), NullLinker())
     engine.start()
     win = MainWindow(engine, None)
@@ -72,16 +72,16 @@ def _cost(qapp, win, engine, moving: bool) -> float:
     return best
 
 
-@pytest.mark.parametrize("look", list(themes.LOOKS))
-def test_a_meter_update_stays_within_the_budget_in_every_look(qapp, look):
+@pytest.mark.parametrize("skin", list(themes.SKINS))
+def test_a_meter_update_stays_within_the_budget_in_every_look(qapp, skin):
     factor = _machine_factor()
-    win, engine = _window(qapp, look)
+    win, engine = _window(qapp, skin)
     try:
         _cost(qapp, win, engine, True)  # warm up: pictures are drawn once and kept
         quiet = _cost(qapp, win, engine, False)
         moving = _cost(qapp, win, engine, True) - quiet
         limit = min(BUDGET_MS, 2 * CALM_0114_MS) * factor
-        assert moving < limit, f"{look}: {moving:.2f} ms a meter update (limit {limit:.2f} ms)"
+        assert moving < limit, f"{skin}: {moving:.2f} ms a meter update (limit {limit:.2f} ms)"
     finally:
         win.shutdown()
 
@@ -109,9 +109,9 @@ def test_switching_looks_themes_and_sizes_with_sound_playing_never_shows_a_blank
         mixer = engine.mixer
         keys = [f"ch:{c.id}:{m.id}" for c in mixer.channels for m in mixer.mixes] + [f"mix:{m.id}" for m in mixer.mixes]
         engine.sample_levels = lambda *_a, **_k: {k: 0.6 for k in keys}
-        for look, theme, size in (("nexus", "dark", (1456, 900)), ("tile", "light", (1100, 860)), ("original", "paper", (1300, 800)),
+        for skin, theme, size in (("nexus", "dark", (1456, 900)), ("tile", "light", (1100, 860)), ("glass", "paper", (1300, 800)),
                                   ("calm", "contrast", (900, 760)), ("nexus", "light", (1600, 900)), ("tile", "dark", (1456, 900))):
-            win.choose_look(look)
+            win.choose_skin(skin)
             win.choose_theme(theme)
             win.resize(*size)
             for _ in range(4):
@@ -119,7 +119,7 @@ def test_switching_looks_themes_and_sizes_with_sound_playing_never_shows_a_blank
                 qapp.processEvents()
             image = win.grab().toImage()
             colours = {image.pixel(x, y) for x in range(0, image.width(), 37) for y in range(0, image.height(), 41)}
-            assert len(colours) > 8, f"{look}/{theme}: the window looks blank"
+            assert len(colours) > 8, f"{skin}/{theme}: the window looks blank"
             assert win.strips and all(s.isVisible() for s in win.strips) or win.layout_mode == "mini"
     finally:
         win.shutdown()

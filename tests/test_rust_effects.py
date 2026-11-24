@@ -79,7 +79,15 @@ def test_settings_change_while_running_like_they_do_in_pedalboard():
 
 @pytest.mark.skipif(bool(os.environ.get('SLUICE_NO_RUST')), reason='Rust switched off')
 def test_the_whole_voice_chain_sounds_the_same_with_and_without_rust(monkeypatch):
+    """The gate, compressor and limiter are one Python implementation (0.12.0); the EQ and Gain run in Rust or pedalboard alike.
+    The high-pass is the one difference by design (a Butterworth needs the Rust engine), so both runs use the older one here."""
     x = signal(4.0)
+    from sluice import effects as fx_module
+    monkeypatch.setattr(fx_module, "_build_highpass", lambda pb, v: (
+        [pb.HighpassFilter(cutoff_frequency_hz=v["cutoff_frequency_hz"]) for _ in range(2)],
+        {"cutoff_frequency_hz": [(0, "cutoff_frequency_hz"), (1, "cutoff_frequency_hz")]}))
+    monkeypatch.setitem(fx_module.BUILTINS, "highpass", fx_module.BuiltinDef(
+        "High-pass", fx_module.BUILTINS["highpass"].params, fx_module._build_highpass))
     effects = voice_chain_effects(stable_ids=True)
 
     from sluice import effects as fx

@@ -174,8 +174,8 @@ def _all_items(menu, path=()):
 
 def test_every_menu_item_lives_in_exactly_one_place(window):
     seen = {}
-    for bar_action in window.menuBar().actions():
-        for path, text, action in _all_items(bar_action.menu(), (bar_action.text().replace("&", ""),)):
+    for group in window.action_groups:
+        for path, text, action in _all_items(group, (group.title().replace("&", ""),)):
             if action.menu() is None and not action.isSeparator() and action.isEnabled():
                 seen.setdefault(text, []).append(path)
     doubled = {t: p for t, p in seen.items() if len(p) > 1}
@@ -183,26 +183,26 @@ def test_every_menu_item_lives_in_exactly_one_place(window):
 
 
 def test_the_update_items_sit_together_in_settings(window):
-    settings = next(a.menu() for a in window.menuBar().actions() if a.text().replace("&", "") == "Settings")
+    settings = next(m for m in window.action_groups if m.title().replace("&", "") == "Settings")
     items = [a.text().replace("&", "") for a in settings.actions() if a.text()]
     start = items.index("Updates")
     assert items[start + 1:start + 4] == ["Update automatically when a new version is found", "Check for updates…",
                                           "Go back to the previous version…"]
-    help_menu = next(a.menu() for a in window.menuBar().actions() if a.text().replace("&", "") == "Help")
+    help_menu = next(m for m in window.action_groups if m.title().replace("&", "") == "Help")
     assert not [a for a in help_menu.actions() if "update" in a.text().lower() and "new in" not in a.text().lower()]
 
 
-def test_theme_is_in_view_and_open_folder_is_in_file(window):
-    names = {a.text().replace("&", ""): a.menu() for a in window.menuBar().actions()}
-    assert "Theme" in [a.text().replace("&", "") for a in names["View"].actions()]
+def test_theme_is_in_the_window_group_and_open_folder_is_in_file(window):
+    names = {m.title().replace("&", ""): m for m in window.action_groups}
+    assert "Theme" in [a.text().replace("&", "") for a in names["Window"].actions()]
     assert "Theme" not in [a.text().replace("&", "") for a in names["Settings"].actions()]
     folders = next(a.menu() for a in names["File"].actions() if a.text().replace("&", "") == "Open folder")
     assert [a.text().replace("&", "") for a in folders.actions()] == ["Settings", "Logs", "Themes"]
 
 
 def test_a_dots_ending_means_a_dialog_and_toggles_have_none(window):
-    for bar_action in window.menuBar().actions():
-        for path, text, action in _all_items(bar_action.menu(), (bar_action.text().replace("&", ""),)):
+    for group in window.action_groups:
+        for path, text, action in _all_items(group, (group.title().replace("&", ""),)):
             if action.isCheckable():
                 assert not text.endswith("…"), f"{path} > {text}: a toggle opens nothing, so it has no dots"
 
@@ -210,8 +210,8 @@ def test_a_dots_ending_means_a_dialog_and_toggles_have_none(window):
 def test_the_shortcut_list_matches_the_menus_and_nothing_is_missing(window):
     rows = dict((text, keys) for keys, text in window.shortcut_rows())
     assert rows["Mute my microphone"] and "M" in rows["Mute my microphone"]  # it was missing from the old hand-written list
-    for bar_action in window.menuBar().actions():
-        for _path, text, action in _all_items(bar_action.menu()):
+    for group in window.action_groups:
+        for _path, text, action in _all_items(group):
             if action.shortcut().toString():
                 assert text.rstrip("…") in rows, f"{text} has a shortcut but is not in the shortcuts list"
     assert len(window.shortcut_rows()) == len(set(k for k, _ in window.shortcut_rows()))  # no key listed twice
@@ -379,10 +379,8 @@ def test_every_menu_item_has_its_own_alt_key_letter(qapp, tmp_path):
         problems.extend(f"{path}: {key.upper()} is used by {names}" for key, names in letters.items() if len(names) > 1)
 
     try:
-        for top in win.menuBar().actions():
-            if top.menu().title() == "":
-                continue
-            check(top.menu(), top.text().replace("&", ""))
+        for group in win.action_groups:
+            check(group, group.title().replace("&", ""))
         assert not problems, problems
     finally:
         win.shutdown()

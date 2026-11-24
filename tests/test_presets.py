@@ -40,10 +40,10 @@ def test_quiet_switches_the_reducers_off_and_normal_switches_them_back_on(engine
 
 def test_a_ready_made_choice_never_carries_a_gate_threshold_or_gain_even_if_a_file_says_so(engine):
     before = effect(engine, "noise_gate").params.get("threshold_db")
-    presets.apply(engine, "mic", [{"type": "noise_gate", "bypass": False, "params": {"threshold_db": -5.0, "ratio": 2.0}},
+    presets.apply(engine, "mic", [{"type": "noise_gate", "bypass": False, "params": {"threshold_db": -5.0, "depth_db": 12.0}},
                                   {"type": "gain", "bypass": False, "params": {"gain_db": 9.0}}])
     assert effect(engine, "noise_gate").params.get("threshold_db") == before
-    assert effect(engine, "noise_gate").params["ratio"] == 2.0
+    assert effect(engine, "noise_gate").params["depth_db"] == 12.0
     assert not any(e.type == "gain" for e in engine.mixer.channel("mic").effects)
 
 

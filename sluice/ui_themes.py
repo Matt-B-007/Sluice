@@ -60,10 +60,10 @@ class ThemesMixin:
         if theme_id is not None:
             self.engine.mixer.theme = theme_id
         theme = self.current_theme()
-        themes.set_look(self.engine.mixer.look)
+        themes.set_skin(self.engine.mixer.skin)
         themes.set_reduce_effects(self.engine.mixer.reduce_effects)
-        themes.set_look_colors(self.engine.mixer.look_colors)
-        colors = themes.look_colors(theme, self.engine.mixer.look)
+        themes.set_skin_colors(self.engine.mixer.skin_colors)
+        colors = themes.skin_colors(theme, self.engine.mixer.skin)
         themes.set_current(colors)
         # The skin dresses the mixer (the window's content and its status bar); menus, the Settings window and the other windows
         # opened from it keep the shared style in every skin, in the theme's colours (0.11.6).
@@ -71,7 +71,7 @@ class ThemesMixin:
         # 0.11.7: on the whole application, not the window: the tray's menu, a desktop widget's menu and a message box with no
         # parent are windows of their own, which a sheet on the main window never reached. Narrowed as it is, none of it reaches
         # the mixer (that has only its skin's sheet).
-        shared = themes.shared_style(themes.look_colors(theme, "calm"))
+        shared = themes.shared_style(themes.skin_colors(theme, "calm"))
         app = QGuiApplication.instance()
         if app is not None and hasattr(app, "setStyleSheet"):
             if app.styleSheet() != shared:
@@ -92,37 +92,39 @@ class ThemesMixin:
             settings.refresh()
         return theme
 
-    def _fill_look_menu(self) -> None:
-        menu = self.look_menu
+    def _fill_skin_menu(self) -> None:
+        menu = self.skin_menu
         menu.clear()
         group = QActionGroup(menu)
-        for look_id, text in themes.LOOKS.items():
+        for skin_id, text in themes.SKINS.items():
             action = menu.addAction(text)
             action.setCheckable(True)
             action.setActionGroup(group)
-            action.setChecked(themes.valid_look(self.engine.mixer.look) == look_id)
-            action.triggered.connect(lambda _c=False, look_id=look_id: self.choose_look(look_id))
+            action.setChecked(themes.valid_skin(self.engine.mixer.skin) == skin_id)
+            action.triggered.connect(lambda _c=False, skin_id=skin_id: self.choose_skin(skin_id))
         menu.addSeparator()
-        menu.addAction("&Compare skins…").triggered.connect(self.compare_looks)
+        menu.addAction("&Compare skins…").triggered.connect(self.compare_skins)
         menu.setToolTipsVisible(True)
 
-    def compare_looks(self) -> None:
+    def compare_skins(self) -> None:
         """Show a picture of each look in the colours of the theme in use, with a button to pick one."""
-        from .ui_skins import CompareLooksDialog
-        CompareLooksDialog(self).exec()
+        from .ui_skins import CompareSkinsDialog
+        CompareSkinsDialog(self).exec()
 
-    def choose_look(self, look_id: str) -> None:
+    def choose_skin(self, skin_id: str) -> None:
         """Change the shapes and sizes of the window (the colours stay as chosen under View > Theme)."""
-        look_id = themes.valid_look(look_id)
-        if look_id == self.engine.mixer.look:
+        skin_id = themes.valid_skin(skin_id)
+        if skin_id == self.engine.mixer.skin:
             return
-        self.engine.mixer.look = look_id
+        self.engine.mixer.skin = skin_id
         self.apply_theme()
-        if hasattr(self, "_restructure_for_look"):
-            self._restructure_for_look()
+        if hasattr(self, "_restructure_for_skin"):
+            self._restructure_for_skin()
         from . import ui_glass
-        later = look_id == "glass" and ui_glass.wants_see_through(self.engine.mixer) and not themes.see_through()
-        self.say(f"Skin: {themes.LOOKS[look_id]}." + (" The window becomes see-through the next time Sluice starts." if later else ""))
+        later = skin_id == "glass" and ui_glass.wants_see_through(self.engine.mixer) and not themes.see_through()
+        self.say(f"Skin: {themes.SKINS[skin_id]}." + (" The window becomes see-through the next time Sluice starts." if later else ""))
+        if skin_id == "glass" and hasattr(self, "hint_missing_part"):
+            self.hint_missing_part("kwindowsystem")  # once: on Plasma without KDE's blur, Glass shows no blur behind
 
     def set_see_through(self, on: bool) -> None:
         """Settings > Themes and skins > See-through window (Glass on KDE). The window's see-through-ness is fixed when it first
@@ -135,9 +137,9 @@ class ThemesMixin:
         else:
             self.say("See-through window: " + ("on." if on else "off."))
 
-    def set_look_colors(self, on: bool) -> None:
+    def set_skin_colors(self, on: bool) -> None:
         """Nexus's and Tile's own colours on Dark (and Tile's white keys on Light), or every theme's own colours everywhere."""
-        self.engine.mixer.look_colors = bool(on)
+        self.engine.mixer.skin_colors = bool(on)
         self.apply_theme()
         self.say("Skins show their own colours on Dark and Light." if on else "Every theme shows its own colours in every skin.")
 
@@ -199,23 +201,23 @@ class ThemesMixin:
         more.setToolTip("Opens the theme collection on the project page in your browser: download a file, then Import theme")
         menu.setToolTipsVisible(True)
 
-    def set_widget_dress(self, look=None, theme=None) -> None:
+    def set_widget_dress(self, skin=None, theme=None) -> None:
         """Settings > Themes and skins > Desktop widgets: their own skin and theme ("" is the same as the window), shown at once."""
         mixer = self.engine.mixer
-        if look is not None:
-            mixer.widget_look = look if look in themes.LOOKS else ""
+        if skin is not None:
+            mixer.widget_skin = skin if skin in themes.SKINS else ""
         if theme is not None:
             mixer.widget_theme = theme
         desktop = getattr(self, "desktop", None)
         if desktop is not None:
             desktop.restyle()
-        skin = themes.LOOKS.get(mixer.widget_look, "the window's skin")
+        skin = themes.SKINS.get(mixer.widget_skin, "the window's skin")
         self.say(f"Desktop widgets: {skin}" + (f", {themes.resolve(mixer.widget_theme, self._system_is_dark(), self._themes_folder()).name}"
                                                if mixer.widget_theme else ", the window's theme") + ".")
 
     def dress_skin(self) -> None:
         """Put the skin's sheet on the mixer: the window's content and its status bar (again once they exist, at start-up)."""
-        skin = themes.build_style(themes._current, themes.valid_look(self.engine.mixer.look))
+        skin = themes.build_style(themes._current, themes.valid_skin(self.engine.mixer.skin))
         for part in (self.centralWidget(), self.statusBar()):
             if part is not None and part.styleSheet() != skin:
                 part.setStyleSheet(skin)

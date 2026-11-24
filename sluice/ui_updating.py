@@ -87,6 +87,47 @@ class UpdatingMixin:
         ask.exec()
         return ask.clickedButton() is restart
 
+    # ------------------------------------------------------------------ moving out of the download folder (0.12.0)
+    def runs_from_download(self) -> bool:
+        return self.config_file is not None and update_install.runs_from_download(update_install.install_root())
+
+    def offer_move_once(self) -> None:
+        """A little after start-up, once: Sluice installed before 0.12.0 runs from the folder it was downloaded to."""
+        seen = self.engine.mixer.hints_seen
+        if self._closed or "move-out-of-download" in seen or not self.runs_from_download():
+            return
+        seen.append("move-out-of-download")
+        self.say("Sluice runs from the folder you downloaded. Settings > Updates > Move moves it to its own folder, so the "
+                 "download can go.")
+
+    def move_install(self) -> None:
+        """Move Sluice to ~/.local/share/sluice/program and delete the download folder. Done after Sluice closes."""
+        import subprocess
+
+        root = update_install.install_root()
+        if not update_install.runs_from_download(root):
+            QMessageBox.information(self, "Move Sluice", "Sluice already runs from its own folder.")
+            return
+        from .launcher import program_dir
+        ask = QMessageBox(self)
+        ask.setWindowTitle("Move Sluice to its own folder")
+        ask.setText(f"Sluice runs from the folder you downloaded:\n{root}\n\nIt can move itself to {program_dir()} (with its "
+                    "menu entry and the sluice command) and then delete that folder. Your settings stay as they are.\n\n"
+                    "Sluice closes, the move takes a minute or two (it needs the internet for its Python packages), and "
+                    "Sluice starts again by itself. If anything goes wrong, it keeps running from where it is now.")
+        move = ask.addButton("Move and restart", QMessageBox.ButtonRole.AcceptRole)
+        ask.addButton("Not now", QMessageBox.ButtonRole.RejectRole)
+        ask.exec()
+        if ask.clickedButton() is not move:
+            return
+        try:
+            subprocess.Popen(update_install.move_script(root), start_new_session=True, stdin=subprocess.DEVNULL,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except OSError as exc:
+            QMessageBox.warning(self, "Move Sluice", f"Could not start the move: {exc}\nIn a terminal, run:\n  {root}/install.sh")
+            return
+        self.quit_app()
+
     def restart_into_update(self) -> None:
         from . import reconnect
 

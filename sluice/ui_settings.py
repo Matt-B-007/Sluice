@@ -22,10 +22,12 @@ from PySide6.QtWidgets import (
 )
 
 from . import themes, ui_icons as icons
+from .ui_base import plain
 from .ui_panel import Switch
 
-SECTIONS = ("Themes and skins", "Audio", "Startup and background", "Controllers", "Updates", "Backup and reset")
-SECTION_ICONS = ("palette", "wave", "power", "sliders", "refresh", "save")
+SECTIONS = ("Themes and skins", "Audio", "Startup and background", "Controllers", "Updates", "Setup check", "Backup and reset")
+SECTION_ICONS = ("palette", "wave", "power", "sliders", "refresh", "checklist", "save")
+SETUP = "Setup check"
 
 
 def _heading(text: str) -> QLabel:
@@ -39,11 +41,6 @@ def _note(text: str) -> QLabel:
     label.setObjectName("hint")
     label.setWordWrap(True)
     return label
-
-
-def _plain(text: str) -> str:
-    """A menu label as plain text: no Alt-key ampersand and no trailing "…" (a button here says what it opens on its own)."""
-    return text.split("\t")[0].replace("&&", "\0").replace("&", "").replace("\0", "&")
 
 
 class _Bound:
@@ -61,33 +58,33 @@ class _Bound:
     def refresh(self) -> None:
         self.button.blockSignals(True)
         if not isinstance(self.button, Switch):  # a switch's name is the label beside it
-            self.button.setText(_plain(self.action.text()))
+            self.button.setText(plain(self.action.text(), keep_dots=True))
         self.button.setChecked(self.action.isChecked())
         self.button.setEnabled(self.action.isEnabled())
         self.button.setVisible(self.action.isVisible())
-        self.button.setToolTip(self.action.toolTip() if self.action.toolTip() != _plain(self.action.text()) else "")
-        self.button.setAccessibleName(_plain(self.action.text()))
+        self.button.setToolTip(self.action.toolTip() if self.action.toolTip() != plain(self.action.text(), keep_dots=True) else "")
+        self.button.setAccessibleName(plain(self.action.text(), keep_dots=True))
         self.button.blockSignals(False)
         if self.name is not None:  # a switch row: the name is a label beside it
-            self.name.setText(_plain(self.action.text()))
+            self.name.setText(plain(self.action.text(), keep_dots=True))
         if self.row is not None:
             self.row.setVisible(self.action.isVisible())
 
 
-class LookCard(QPushButton):
+class SkinCard(QPushButton):
     """A look as a picture in the colours of the theme in use; click it to use that look."""
 
-    def __init__(self, look_id: str) -> None:
+    def __init__(self, skin_id: str) -> None:
         super().__init__()
-        self.look_id = look_id
+        self.skin_id = skin_id
         self.setObjectName("lookcard")
         self.setCheckable(True)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setAccessibleName(f"{themes.LOOKS[look_id]} skin")
+        self.setAccessibleName(f"{themes.SKINS[skin_id]} skin")
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.picture = QLabel()
         self.picture.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self.caption = QLabel(themes.LOOKS[look_id])
+        self.caption = QLabel(themes.SKINS[skin_id])
         self.caption.setObjectName("lookname")
         self.caption.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         box = QVBoxLayout(self)
@@ -107,14 +104,14 @@ class LookCard(QPushButton):
                 return
             super().keyPressEvent(event)
             return
-        cards = [c for c in (self.parentWidget().findChildren(LookCard) if self.parentWidget() else []) if c.isVisible()]
+        cards = [c for c in (self.parentWidget().findChildren(SkinCard) if self.parentWidget() else []) if c.isVisible()]
         if self in cards:
             cards[(cards.index(self) + step) % len(cards)].setFocus(Qt.FocusReason.TabFocusReason)
 
     def show_preview(self, theme) -> None:
         from .ui_skins import BLURBS, draw_preview
-        self.picture.setPixmap(draw_preview(self.look_id, themes.look_colors(theme, self.look_id), self.devicePixelRatioF()))
-        self.setToolTip(BLURBS.get(self.look_id, ""))
+        self.picture.setPixmap(draw_preview(self.skin_id, themes.skin_colors(theme, self.skin_id), self.devicePixelRatioF()))
+        self.setToolTip(BLURBS.get(self.skin_id, ""))
 
 
 class SettingsWindow(QDialog):
@@ -133,8 +130,9 @@ class SettingsWindow(QDialog):
             self.sections.item(self.sections.count() - 1).setData(Qt.ItemDataRole.UserRole, icon)
         self.sections.setFixedWidth(240)
         self.pages = QStackedWidget()
+        self.setup_results: list = []
         for name, build in zip(SECTIONS, (self._appearance, self._audio, self._startup, self._controllers, self._updates,
-                                          self._backup)):
+                                          self._setup, self._backup)):
             page = QWidget()
             column = QVBoxLayout(page)
             column.setContentsMargins(28, 20, 28, 20)
@@ -152,6 +150,8 @@ class SettingsWindow(QDialog):
             self.pages.addWidget(scroll)
         self.sections.currentRowChanged.connect(self.pages.setCurrentIndex)
         self.sections.currentRowChanged.connect(lambda _row: self.isVisible() and self.refresh())
+        self.sections.currentRowChanged.connect(lambda row: row == SECTIONS.index(SETUP) and not self.setup_results
+                                                and self.check_setup())
         self.sections.setCurrentRow(0)
         close = QPushButton("Close")
         close.clicked.connect(self.close)
@@ -235,7 +235,7 @@ class SettingsWindow(QDialog):
                 self.bound.append(_Bound(button, action))
             return button
         button = Switch()
-        row, name = self._row(column, _plain(action.text()), button, hint or (action.toolTip() if action.toolTip() != _plain(action.text()) else ""))
+        row, name = self._row(column, plain(action.text(), keep_dots=True), button, hint or (action.toolTip() if action.toolTip() != plain(action.text(), keep_dots=True) else ""))
         self.bound.append(_Bound(button, action, row, name))
         return button
 
@@ -262,12 +262,12 @@ class SettingsWindow(QDialog):
         column.addWidget(_note("How the window and the desktop widgets are shaped and drawn. Each picture is drawn in the theme you are using."))
         grid = QGridLayout()
         grid.setSpacing(12)
-        self.look_cards = {}
-        for index, look_id in enumerate(themes.LOOKS):
-            card = LookCard(look_id)
-            card.clicked.connect(lambda _c=False, look_id=look_id: self._choose_look(look_id))
+        self.skin_cards = {}
+        for index, skin_id in enumerate(themes.SKINS):
+            card = SkinCard(skin_id)
+            card.clicked.connect(lambda _c=False, skin_id=skin_id: self._choose_skin(skin_id))
             grid.addWidget(card, index // 2, index % 2)
-            self.look_cards[look_id] = card
+            self.skin_cards[skin_id] = card
         holder = QHBoxLayout()
         holder.addLayout(grid)
         holder.addStretch(1)
@@ -282,7 +282,7 @@ class SettingsWindow(QDialog):
         see = getattr(w, "see_through_action", None)
         if see is not None:
             self._bind(window, see)
-        self._bind(window, w.look_colors_action)
+        self._bind(window, w.skin_colors_action)
         self._bind(window, w.reduce_action)
         layout = self._group(column, "Layout")
         group = QButtonGroup(self)
@@ -336,6 +336,12 @@ class SettingsWindow(QDialog):
         self._bind(group, w.auto_update_action)
         self._action_button(group, "Check now", w.check_for_updates, name="Check for updates")
         self.rollback_button = self._action_button(group, "Go back", w.rollback_action, name="Go back to the previous version")
+        if w.runs_from_download():  # 0.12.0: installed the old way, in the folder it was downloaded to
+            where = self._group(column, "Where Sluice is installed")
+            self.move_button = self._action_button(
+                where, "Move", w.move_install, name="Move Sluice to its own folder",
+                hint="Sluice runs from the folder you downloaded. Moving it puts it in ~/.local/share/sluice and deletes that "
+                     "folder; your settings stay.")
         engine = self._group(column, "Audio engine")
         self.rebuild_button = self._action_button(engine, "Rebuild", w.rebuild_engine, name="Rebuild the audio engine",
                                                   hint="Builds the Rust engine again from the copy that came with this Sluice.")
@@ -343,6 +349,113 @@ class SettingsWindow(QDialog):
         remove = self._group(column, "Remove Sluice")
         self._action_button(remove, "Uninstall…", w.uninstall_action, name="Uninstall Sluice",
                             hint="Removes Sluice, its virtual devices and its launcher. You are asked first.")
+
+    # ------------------------------------------------------------------ the setup check (0.12.0)
+    def _setup(self, column: QVBoxLayout) -> None:
+        column.addWidget(_note("What Sluice uses from your system: what each part is for, whether it is here, and the command that "
+                               "installs it. Sluice never installs anything itself: copy a command and run it in a terminal, then "
+                               "press Check again."))
+        self.setup_summary = QLabel()
+        self.setup_summary.setObjectName("settingsheading")
+        self.setup_summary.setWordWrap(True)
+        column.addWidget(self.setup_summary)
+        holder = QWidget()
+        self.setup_column = QVBoxLayout(holder)
+        self.setup_column.setContentsMargins(0, 0, 0, 0)
+        self.setup_column.setSpacing(10)
+        column.addWidget(holder)
+        again = QHBoxLayout()
+        self.setup_again = QPushButton("Check again")
+        self.setup_again.setAccessibleName("Check the setup again")
+        self.setup_again.clicked.connect(self.check_setup)
+        again.addWidget(self.setup_again)
+        again.addStretch(1)
+        column.addLayout(again)
+
+    def check_setup(self) -> list:
+        """Look at every part again (the PulseAudio and JACK checks connect, so this takes a moment) and show the result."""
+        from PySide6.QtWidgets import QApplication
+
+        from . import setup_check
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            self.setup_results = setup_check.check_all()
+        finally:
+            QApplication.restoreOverrideCursor()
+        self._show_setup(self.setup_results)
+        return self.setup_results
+
+    def _show_setup(self, results: list) -> None:
+        from . import setup_check
+        while self.setup_column.count():
+            item = self.setup_column.takeAt(0)
+            if item.widget() is not None:
+                item.widget().deleteLater()
+        self.setup_commands: dict = {}
+        needed, optional = setup_check.summary(results)
+        if needed:
+            self.setup_summary.setText(f"Sluice needs {len(needed)} more part{'s' if len(needed) > 1 else ''} to play sound.")
+        elif optional:
+            self.setup_summary.setText(f"Everything Sluice needs is here. {len(optional)} optional part"
+                                       f"{'s are' if len(optional) > 1 else ' is'} missing.")
+        else:
+            self.setup_summary.setText("Everything is here.")
+        for heading, required in (("Needed", True), ("Optional", False)):
+            frame = QFrame()
+            frame.setObjectName("settingsgroup")
+            box = QVBoxLayout(frame)
+            box.setContentsMargins(0, 0, 0, 0)
+            box.setSpacing(0)
+            head = _heading(heading)
+            self.setup_column.addWidget(head)
+            self.setup_column.addWidget(frame)
+            for result in results:
+                if result.part.required == required:
+                    self._setup_row(box, result)
+        # lay the new rows out now, not a frame later: a row with a command is taller, and a wrapped label needs two passes (one to
+        # learn its width, one to take the height that width gives it)
+        from PySide6.QtCore import QCoreApplication, QEvent
+        for _ in range(2):
+            QCoreApplication.sendPostedEvents(None, QEvent.Type.LayoutRequest)
+
+    def _setup_row(self, group: QVBoxLayout, result) -> None:
+        if result.ok:
+            text, name = "✓ Installed", "setupok"
+        elif not result.applies:
+            text, name = "Not used here", "setupidle"
+        elif result.ok is None:
+            text, name = "–", "setupidle"
+        else:
+            text, name = "Missing", "setupneeded" if result.part.required else "setupmissing"
+        status = QLabel(text)
+        status.setObjectName(name)
+        status.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        reason = result.reason[:1].upper() + result.reason[1:].rstrip(".") + "." if result.reason and result.applies else ""
+        hint = result.part.purpose + (f"\n{reason}" if reason else "")
+        row, _label = self._row(group, result.part.name, status, hint)
+        status.setAccessibleName(f"{result.part.name}: {text}")
+        if result.missing and result.command:
+            # the command on its own line under the row's text (a wrapping label straight in the column, so the row grows with it
+            # at any width), and Copy under it
+            text_box = row.layout().itemAt(0).layout()
+            command = QLabel(result.command)
+            command.setObjectName("setupcommand")
+            command.setWordWrap(True)
+            command.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            copy = QPushButton("Copy")
+            copy.setAccessibleName(f"Copy the command for {result.part.name}")
+            copy.clicked.connect(lambda _checked=False, c=result.command, b=copy: self._copy_command(c, b))
+            text_box.addSpacing(4)
+            text_box.addWidget(command)
+            text_box.addWidget(copy, 0, Qt.AlignmentFlag.AlignLeft)
+            self.setup_commands[result.part.key] = (command, copy)
+
+    def _copy_command(self, command: str, button: QPushButton) -> None:
+        from PySide6.QtCore import QTimer
+        from PySide6.QtGui import QGuiApplication
+        QGuiApplication.clipboard().setText(command)
+        button.setText("Copied")
+        QTimer.singleShot(1500, lambda: button.setText("Copy"))
 
     def _backup(self, column: QVBoxLayout) -> None:
         w = self.window_
@@ -364,12 +477,12 @@ class SettingsWindow(QDialog):
                             hint="Every setting back to how it was when Sluice was new. Your settings are backed up first.")
 
     # ------------------------------------------------------------------ keeping it up to date
-    def _choose_look(self, look_id: str) -> None:
-        self.window_.choose_look(look_id)
+    def _choose_skin(self, skin_id: str) -> None:
+        self.window_.choose_skin(skin_id)
         self.refresh()
 
     def _widget_skin_chosen(self, index: int) -> None:
-        self.window_.set_widget_dress(look=self.widget_skin.itemData(index) or "")
+        self.window_.set_widget_dress(skin=self.widget_skin.itemData(index) or "")
 
     def _widget_theme_chosen(self, index: int) -> None:
         self.window_.set_widget_dress(theme=self.widget_theme.itemData(index) or "")
@@ -378,11 +491,11 @@ class SettingsWindow(QDialog):
         """The skins and themes the desktop widgets can have, "Same as the window" first, with the one in use chosen."""
         w = self.window_
         mixer = w.engine.mixer
-        skins = [("Same as the window", "")] + [(name, look_id) for look_id, name in themes.LOOKS.items()]
+        skins = [("Same as the window", "")] + [(name, skin_id) for skin_id, name in themes.SKINS.items()]
         choices = [("Same as the window", "")] + [(t.name, t.id) for t in themes.BUILT_IN.values()]
         choices.append((themes.SYSTEM_LABEL, themes.SYSTEM))
         choices += [(t.name, t.id) for t in themes.custom_themes(w._themes_folder())]
-        for combo, items, chosen in ((self.widget_skin, skins, mixer.widget_look), (self.widget_theme, choices, mixer.widget_theme)):
+        for combo, items, chosen in ((self.widget_skin, skins, mixer.widget_skin), (self.widget_theme, choices, mixer.widget_theme)):
             combo.blockSignals(True)
             combo.clear()
             for label, data in items:
@@ -404,10 +517,10 @@ class SettingsWindow(QDialog):
         w._refresh_view_menu()
         w._show_layout_choice()
         theme = w.current_theme()
-        look = themes.valid_look(w.engine.mixer.look)
-        for look_id, card in self.look_cards.items():
+        skin = themes.valid_skin(w.engine.mixer.skin)
+        for skin_id, card in self.skin_cards.items():
             card.blockSignals(True)
-            card.setChecked(look_id == look)
+            card.setChecked(skin_id == skin)
             card.blockSignals(False)
             card.show_preview(theme)
         self.theme_button.setText(f"{theme.name}  ▾")
@@ -417,7 +530,7 @@ class SettingsWindow(QDialog):
         self.no_tray.setVisible(w.no_tray_note.isVisible())
         rollback = w.rollback_action
         self.rollback_button.setEnabled(rollback.isEnabled())
-        self.rollback_button.setToolTip(_plain(rollback.text()).rstrip("…"))
+        self.rollback_button.setToolTip(plain(rollback.text()))
         has_controls = getattr(w, "controls", None) is not None
         self.controllers_button.parentWidget().setVisible(has_controls)
         self.controllers_missing.setVisible(not has_controls)

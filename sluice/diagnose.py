@@ -6,15 +6,6 @@ import os
 import sys
 
 
-def _pedalboard() -> tuple:
-    try:
-        import pedalboard
-
-        return True, f"pedalboard {pedalboard.__version__}"
-    except Exception as exc:
-        return False, f"{exc}. Install with: pip install pedalboard"
-
-
 def _pulse() -> tuple:
     try:
         from .backend import connect_pulse
@@ -87,16 +78,6 @@ def _jack() -> tuple:
                        f"'pip install JACK-Client'.{extra}")
 
 
-def _pw_link() -> tuple:
-    from .linker import PwLinker
-
-    if PwLinker().available():
-        return True, "pw-link works"
-    from .distro import install_hint
-
-    return False, f"pw-link not found or PipeWire not running. To install: {install_hint(['pipewire', 'pwlink', 'session'])}"
-
-
 def _vst3() -> tuple:
     from .effects import scan_vst3, vst3_search_paths
     from .model import Mixer
@@ -126,16 +107,9 @@ def _engine() -> tuple:
         parts["audio client"] = "rust" if hasattr(sluice_dsp, "JackEngine") and not off else "python"
     except Exception as exc:
         parts["audio client"] = f"python ({type(exc).__name__}: {exc})"  # the Rust module is missing or broken: say why
-    text = ", ".join(f"{k}: {v}" for k, v in parts.items())
-    if spectral.RUST_VERSION:
-        text += f" (Rust engine version {spectral.RUST_VERSION}: numbered apart from Sluice, so it can be older)"
-        if spectral.rust_is_older():
-            text += f". This Sluice comes with engine {spectral.RUST_EXPECTED}; run ./install.sh again in the Sluice folder to rebuild it (fixes made since are not in your copy)"
-    elif spectral.RUST_ERROR:
-        text += f" (the Rust build could not be used: {spectral.RUST_ERROR})"
-    elif not os.environ.get("SLUICE_NO_RUST"):
-        text += " (the Rust engine is not installed; Sluice works the same, using more CPU. ./install.sh builds it if Rust is present)"
-    return True, text
+    # 0.12.0: which parts run where, only. Whether the Rust engine is here, its version and whether it is older than this Sluice's
+    # are said once: by the setup check's Rust line (and, in the bug report, its "Audio engine" line at the top).
+    return True, ", ".join(f"{k}: {v}" for k, v in parts.items())
 
 
 def _launcher() -> tuple:
@@ -150,14 +124,11 @@ def _launcher() -> tuple:
 
 
 def run_checks() -> list:
-    """[(name, ok, detail)]"""
+    """[(name, ok, detail)]: Sluice's own checks, then the parts of the setup check (setup_check.py, the same list as Settings).
+    A missing optional part is not a failure: its detail starts with "optional, missing"."""
     checks = [
         ("Python", lambda: (sys.version_info >= (3, 10), sys.version.split()[0])),
-        ("Audio engine", _engine),
-        ("pedalboard (effects + VST3)", _pedalboard),
-        ("PulseAudio protocol (pipewire-pulse)", _pulse),
-        ("JACK client (pipewire-jack)", _jack),
-        ("pw-link", _pw_link),
+        ("Audio parts (Rust or Python)", _engine),
         ("Sound card inputs", _cards),
         ("VST3 plugins", _vst3),
         ("Applications-menu launcher", _launcher),
@@ -169,11 +140,30 @@ def run_checks() -> list:
         except Exception as exc:
             ok, detail = False, f"{type(exc).__name__}: {exc}"
         results.append((name, ok, detail))
+    from . import setup_check
+
+    for r in setup_check.check_all():
+        kind = "needed" if r.part.required else "optional"
+        if not r.applies or r.ok is None:
+            results.append((r.part.name, True, f"{kind}, {r.reason}"))
+        elif r.ok:
+            results.append((r.part.name, True, r.reason))
+        else:
+            detail = f"{r.reason}" + (f". To install: {r.command}" if r.command else "")
+            results.append((r.part.name, not r.part.required, detail if r.part.required else f"optional, missing: {detail}"))
     return results
 
 
-def report() -> tuple:
-    """(text, all ok)"""
-    results = run_checks()
-    lines = [f"{'OK  ' if ok else 'FAIL'} {name}: {detail}" for name, ok, detail in results]
+def report(engine_line: bool = True) -> tuple:
+    """(text, all ok). The bug report says the engine once, in its own summary line, so it leaves out the setup check's Rust line
+    (``engine_line=False``)."""
+    results = [r for r in run_checks() if engine_line or r[0] != "Rust (the faster audio engine)"]
+    def mark(ok, detail):
+        if not ok:
+            return "FAIL"
+        if detail.startswith("optional, missing"):
+            return "MISS"
+        return "--  " if detail.startswith(("optional, not used", "optional, checked", "needed, checked")) else "OK  "
+
+    lines = [f"{mark(ok, detail)} {name}: {detail}" for name, ok, detail in results]
     return "\n".join(lines), all(ok for _, ok, _ in results)

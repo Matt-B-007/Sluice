@@ -230,6 +230,7 @@ def _desktop(install: bool) -> int:
 def _run_gui(args, log_file: Optional[Path]) -> int:
     lock = None
     notice = ""
+    setup_needed = False  # audio could not start: open Settings at the Setup check (0.12.0)
     if args.demo:
         parts = _demo_parts()
         notice = "Demo mode: nothing is routed and your settings are not saved."
@@ -257,6 +258,7 @@ def _run_gui(args, log_file: Optional[Path]) -> int:
             print(f"sluice: {exc}\nStarting in demo mode. Run 'sluice --diagnose' to see what is missing.\n"
                   f"To install the usual missing parts (PipeWire and its JACK library): {hint}", file=sys.stderr)
             parts = _demo_parts()
+            setup_needed = True  # 0.12.0: the window opens Settings at the Setup check, which says what is missing
             notice = (f"Could not start audio ({exc}); running in demo mode. Often the PipeWire JACK library is missing: "
                       f"{hint}. Then run sluice --diagnose.")
     system, io, linker = parts
@@ -303,6 +305,10 @@ def _run_gui(args, log_file: Optional[Path]) -> int:
 
     engine = Engine(mixer, system, io, linker, catalog=Catalog.scan())
     engine.start()
+    if getattr(args, "finish_move", None):
+        from . import update_install
+        moved = update_install.finish_move(Path(args.finish_move))
+        notice = f"{notice} {moved}".strip()
     window = MainWindow(engine, config_file=config_file, notice=notice)
     from .ui_controllers import Controls
 
@@ -311,6 +317,8 @@ def _run_gui(args, log_file: Optional[Path]) -> int:
         window.start_minimized()
     else:
         window.show()
+    if setup_needed:
+        QTimer.singleShot(500, lambda: window.open_settings("Setup check"))
 
     app.aboutToQuit.connect(window.shutdown)
     signal.signal(signal.SIGINT, lambda *_: app.quit())  # Ctrl+C in a terminal; the timers let Python see it
@@ -363,6 +371,7 @@ def main(argv: Optional[list] = None) -> int:
     parser.add_argument("--dry-run", action="store_true", help="with --uninstall: show what would be removed and change nothing")
     parser.add_argument("--minimized", action="store_true", help="start with the window minimized (to the tray if \"Keep running in the tray\" is chosen, otherwise to the taskbar)")
     parser.add_argument("--startup", action="store_true", help=argparse.SUPPRESS)  # only the launcher script uses this
+    parser.add_argument("--finish-move", metavar="OLD", help=argparse.SUPPRESS)  # 0.12.0: the moved copy deletes the old folder
     parser.add_argument("--autostart", choices=["off", "window", "minimized"], help="start Sluice when you log in: with the window open, minimized, or never")
     parser.add_argument("--screenshot", metavar="PNG", help=argparse.SUPPRESS)  # developer option
     args = parser.parse_args(args_list)

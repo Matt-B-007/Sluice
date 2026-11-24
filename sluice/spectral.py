@@ -239,7 +239,7 @@ PythonNoiseReducer, PythonEchoReducer, PythonJoint = NoiseReducer, EchoReducer, 
 BACKEND = "python"
 RUST_VERSION = ""
 RUST_ERROR = ""
-RUST_EXPECTED = "0.10.1"  # the engine in this Sluice; an older build still works, but lacks fixes made since
+RUST_EXPECTED = "0.11.0"  # the engine in this Sluice; an older build still works, but lacks fixes made since
 
 
 def rust_is_older(version=None, expected=None) -> bool:

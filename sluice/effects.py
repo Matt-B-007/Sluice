@@ -17,7 +17,8 @@ from typing import Callable, Optional
 
 import numpy as np
 
-from .model import Effect
+from .model import BUILTIN_NAMES, Effect  # the effects' names are written once, in model (0.12.0)
+from .voicefx import CeilingLimiter, LinkedCompressor, VoiceGate
 from .spectral import EchoReducer, Joint, NoiseReducer
 from . import spectral
 
@@ -71,6 +72,8 @@ class BuiltinDef:
 
 # Effects the Rust module (sluice_dsp) has: it matches pedalboard's maths (checked in tests/test_rust_effects.py).
 # VST3 plugins always stay on pedalboard (it is the plugin host).
+# (0.12.0: the gate, compressor and limiter are voicefx.py's, one implementation for both engines; the Rust Compressor, NoiseGate
+# and Limiter stay in the engine for older Sluice versions only.)
 NATIVE_NAMES = ("Gain", "HighpassFilter", "LowShelfFilter", "PeakFilter", "HighShelfFilter", "Compressor", "NoiseGate", "Limiter")
 
 
@@ -158,6 +161,13 @@ class Stage:
     def activity_db(self) -> float:
         """How much this effect is turning the voice down right now (0 or negative dB); read from the window."""
         return float(getattr(self._processor, "activity_db", 0.0)) if self._processor is not None else 0.0
+
+
+class PlainStage(Stage):
+    """A processor (0.12.0: the gate, compressor and limiter, see voicefx.py) that runs on its own, not joined with the
+    spectral reducers into one pass."""
+
+    spectral = False
 
 
 class NativeRun:
@@ -283,7 +293,10 @@ class Chain:
             if tap and index == tap[1]:
                 flush()
                 self._tap_out = len(self._parts)
-            if isinstance(item, Stage):
+            if isinstance(item, PlainStage):
+                flush()
+                self._parts.append(item)
+            elif isinstance(item, Stage):
                 if native_run or run:
                     flush()
                 spectral_run.append(item)
@@ -331,16 +344,6 @@ def _direct(*plugin_factories):
     return build
 
 
-def _build_compressor(pb, v):
-    comp = pb.Compressor(
-        threshold_db=v["threshold_db"], ratio=v["ratio"], attack_ms=v["attack_ms"], release_ms=v["release_ms"]
-    )
-    makeup = pb.Gain(gain_db=v["makeup_db"])
-    targets = {k: (0, k) for k in ("threshold_db", "ratio", "attack_ms", "release_ms")}
-    targets["makeup_db"] = (1, "gain_db")
-    return [comp, makeup], targets
-
-
 def _build_eq(pb, v):
     plugins = [
         pb.LowShelfFilter(cutoff_frequency_hz=v["low_hz"], gain_db=v["low_db"]),
@@ -356,15 +359,13 @@ def _build_eq(pb, v):
 
 
 def _build_highpass(pb, v):
-    """Two filters in a row. One of pedalboard's high-pass filters only falls 6 dB per octave, which barely touches
-    the 50-100 Hz rumble of an air conditioner, a fan or traffic; two in a row fall 12 dB per octave."""
+    """A 12 dB/octave Butterworth high-pass, -3 dB at the cutoff (0.12.0, the Rust engine 0.11.0 and later). Without it, two
+    first-order filters in a row as before: also 12 dB/octave far below the cutoff, but already 6 dB down at it."""
+    native = getattr(pb, "_native", None)
+    if native is not None and hasattr(native, "ButterworthHighPass"):
+        return [native.ButterworthHighPass(v["cutoff_frequency_hz"])], {"cutoff_frequency_hz": (0, "cutoff_frequency_hz")}
     plugins = [pb.HighpassFilter(cutoff_frequency_hz=v["cutoff_frequency_hz"]) for _ in range(2)]
     return plugins, {"cutoff_frequency_hz": [(0, "cutoff_frequency_hz"), (1, "cutoff_frequency_hz")]}
-
-
-def _build_limiter(pb, v):
-    return [pb.Limiter(threshold_db=v["threshold_db"], release_ms=v["release_ms"])], {
-        "threshold_db": (0, "threshold_db"), "release_ms": (0, "release_ms")}
 
 
 # Listed in the order they run (see model.BUILTIN_ORDER). The defaults are chosen for a speaking voice in an ordinary,
@@ -375,17 +376,17 @@ def _build_limiter(pb, v):
 # setting that depends on how loud your microphone is, so it is the one to adjust first.
 BUILTINS: dict = {
     "gain": BuiltinDef(
-        "Gain",
+        BUILTIN_NAMES["gain"],
         (ParamSpec("gain_db", "Gain", -24, 24, 0, "dB"),),
         _direct(lambda pb, v: pb.Gain(gain_db=v["gain_db"])),
     ),
     "highpass": BuiltinDef(
-        "High-pass",
+        BUILTIN_NAMES["highpass"],
         (ParamSpec("cutoff_frequency_hz", "Cutoff", 20, 500, 100, "Hz"),),
         _build_highpass,
     ),
     "echo_reducer": BuiltinDef(
-        "Echo Reducer",
+        BUILTIN_NAMES["echo_reducer"],
         (
             ParamSpec("reverb_time", "Room echo time", 0.2, 2.0, 0.6, "s"),
             ParamSpec("reduction_db", "Reduction", 0, 20, 9, "dB"),
@@ -397,7 +398,7 @@ BUILTINS: dict = {
              "sounds thin or watery, turn Reduction down. Together with the Noise Reducer it adds about 16 ms of delay.",
     ),
     "noise_reducer": BuiltinDef(
-        "Noise Reducer",
+        BUILTIN_NAMES["noise_reducer"],
         (ParamSpec("reduction_db", "Reduction", 0, 24, 12, "dB"),),
         None,
         stage=lambda v: Stage(lambda sr: NoiseReducer(sr), v),
@@ -406,18 +407,21 @@ BUILTINS: dict = {
              "thin or watery, turn Reduction down. Together with the Echo Reducer it adds about 16 ms of delay.",
     ),
     "noise_gate": BuiltinDef(
-        "Noise Gate",
+        BUILTIN_NAMES["noise_gate"],
         (
-            ParamSpec("threshold_db", "Threshold", -80, 0, -30, "dB"),
-            ParamSpec("ratio", "Ratio", 1, 20, 4, ":1"),
-            ParamSpec("attack_ms", "Attack", 0.1, 100, 3, "ms"),
-            ParamSpec("release_ms", "Release", 10, 1000, 100, "ms"),
+            ParamSpec("threshold_db", "Threshold", -80, 0, -40, "dB"),
+            ParamSpec("depth_db", "Depth", 0, 60, 24, "dB"),
+            ParamSpec("attack_ms", "Attack", 0.5, 50, 2, "ms"),
+            ParamSpec("hold_ms", "Hold", 0, 500, 120, "ms"),
+            ParamSpec("release_ms", "Release", 10, 1000, 150, "ms"),
         ),
-        _direct(lambda pb, v: pb.NoiseGate(
-            threshold_db=v["threshold_db"], ratio=v["ratio"], attack_ms=v["attack_ms"], release_ms=v["release_ms"])),
+        None,
+        stage=lambda v: PlainStage(lambda sr: VoiceGate(sr), v),
+        hint="Turns the room down between your words. Opens above the Threshold, stays open for the Hold time after you stop, "
+             "closes a little below the Threshold (so it does not flutter), and then turns the room down by the Depth.",
     ),
     "eq": BuiltinDef(
-        "3-Band EQ",
+        BUILTIN_NAMES["eq"],
         (
             ParamSpec("low_hz", "Low freq", 40, 500, 120, "Hz"),
             ParamSpec("low_db", "Low gain", -15, 15, -2, "dB"),
@@ -430,23 +434,29 @@ BUILTINS: dict = {
         _build_eq,
     ),
     "compressor": BuiltinDef(
-        "Compressor",
+        BUILTIN_NAMES["compressor"],
         (
             ParamSpec("threshold_db", "Threshold", -60, 0, -18, "dB"),
             ParamSpec("ratio", "Ratio", 1, 20, 3, ":1"),
-            ParamSpec("attack_ms", "Attack", 0.1, 100, 10, "ms"),
+            ParamSpec("attack_ms", "Attack", 1, 100, 10, "ms"),
             ParamSpec("release_ms", "Release", 10, 1000, 100, "ms"),
             ParamSpec("makeup_db", "Makeup gain", 0, 24, 2, "dB"),
         ),
-        _build_compressor,
+        None,
+        stage=lambda v: PlainStage(lambda sr: LinkedCompressor(sr), v),
+        hint="Evens out your volume: what goes over the Threshold is turned down by the Ratio, gently (a soft knee), and both "
+             "sides together so a stereo sound stays where it is. Makeup gain brings the whole back up.",
     ),
     "limiter": BuiltinDef(
-        "Limiter",
+        BUILTIN_NAMES["limiter"],
         (
             ParamSpec("threshold_db", "Ceiling", -20, 0, -2, "dB"),
             ParamSpec("release_ms", "Release", 10, 500, 60, "ms"),
         ),
-        _build_limiter,
+        None,
+        stage=lambda v: PlainStage(lambda sr: CeilingLimiter(sr), v),
+        hint="Nothing gets past the Ceiling: a shout or a bang is held just under it, and everything quieter comes out as it "
+             "went in.",
     ),
 }
 

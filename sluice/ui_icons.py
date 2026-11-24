@@ -20,7 +20,9 @@ NAMES = ("speaker", "speaker_off", "mic", "mic_off", "link", "sliders", "plus", 
          "broadcast", "chevron_up", "gamepad", "chat", "globe", "note", "bell",
          # 0.11.7: the ☰ panel and the Settings window
          "refresh", "columns", "rows", "widgets", "eye", "record", "camera", "fullscreen", "tray", "keyboard", "star", "pulse", "bug",
-         "palette", "power", "save", "close", "chevron_right", "wave", "folder", "info", "quit")
+         "palette", "power", "save", "close", "chevron_right", "wave", "folder", "info", "quit",
+         # 0.12.0: the setup check
+         "checklist")
 
 
 class _Grid:
@@ -224,6 +226,10 @@ def _draw(name: str, g: _Grid) -> None:
         g.circle(12, 12, 9)
         g.line(12, 11, 12, 17)
         g.circle(12, 7.5, 0.8, filled=True)
+    elif name == "checklist":
+        for y in (6, 12, 18):
+            g.poly([(3.5, y), (5, y + 2), (8.5, y - 2)])
+            g.line(12, y, 21, y)
     elif name == "quit":
         g.poly([(14, 4), (5, 4), (5, 20), (14, 20)])
         g.line(10, 12, 21, 12)

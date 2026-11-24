@@ -56,23 +56,22 @@ The same mixer in the light theme, in the Rows layout, and the first-run screen:
 ![Rows layout](docs/screenshot-rows.png)
 ![First run](docs/first-run.png)
 
-## What's new in 0.11.7
+## What's new in 0.12.0
 
-- **A new ☰ panel and a redrawn Settings window**, in one design: big tiles for muting your mic, adding a channel and refreshing; quick
-  mutes; Columns or Rows; and everything you use while mixing. What you set once now lives in Settings, which has a new *Backup and
-  reset* section.
-- **Glass that looks like glass.** On KDE Plasma the window is see-through and KWin blurs your wallpaper behind it; elsewhere Sluice paints
-  soft colour shapes behind frosted panes. Faders glow, and panes get more solid wherever text would be hard to read.
-- **Desktop widgets drag smoothly** on KDE (no more lag or jumping), snap only when you let go, and come back with Ctrl+Shift+W even after a
-  restart.
-- **Only the tray when minimized**, on Wayland too, and Ctrl+W hides Sluice into the tray.
-- **The default window fits five channels** again, and Tile tiles lost their empty band.
-- **Engine rebuild fixed** (it pointed at the wrong Python on some systems), and a *Rebuild the audio engine* button in Settings > Updates.
-- **Lighter on your computer:** far fewer helper processes while nothing changes, and no idle maths threads.
-- **A clearer bug report:** the engine and the last rebuild, the last update, each open widget, minimizing, and when the worst audio
-  block happened.
+A cleanup release.
 
-![The Glass skin, dark](docs/screenshot-glass.png)
+- **Voice effects fixed.** The limiter now never goes past its Ceiling and adds no gain of its own, so your voice may be a little
+  quieter than in 0.11. The compressor and gate listen to both channels together. The gate has Hold and a steadier close, and its
+  Ratio is now called Depth. With the Rust engine 0.11.0, the High-pass is a proper 12 dB per octave Butterworth filter. The voice
+  sounds the same with or without Rust.
+- **Setup check** in Settings: what Sluice needs and what it can use, whether it is here, and the command that installs it, with a
+  Copy button. It opens by itself if something needed is missing.
+- **Nothing left in your download folder.** `install.sh` installs Sluice in `~/.local/share/sluice`, adds it to the
+  applications menu and writes the `sluice` command, then offers to delete the folder you downloaded. Installed before?
+  *Settings > Updates > Move* does it for you.
+- **The Original skin is retired** (its settings show Calm), along with the menu bar and everything that was in two places.
+- **Lined up:** faders and meters sit centred as pairs, Nexus names are centred under the ring, the Tile tray ends where the tiles end,
+  the effects window has no gap and opens without a stray focus ring, and device names are short (the full name is in the tooltip).
 
 The full list, and every earlier version, is in [CHANGELOG.md](CHANGELOG.md) (also under *Help > What's new in this version*).
 
@@ -97,14 +96,23 @@ and other musl-based systems (the Python audio packages have no wheels for them)
 Open the [latest release](https://github.com/Matt-B-007/Sluice/releases) and download the zip named **`sluice-vX.Y.Z.zip`** from the *Assets* list (not the green *Code* button, and not the *Source code* links, which unpack into a differently named folder). Or `git clone` the repository. Then:
 
 ```bash
-unzip sluice-v0.9.4.zip && cd sluice
+unzip sluice-v0.12.0.zip && cd sluice
 ./install.sh              # shows the package command for your distribution and asks before running it
 ./install.sh --dry-run    # only shows what it would do
 ```
 
-`install.sh` never removes packages, never uses root except for the one package command you approve, and puts
-everything else in a `.venv` folder inside `sluice/`. Add `--desktop` to also add Sluice to the applications menu,
-`--yes` to skip the question, `--no-system` if you installed the packages yourself.
+That is the only command to type. `install.sh` never removes packages and never uses root except for the one package
+command you approve. It installs Sluice into its own folder, `~/.local/share/sluice/program` (with its own Python
+environment and, if Rust is installed, the faster engine), adds Sluice to your applications menu and writes the `sluice`
+command in `~/.local/bin`. **Nothing it needs stays in the folder you downloaded**: at the end it offers to delete that
+folder (it asks first, and never offers for a git clone), and the zip can go too. From then on everything is done
+in the app: updates, going back a version, rebuilding the engine and uninstalling.
+
+Options: `--yes` skips the questions (and keeps the download folder), `--no-system` if you installed the packages yourself,
+`--no-desktop` leaves the applications menu alone, `--in-place` installs in the folder itself (for working on Sluice's code).
+
+**Installed before 0.12.0?** Sluice then runs from the folder you downloaded. *Settings > Updates > Move* moves it to its
+own folder and deletes that one (your settings stay), restarting by itself; Sluice mentions this once.
 
 ### Supported distributions
 
@@ -118,6 +126,26 @@ everything else in a `.venv` folder inside `sluice/`. Add `--desktop` to also ad
 Only the Arch family has been run for real. The others use each distribution's documented package names and are
 covered by unit tests, but if one is wrong for your release, tell me with `sluice --report`.
 `sluice --diagnose` prints the right command for *your* distribution next to anything that is missing.
+
+#### The setup check
+
+*Settings > Setup check* lists everything Sluice uses from your system: what each part is for, whether Sluice needs it or can do
+without it, whether it is here (and why not), and the command that installs it on your distribution, with a **Copy** button.
+Sluice never installs anything itself. If a part Sluice needs is missing when it starts, this page opens by itself; an optional part
+(KDE's layer-shell and window-system libraries, kwriteconfig6, Rust for the faster engine, pedalboard for VST3 plugins, a system tray)
+is mentioned once, the first time it would be used. `sluice --diagnose`, the bug report and `install.sh` read the same list.
+
+| Part | Needed? | What for |
+|---|---|---|
+| pipewire-pulse | needed | finding apps and devices, moving apps onto channels |
+| pipewire-jack | needed | carrying the sound through the channels and mixes |
+| pw-link | needed | connecting Sluice to your microphones and outputs |
+| KDE layer-shell (LayerShellQt) | optional, Plasma on Wayland | desktop widgets that place themselves and stay on top |
+| KDE window system (KWindowSystem) | optional, Plasma | the blur behind Glass (it needs the same Qt version as Sluice's) |
+| kwriteconfig6 (KConfig) | optional, Plasma | the KWin rule that keeps widgets on top without layer-shell |
+| Rust | optional | the faster audio engine and the steeper high-pass filter |
+| pedalboard | optional | VST3 plugins |
+| a system tray | optional | keeping Sluice in the tray when its window is closed |
 
 #### Other distributions
 
@@ -175,15 +203,10 @@ Use **Sluice (Mic)** wherever a program asks for your microphone, and **Sluice (
 
 ## Starting Sluice from the desktop
 
-After installing, run this once:
-
-```bash
-.venv/bin/sluice --install-desktop
-```
-
-(or use *Settings > Startup and background > Add Sluice to the applications menu* inside the app). It writes a launcher and an icon into your own
-folders (`~/.local/share/applications` and `~/.local/share/icons`), and nothing needs root. Then search for **Sluice**
-in your launcher. `sluice --uninstall-desktop` removes both again. If you move the Sluice folder, run the command again.
+`install.sh` adds Sluice to the applications menu (since 0.12.0; `--no-desktop` skips it). To add it later, use
+*Settings > Startup and background > Add Sluice to the applications menu* or run `sluice --install-desktop`. It writes a
+launcher and an icon into your own folders (`~/.local/share/applications` and `~/.local/share/icons`), and nothing needs
+root. Then search for **Sluice** in your launcher. `sluice --uninstall-desktop` removes both again.
 
 **If clicking it does nothing:** the menu entry has no terminal, so any error would vanish. Sluice's launcher keeps
 them in `~/.local/state/sluice/launcher.log`; read the last lines (`tail -20 ~/.local/state/sluice/launcher.log`). The most
@@ -285,13 +308,13 @@ To watch what it is doing while you test: `tail -f ~/.local/state/sluice/sluice.
 ## The menus
 
 The ☰ button in the top bar opens one panel; the ⚙ button beside it opens the Settings window. Both are drawn in the same design, and
-everything in them works from the keyboard (the arrow keys or Tab to move, Enter or Space to use, Escape to close). In the Original
-skin, the menus are in a menu bar across the top, as in 0.9.7.
+everything in them works from the keyboard (the arrow keys or Tab to move, Enter or Space to use, Escape to close). Columns and Rows
+are the two buttons at the top right (and in Settings).
 
 | Where | What is in it |
 |---|---|
-| **☰ panel** | Three tiles: Mute my mic (Ctrl+M), Add channel (Ctrl+N), Refresh (F5). *Quick mutes:* Listen (Ctrl+Shift+L), Broadcast (Ctrl+Shift+B), Hear Broadcast (Ctrl+H). *Layout:* Columns (Ctrl+1), Rows (Ctrl+2). *Mixer and desktop:* Desktop widgets, Show or hide my widgets (Ctrl+Shift+W), Recording mix, Recording devices for OBS, Full screen (F11), Hide to tray (Ctrl+W). *Help:* Keyboard shortcuts (F1), What's new, I heard a glitch (Ctrl+Shift+G), Save bug report, Report a problem, GitHub, Discord, About. At the bottom: Settings… (Ctrl+,) and Quit (Ctrl+Q) |
-| **Settings** (the ⚙ button, Ctrl+,) | *Themes and skins* (the skin, with a picture of each in your theme; the theme; see-through window for Glass on KDE; the skin's own colours; reduce effects; the layout; the desktop widgets' own skin and theme), *Audio* (the buffer), *Startup and background*, *Controllers* (MIDI and Stream Deck), *Updates* (automatic updates, check now, go back a version, rebuild the audio engine, uninstall) and *Backup and reset* (save, import and export your settings, restore an earlier copy, open Sluice's folders, reset everything) |
+| **☰ panel** | Three tiles: Mute my mic (Ctrl+M), Add channel (Ctrl+N), Refresh (F5). *Quick mutes:* Listen (Ctrl+Shift+L), Broadcast (Ctrl+Shift+B), Hear Broadcast (Ctrl+H). *Mixer and desktop:* Desktop widgets, Show or hide my widgets (Ctrl+Shift+W), Recording mix, Recording devices for OBS, Full screen (F11), Hide to tray (Ctrl+W). *Help:* Keyboard shortcuts (F1), What's new, I heard a glitch (Ctrl+Shift+G), Save bug report, Report a problem, GitHub, Discord, About. At the bottom: Settings… (Ctrl+,) and Quit (Ctrl+Q) |
+| **Settings** (the ⚙ button, Ctrl+,) | *Themes and skins* (the skin, with a picture of each in your theme; the theme; see-through window for Glass on KDE; the skin's own colours; reduce effects; the layout; the desktop widgets' own skin and theme), *Audio* (the buffer), *Startup and background*, *Controllers* (MIDI and Stream Deck), *Updates* (automatic updates, check now, go back a version, rebuild the audio engine, uninstall), *Setup check* (what Sluice uses from your system, whether it is there, and the command that installs it) and *Backup and reset* (save, import and export your settings, restore an earlier copy, open Sluice's folders, reset everything) |
 
 Settings are saved automatically a few seconds after every change and when you quit (see *Saving*). **Import settings** checks the file, keeps your current settings as
 `config.before-import.json`, and takes effect the next time Sluice starts; quitting does not overwrite the imported file.
@@ -300,14 +323,14 @@ Settings are saved automatically a few seconds after every change and when you q
 
 *Help > Uninstall Sluice...* (or `./uninstall.sh`) lists exactly what it will remove and asks first. Two choices:
 
-- **Uninstall, keep my settings:** removes the launcher and apps-menu entry, autostart, Sluice's virtual devices, logs, and the install
-  folder, but leaves `~/.config/sluice` so a later install picks up where you left off.
+- **Uninstall, keep my settings:** removes the launcher and apps-menu entry, autostart, the `sluice` command, Sluice's virtual devices,
+  logs, and the install folder (`~/.local/share/sluice`), but leaves `~/.config/sluice` so a later install picks up where you left off.
 - **Remove everything:** the same, plus your settings.
 
 Also: a tick-box **Also clear download caches** (pip and cargo, off by default, because other programs share them); if the install folder is a
 git clone, a question whether to delete the `.git` folder too; and at the end a check that says *nothing of Sluice is left* or lists exactly what
 is. What stays: system packages you installed (PipeWire, the JACK library), shared caches, and files Sluice did not create.
-From a terminal: `./uninstall.sh [--keep-settings] [--clear-caches] [--remove-git-folder] [--dry-run] [--yes]`
+From a terminal: `sluice --uninstall` or, in the install folder, `./uninstall.sh [--keep-settings] [--clear-caches] [--remove-git-folder] [--dry-run] [--yes]`
 (`--dry-run` only lists, `--yes` does not ask).
 
 ## Desktop widgets
@@ -348,8 +371,8 @@ paints soft shapes in your theme's colours behind the panes. Either way the pane
 *Settings > Themes and skins > Theme* lists **Dark** (the default), **Light**, **High contrast**, **Retro Purple**, **Midnight Blue**,
 **Amber Console**, **Paper** and **Match my system** (follows your desktop's light or dark setting while Sluice runs).
 **Get more themes...** opens the [`themes/`](themes/) folder of this project: 21 more themes with previews.
-Every theme works in every skin (a *theme* is the colours; a *skin* is how things are shaped and drawn: Calm, Original, Nexus,
-Tile or Glass): the raised keys, glass, shadows and grooves are worked out from its own colours.
+Every theme works in every skin (a *theme* is the colours; a *skin* is how things are shaped and drawn: Calm, Nexus,
+Tile or Glass; the Original skin of 0.9.7 was retired in 0.12.0, and settings that chose it show Calm): the raised keys, glass, shadows and grooves are worked out from its own colours.
 Download one and use *Import theme*. A check mark shows the one in use. The level
 meters' green-to-red colours, the Mute red and the Limiter teal are the same in every theme so they always mean the same thing.
 
@@ -452,21 +475,22 @@ several of them are easy to tell apart. Each save writes one file, and the newes
 Everything on the mixer can be driven from outside while Sluice is running.
 
 **Any button or script: `sluice ctl`.** Give each Stream Deck button a command to run. Use the full path to the
-program, because the virtual environment is not on your `PATH`:
+program (`~/.local/share/sluice/program/.venv/bin/sluice`, or `~/.local/bin/sluice`), because a Stream Deck app may not
+search your `PATH`:
 
 ```bash
-/path/to/sluice/.venv/bin/sluice ctl mute mic                                  # toggle Mic mute (both mixes)
-/path/to/sluice/.venv/bin/sluice ctl mute music --mix listen                   # toggle Music in Listen only
-/path/to/sluice/.venv/bin/sluice ctl level music --mix listen --step=-2        # 2 dB quieter (use --step=2 for louder)
-/path/to/sluice/.venv/bin/sluice ctl level game --set -10                      # set to exactly -10 dB
-/path/to/sluice/.venv/bin/sluice ctl master broadcast --step=-3                # the Broadcast master
-/path/to/sluice/.venv/bin/sluice ctl master-mute broadcast on                  # on, off or toggle
-/path/to/sluice/.venv/bin/sluice ctl assign firefox music                      # send an app to a channel ('none' releases it)
-/path/to/sluice/.venv/bin/sluice ctl mic-mute toggle                           # mute every microphone, Sluice (Mic) included (on, off, toggle)
-/path/to/sluice/.venv/bin/sluice ctl meters                                     # the live levels, 0 to 1, once
-/path/to/sluice/.venv/bin/sluice ctl watch                                      # the live levels 10 times a second until Ctrl+C
-/path/to/sluice/.venv/bin/sluice ctl hear-broadcast                            # check the audience mix in your own output (on, off, toggle)
-/path/to/sluice/.venv/bin/sluice ctl status                                    # print every level and mute
+~/.local/bin/sluice ctl mute mic                                  # toggle Mic mute (both mixes)
+~/.local/bin/sluice ctl mute music --mix listen                   # toggle Music in Listen only
+~/.local/bin/sluice ctl level music --mix listen --step=-2        # 2 dB quieter (use --step=2 for louder)
+~/.local/bin/sluice ctl level game --set -10                      # set to exactly -10 dB
+~/.local/bin/sluice ctl master broadcast --step=-3                # the Broadcast master
+~/.local/bin/sluice ctl master-mute broadcast on                  # on, off or toggle
+~/.local/bin/sluice ctl assign firefox music                      # send an app to a channel ('none' releases it)
+~/.local/bin/sluice ctl mic-mute toggle                           # mute every microphone, Sluice (Mic) included (on, off, toggle)
+~/.local/bin/sluice ctl meters                                     # the live levels, 0 to 1, once
+~/.local/bin/sluice ctl watch                                      # the live levels 10 times a second until Ctrl+C
+~/.local/bin/sluice ctl hear-broadcast                            # check the audience mix in your own output (on, off, toggle)
+~/.local/bin/sluice ctl status                                    # print every level and mute
 ```
 
 Channels are named by their id or label (`mic`, `Music`), mixes by `listen` or `broadcast`. Most Linux Stream Deck
@@ -492,8 +516,10 @@ Rode or other device that shows up as a USB MIDI device should work through MIDI
 Built-in effects always run in this order, which is the usual order for a voice, and you cannot put them out of it:
 
 1. **Gain**: trim the level going in.
-2. **High-pass** (100 Hz): removes rumble, desk thumps and breath noise below the voice. It is two filters in a row
-   (12 dB per octave), because a single one falls too slowly to touch the 50-100 Hz hum of an air conditioner, a fan or traffic.
+2. **High-pass** (100 Hz): removes rumble, desk thumps and breath noise below the voice, 12 dB per octave, because a gentler
+   filter falls too slowly to touch the 50-100 Hz hum of an air conditioner, a fan or traffic. With the Rust engine (0.11.0 or
+   later) it is a Butterworth filter, 3 dB down at the cutoff and flat above it; without, two simpler filters in a row (6 dB down
+   at the cutoff).
 3. **Echo Reducer** (room echo time 0.6 s, reduction up to 9 dB): lowers the tail of the room's echo, the part that
    keeps going after a word ends, while you talk. It judges how fast your room's echo fades from the setting *Room echo
    time* (about 0.3 s for a carpeted room, 0.6 to 1 s for bare walls); set it to your room. It cannot remove the echo
@@ -504,14 +530,20 @@ Built-in effects always run in this order, which is the usual order for a voice,
 4. **Noise Reducer** (up to 12 dB): follows the steady part of the room's noise (fan, air conditioner, road hiss) and turns
    it down, also while you talk. It learns the noise from the quietest moments of the last second or two, so it
    needs a few seconds after it starts. It cannot tell a TV or other people talking from you.
-5. **Noise Gate** (threshold -30 dB, 4:1, attack 3 ms, release 100 ms): quiets the room between words. The 4:1
-   ratio is gentle, so it fades the noise out instead of chopping word endings, and the short release cuts the
-   echo tail between words.
+5. **Noise Gate** (threshold -40 dB, depth 24 dB, attack 2 ms, hold 120 ms, release 150 ms): quiets the room between
+   words. It listens to both channels together, opens at the threshold and closes only 4 dB below it (so a voice hovering
+   near the threshold does not make it flutter), stays open for the hold time after you stop (so word endings are not
+   cut), then turns the room down by the depth.
 6. **3-Band EQ**: a small cut around 250 Hz (the "boom" an echoing room adds), a slight cut below 120 Hz and a
    little air above 10 kHz.
-7. **Compressor** (3:1, threshold -18 dB, attack 10 ms, release 100 ms): takes a few dB off the loud parts so you
-   stay even; 2 dB of makeup gain brings the level back up.
-8. **Limiter** (ceiling -2 dB): catches the occasional shout.
+7. **Compressor** (3:1, threshold -18 dB, attack 10 ms, release 100 ms, a 6 dB soft knee): takes a few dB off the loud
+   parts so you stay even; 2 dB of makeup gain brings the level back up. Left and right are turned down together, so a
+   sound stays where it was between them.
+8. **Limiter** (ceiling -2 dB): catches the occasional shout. Nothing gets past the ceiling, and it adds no gain of its
+   own. Each mix's own limiter sits at -1 dB, so a voice that was limited here is not limited a second time.
+
+The gate, the compressor and the limiter are one Python implementation used with or without the Rust engine (0.12.0), so
+they sound the same either way.
 
 **These defaults are built for a noisy, echoing room** (an air conditioner or fan, a TV, road noise, bare walls), not a
 studio. They were compared against the older defaults on a simulated room (`python tools/tune_room.py` repeats the

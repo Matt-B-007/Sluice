@@ -8,7 +8,7 @@ from typing import Optional
 from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QFontMetrics, QGuiApplication, QPainter, QPixmap
 from PySide6.QtWidgets import (
-    QComboBox, QFrame, QHBoxLayout, QLabel, QMenu, QPushButton, QStyle, QStyleOptionComboBox, QStylePainter, QToolButton, QVBoxLayout,
+    QComboBox, QFrame, QHBoxLayout, QLabel, QMenu, QPushButton, QStyle, QStyleOptionComboBox, QStylePainter, QVBoxLayout,
     QWidget,
 )
 
@@ -16,8 +16,8 @@ from . import themes, ui_icons as icons
 from .engine import Engine
 from .model import MAX_DB, MIN_DB, Mix, MONITOR, RECORDING, STREAM
 from .ui_base import (
-    _icon_button, _is_nexus, _is_original, _is_tile, _label, _slot, _toggle, ElidedLabel, format_db, MIX_ICONS, MIX_MUTE_TIPS,
-    MIX_WIDTH, NONE_DATA, ORIGINAL_MIX_WIDTH, ReadoutEdit,
+    _icon_button, _is_nexus, _is_tile, _label, format_db, MIX_ICONS, MIX_MUTE_TIPS,
+    MIX_WIDTH, NONE_DATA, ReadoutEdit, short_device_name,
 )
 from .ui_meters import Fader, LevelMeter, NexusRing
 
@@ -54,15 +54,16 @@ class DeviceCombo(QComboBox):
     def populate(self, devices, current: Optional[str], default_description: Optional[str] = None) -> None:
         self.blockSignals(True)
         self.clear()
-        self.addItem(f"{default_description} (system default)" if default_description else "Default", "")
+        self.addItem(f"{short_device_name(default_description)} (system default)" if default_description else "Default", "")
         self.setItemData(0, "Follow the system default device", Qt.ItemDataRole.ToolTipRole)
         self.addItem("None", NONE_DATA)
         names = set()
         # stereo devices first; multichannel interfaces after them, labelled, because only their first two channels are used
         for device in sorted(devices, key=lambda d: d.channels > 2):
             multi = device.channels > 2
-            self.addItem(f"{device.description}  [{device.channels} channels]" if multi else device.description, device.name)
-            tip = device.name
+            short = short_device_name(device.description)  # 0.12.0: short in the list and on the card, whole in the tip
+            self.addItem(f"{short}  [{device.channels} channels]" if multi else short, device.name)
+            tip = f"{device.description}\n{device.name}"
             if multi:
                 tip += (f"\n{device.channels}-channel device: Sluice plays into its first two channels, which may not be "
                         "your headphones. If a stereo entry for the same hardware exists, use that.")
@@ -117,16 +118,12 @@ class MixStrip(QFrame):
         super().__init__()
         self.setObjectName("mix")
         self.rows = rows
-        self.original = _is_original(rows)
         self.ring = None
         self.key = None
         if not rows:
-            self.setFixedWidth(ORIGINAL_MIX_WIDTH if self.original else MIX_WIDTH + (12 if _is_tile() else 0))  # Tile: + the key's sides
+            self.setFixedWidth(MIX_WIDTH + (12 if _is_tile() else 0))  # Tile: + the key's sides
         self.mix, self.engine = mix, engine
         self.tile_key = False
-        if self.original:
-            self._build_original(mix, on_remove)
-            return
         if _is_tile() and not rows:  # the Tile look: a short key with a sideways slider (0.11.5)
             from .ui_tile import build_mix_key
             build_mix_key(self, mix, on_remove, on_add_recording)
@@ -149,20 +146,23 @@ class MixStrip(QFrame):
                 color = themes.color("mute")
             self.ring = NexusRing(color, lambda ratio, mix=mix: self._ring_icon(ratio))
             layout.addWidget(self.ring, 0, Qt.AlignmentFlag.AlignHCenter)
-            from .ui_nexus import glass_edge_sheet
-            self.setStyleSheet(glass_edge_sheet("mix", color))
+            from .ui_nexus import card_edge_sheet
+            self.setStyleSheet(card_edge_sheet("mix", color))
 
         head = QHBoxLayout()
         head.setSpacing(8)
         names = QVBoxLayout()
         names.setSpacing(4)
-        eyebrow = _label(MIX_EYEBROWS.get(mix.id, "MIX"), "tag", center=False)
+        nexus = _is_nexus(rows)  # 0.12.0: Nexus centres the eyebrow and the name under the ring
+        eyebrow = _label(MIX_EYEBROWS.get(mix.id, "MIX"), "tag", center=nexus)
         eyebrow.setProperty("mix", mix.id)
         eyebrow.setProperty("narrow", True)  # 11 px, no letter spacing: FOR YOUR AUDIENCE must fit the card even in a wider fallback font
         names.addWidget(eyebrow)
         self.setProperty("mix", mix.id)
         title = QLabel(mix.label)
         title.setObjectName("title")
+        if nexus:
+            title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         names.addWidget(title)
         head.addLayout(names, 1)
         self.readout = ReadoutEdit(None)
@@ -214,7 +214,7 @@ class MixStrip(QFrame):
         self.meter.setAccessibleName(f"{mix.label} meter")
         if rows:
             layout.addStretch(1)
-            if themes.current_look() == "nexus":  # 0.11.6: the ring at 48 px, in the room between the device and the slider
+            if themes.current_skin() == "nexus":  # 0.11.6: the ring at 48 px, in the room between the device and the slider
                 mixc = themes.mix_colors(themes._current)
                 color = mixc.get({MONITOR: "listen", STREAM: "broadcast"}.get(mix.id, ""), themes.color("accent"))
                 self.ring = NexusRing(themes.color("mute") if mix.id == RECORDING else color, lambda ratio: self._ring_icon(ratio),
@@ -225,7 +225,7 @@ class MixStrip(QFrame):
             layout.addWidget(self.fader)
         else:
             row = QHBoxLayout()
-            row.setSpacing(40)
+            row.setSpacing(16)  # 0.12.0: the fader and its meter as one pair (40 px apart they read as two things)
             row.addStretch(1)
             row.addWidget(self.fader)
             row.addWidget(self.meter)
@@ -285,94 +285,6 @@ class MixStrip(QFrame):
         self.sync_from_model()
         self.refresh_theme()
 
-    def _build_original(self, mix: Mix, on_remove) -> None:
-        """The master card of 0.9.7: FOR YOU, the name, a hint, the device, the fader and meter, the level, M and LIM. The same parts
-        as the Calm card, so everything still works (the optional Recording mix has its own strip beside the cards)."""
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(6)
-        eyebrow = ElidedLabel(MIX_EYEBROWS.get(mix.id, "MIX"), tip_when_cut=True)  # a wider fallback font ends in "..." instead of being cut
-        eyebrow.setObjectName("tag")
-        eyebrow.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        eyebrow.setProperty("narrow", True)  # 11 px, no letter spacing
-        layout.addWidget(eyebrow)
-        title = _label(mix.label, "title")
-        self.menu_button = None
-        if on_remove is None:
-            layout.addWidget(title)
-        else:
-            head = QHBoxLayout()
-            head.setSpacing(0)
-            head.addWidget(title, 1)
-            self.menu_button = QToolButton()
-            self.menu_button.setObjectName("menu")
-            self.menu_button.setText("\u22ee")
-            self.menu_button.setToolTip("Options for this mix")
-            self.menu_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-            menu = QMenu(self.menu_button)
-            menu.addAction("Remove the Recording mix\u2026", on_remove)
-            self.menu_button.setMenu(menu)
-            head.addWidget(self.menu_button)
-            layout.addLayout(head)
-        self.combo = None
-        self.device_button = None
-        if mix.kind == MONITOR:
-            layout.addWidget(_label("You hear this", "hint"))
-            self.combo = DeviceCombo("")
-            self.combo.setFixedHeight(34)
-            self.combo.setToolTip("Where you hear the mix")
-            self.combo.setAccessibleName("Listen output device")
-            self.combo.activated.connect(self._on_device)
-            layout.addWidget(_slot(self.combo, 34))
-        else:
-            layout.addWidget(_label("Audience hears this" if mix.id == STREAM else "Recorder hears this", "hint"))
-            self.device_button = QPushButton(f"Record from\n\u201c{mix.source_description}\u201d")
-            self.device_button.setObjectName("hintbutton")
-            self.device_button.setCursor(Qt.CursorShape.PointingHandCursor)
-            self.device_button.setToolTip(f"The device your streaming or recording app should pick: \u201c{mix.source_description}\u201d. "
-                                          "Click to copy the name.")
-            self.device_button.clicked.connect(self._copy_device_name)
-            layout.addWidget(_slot(self.device_button, 30))
-        self.fader, self.meter = Fader(), LevelMeter()
-        self.fader.setAccessibleName(f"{mix.label} level")
-        self.fader.gainChanged.connect(self._on_gain)
-        self.meter.setAccessibleName(f"{mix.label} meter")
-        row = QHBoxLayout()
-        row.setSpacing(2)
-        row.addStretch(1)
-        row.addWidget(self.fader)
-        row.addWidget(self.meter)
-        row.addStretch(1)
-        layout.addLayout(row, 1)
-        self.hear = None
-        self.add_button = None
-        if mix.kind == MONITOR:
-            self.hear = _toggle("Hear Broadcast", "link",
-                                "Check what your audience hears: your output plays the Broadcast mix instead of the Listen mix. "
-                                "Turn it off to go back. It always starts off.")
-            self.hear.toggled.connect(self._on_hear)
-            layout.addWidget(self.hear)
-        self.readout = ReadoutEdit(None)
-        self.readout.setAccessibleName(f"{mix.label} level in decibels")
-        self.readout.setToolTip("Scroll over the number to change the level (hold Shift for fine steps), or click and type a level in dB (for example -6) and press Enter")
-        self.readout.wheel_steps = True
-        self.readout.wheeled.connect(self._wheel_gain)
-        self.readout.entered.connect(self._typed_gain)
-        layout.addWidget(self.readout)
-        buttons = QHBoxLayout()
-        buttons.setSpacing(4)
-        self.mute = _toggle("M", "mute")
-        self.limiter = _toggle("LIM", "limiter", "Limiter: stops peaks from clipping")
-        self.mute.setAccessibleName(f"Mute {mix.label}")
-        self.mute.toggled.connect(lambda on: self.engine.set_master_mute(self.mix.id, on))
-        self.mute.toggled.connect(lambda _on: self._show_toggles())
-        self.limiter.toggled.connect(lambda on: self.engine.set_limiter(self.mix.id, on))
-        buttons.addWidget(self.mute)
-        buttons.addWidget(self.limiter)
-        layout.addLayout(buttons)
-        self.sync_from_model()
-        self.refresh_theme()
-
     def paintEvent(self, event) -> None:
         if self.key is not None:
             p = QPainter(self)
@@ -401,8 +313,8 @@ class MixStrip(QFrame):
             if color != self.ring.color:
                 self.ring.set_color(color)
                 self.ring.refresh_source()
-                from .ui_nexus import floor_of, glass_edge_sheet
-                self.setStyleSheet(glass_edge_sheet("mix", color))
+                from .ui_nexus import floor_of, card_edge_sheet
+                self.setStyleSheet(card_edge_sheet("mix", color))
                 floor = floor_of(self)
                 if floor is not None:
                     floor.set_color(self, color)
@@ -416,16 +328,12 @@ class MixStrip(QFrame):
             self._show_toggles()
             return
         self.fader.set_fill(self.ring.color if self.ring is not None else themes.color("accent"))
-        if self.menu_button is not None and not self.original:
+        if self.menu_button is not None:
             self.menu_button.setIcon(icons.icon("more", themes.color("text_dim"), 20))
         self._show_toggles()
 
     def _show_toggles(self) -> None:
         muted = self.mute.isChecked()
-        if self.original:
-            self.mute.setToolTip(f"Muted: nobody hears {MIX_MUTE_TIPS.get(self.mix.id, 'this mix')}. Click to unmute." if muted
-                                 else "Mute this whole mix")
-            return
         size = 16 if self.tile_key else 20
         self.mute.setIcon(icons.icon("speaker_off" if muted else "speaker", themes.color("mute_fg" if muted else "text2" if self.tile_key
                                                                                         else "text"), size))

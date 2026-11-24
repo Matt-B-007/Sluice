@@ -394,18 +394,18 @@ def engine_summary(version: Optional[str] = None, expected: Optional[str] = None
     return line + ".\n"
 
 
-def look_summary() -> str:
+def skin_summary() -> str:
     """One line on what is on screen: the look, the layout shown (a saved Free, gone in 0.11.5, shows Columns) and whether effects are reduced."""
     from . import themes
     try:
         saved = json.loads(config_path().read_text(encoding="utf-8"))
     except (OSError, ValueError):
         saved = {}
-    look = themes.current_look()
+    skin = themes.current_skin()
     chosen = saved.get("layout", "columns") if isinstance(saved, dict) else "columns"
     shown = chosen if chosen in ("columns", "rows") else "columns"
     note = f" (saved as {chosen})" if shown != chosen else ""
-    return f"Skin: {look}. Layout shown: {shown}{note}. Effects reduced: {'yes' if themes.reduce_effects() else 'no'}.\n"
+    return f"Skin: {skin}. Layout shown: {shown}{note}. Effects reduced: {'yes' if themes.reduce_effects() else 'no'}.\n"
 
 
 _window_source = None  # a function returning what the window knows about its own arrangement (set by the window)
@@ -468,7 +468,7 @@ def build_report(log_lines: int = LOG_LINES) -> str:
         "Your user name, computer name, home folder, USB serial numbers and Bluetooth addresses are replaced.\n"
         "It still contains device names, app names and plugin file paths. Look it over before sharing it.\n"
         f"Created: {time.strftime('%Y-%m-%d %H:%M:%S %Z')} by Sluice {__version__}\n"
-        + look_summary()
+        + skin_summary()
         + window_summary()
         + _safe(engine_summary)
         + _safe(lambda: update_history(logs.log_path().read_text(encoding="utf-8", errors="replace")))
@@ -479,7 +479,7 @@ def build_report(log_lines: int = LOG_LINES) -> str:
         parts.append(_section("Window layout (position and size in pixels of the main parts)", window_layout()))
 
     try:
-        parts.append(_section("Self-check (sluice --diagnose)", diagnose_report()[0]))
+        parts.append(_section("Self-check (sluice --diagnose)", diagnose_report(engine_line=False)[0]))
     except Exception as exc:
         parts.append(_section("Self-check (sluice --diagnose)", f"(could not run: {exc})"))
 

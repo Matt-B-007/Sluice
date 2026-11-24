@@ -47,6 +47,9 @@ def restart_command(show_window: bool = False) -> list:
     command = [sys.executable] + argv[1:]
     if show_window:
         command = [part for part in command if part != "--minimized"]
+    if "--finish-move" in command:  # done once already (0.12.0)
+        at = command.index("--finish-move")
+        del command[at:at + 2]
     return command
 
 

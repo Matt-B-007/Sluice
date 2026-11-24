@@ -25,11 +25,11 @@ def test_there_are_28_themes():
     assert len(THEMES) == 28
 
 
-@pytest.mark.parametrize("look", list(themes.LOOKS))
-def test_small_text_handles_and_channel_colours_can_be_seen_in_every_theme(look):
+@pytest.mark.parametrize("skin", list(themes.SKINS))
+def test_small_text_handles_and_channel_colours_can_be_seen_in_every_theme(skin):
     problems = []
     for theme in THEMES:
-        c = themes.look_colors(theme, look)
+        c = themes.skin_colors(theme, skin)
         d = depth.depth_colors(c, flat=skin_tile.is_flat(c))
         for surface in ("panel", "bg", "surface2"):
             if themes.contrast_ratio(c["text_off"], c[surface]) < themes.TEXT_OFF_MINIMUM:
@@ -91,37 +91,38 @@ def test_a_theme_file_can_set_depth_colours_by_hand():
     assert depth.depth_colors(colors)["tray_top"] == "#123456"
 
 
-@pytest.mark.parametrize("look", ["nexus", "tile"])
-def test_look_colours_replace_only_dark_and_light(look):
-    themes.set_look_colors(True)
+@pytest.mark.parametrize("skin", ["nexus", "tile"])
+def test_look_colours_replace_only_dark_and_light(skin):
+    themes.set_skin_colors(True)
     try:
-        dark = themes.look_colors(themes.BUILT_IN["dark"], look)
+        dark = themes.skin_colors(themes.BUILT_IN["dark"], skin)
         assert dark["bg"] != themes.finish(themes.BUILT_IN["dark"].colors)["bg"]
         seen = {}
         for theme_id in ("purple", "midnight", "amber", "paper", "contrast"):
-            shown = themes.look_colors(themes.BUILT_IN[theme_id], look)
+            shown = themes.skin_colors(themes.BUILT_IN[theme_id], skin)
             assert shown["bg"] == themes.BUILT_IN[theme_id].colors["bg"], theme_id  # every other theme keeps its own colours
             seen[shown["bg"]] = theme_id
         assert len(seen) == 5  # and they all still look different from each other
-        light = themes.look_colors(themes.BUILT_IN["light"], look)
-        paper = themes.look_colors(themes.BUILT_IN["paper"], look)
+        light = themes.skin_colors(themes.BUILT_IN["light"], skin)
+        paper = themes.skin_colors(themes.BUILT_IN["paper"], skin)
         assert light["panel"] != paper["panel"]
-        themes.set_look_colors(False)
-        assert themes.look_colors(themes.BUILT_IN["dark"], look)["bg"] == themes.BUILT_IN["dark"].colors["bg"]
+        themes.set_skin_colors(False)
+        assert themes.skin_colors(themes.BUILT_IN["dark"], skin)["bg"] == themes.BUILT_IN["dark"].colors["bg"]
     finally:
-        themes.set_look_colors(True)
+        themes.set_skin_colors(True)
 
 
 def test_the_look_colours_setting_is_one_switch_and_old_settings_carry_over():
-    assert Mixer.demo().look_colors is True
+    assert Mixer.demo().skin_colors is True
     data = Mixer.demo().to_dict()
     assert data["look_colors"] is True and "nexus_colors" not in data and "tile_colors" not in data
     for old, expected in (({"nexus_colors": False, "tile_colors": False}, False), ({"nexus_colors": False}, True),
                           ({"tile_colors": False}, True), ({}, True), ({"look_colors": False, "nexus_colors": True}, False)):
         data = Mixer.demo().to_dict()
         data.pop("look_colors")
+        data.pop("skin_colors")
         data.update(old)
-        assert Mixer.from_dict(data).look_colors is expected, old
+        assert Mixer.from_dict(data).skin_colors is expected, old
 
 
 def test_a_theme_file_with_depth_colours_loads_and_exports_them(tmp_path):

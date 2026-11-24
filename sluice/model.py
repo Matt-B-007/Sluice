@@ -254,14 +254,14 @@ class Mixer:
         self.buffer_frames = DEFAULT_BUFFER  # used the next time Sluice starts
         self.auto_update = False  # download new releases in the background and install them when Sluice closes (off by default)
         self.layout = "columns"  # how the channels are laid out: "columns" (a card each) or "rows" (a line each); a saved "free" (gone in 0.11.5) loads as columns
-        self.widget_look = ""   # 0.11.6: the desktop widgets' own skin; "" is the same as the window
+        self.widget_skin = ""   # 0.11.6: the desktop widgets' own skin; "" is the same as the window
         self.widget_theme = ""  # ...and their own theme; "" is the same as the window
-        self.look_colors = True  # Nexus and Tile show their own colours on Dark (Tile on Light too); off: every theme keeps its own
+        self.skin_colors = True  # Nexus and Tile show their own colours on Dark (Tile on Light too); off: every theme keeps its own
         self.see_through = True  # 0.11.7: Glass on KDE makes the window itself see-through (KWin blurs the wallpaper behind it)
         self.reduce_effects = False  # Nexus: no shimmer on the rings and no waveform on the faders (for slow or busy machines)
         self.desktop_widgets: list = []  # widgets left on the desktop: [{kind, mix, channel, x, y}], see ui_widgets
         self.hidden_widgets: list = []  # 0.11.7: the ones Ctrl+Shift+W put away, kept so the same key brings them back after a restart
-        self.look = "calm"  # the shapes and sizes of the window ("calm", "original", "nexus", "tile" or "glass"), apart from the colour theme
+        self.skin = "calm"  # the skin: the shapes and sizes of the window ("calm", "nexus", "tile" or "glass"), apart from the colour theme
         self.theme = "dark"  # a theme id: dark, light, contrast, purple, system, or custom:<name> (an imported file)
         self.close_action = DEFAULT_CLOSE  # "quit", "minimize" (keep running in the taskbar) or "tray" (keep running in the system tray)
 
@@ -418,10 +418,14 @@ class Mixer:
             "close_action": self.close_action,
             "auto_update": self.auto_update,
             "theme": self.theme,
-            "look": self.look,
+            "skin": self.skin,
             "layout": self.layout,
-            "look_colors": self.look_colors,
-            "widget_look": self.widget_look,
+            "skin_colors": self.skin_colors,
+            "widget_skin": self.widget_skin,
+            # 0.12.0 renamed "look" to "skin"; the old keys are written too, so going back to 0.11 (Updates > Go back) keeps them
+            "look": self.skin,
+            "look_colors": self.skin_colors,
+            "widget_look": self.widget_skin,
             "widget_theme": self.widget_theme,
             "reduce_effects": self.reduce_effects,
             "see_through": self.see_through,
@@ -477,20 +481,26 @@ class Mixer:
         theme = data.get("theme")
         if isinstance(theme, str) and 0 < len(theme) <= 80:
             mixer.theme = theme  # an id that no longer exists simply shows the default theme
-        look = data.get("look")
-        if isinstance(look, str) and look in ("calm", "original", "nexus", "tile", "glass"):
-            mixer.look = look
+        skin = data.get("skin", data.get("look"))  # "look" before 0.12.0
+        if skin == "original":  # 0.12.0: the Original skin is retired; its settings show Calm (What's new says so)
+            skin = "calm"
+        if isinstance(skin, str) and skin in ("calm", "nexus", "tile", "glass"):
+            mixer.skin = skin
         if data.get("layout") in ("columns", "rows"):
             mixer.layout = data["layout"]  # the Free layout (before 0.11.5) and anything unknown stay Columns; Free's positions are dropped
-        if data.get("widget_look") in ("", "calm", "original", "nexus", "tile", "glass"):
-            mixer.widget_look = data["widget_look"]
+        widget_skin = data.get("widget_skin", data.get("widget_look"))
+        if widget_skin in ("", "calm", "nexus", "tile", "glass"):
+            mixer.widget_skin = widget_skin
+        elif widget_skin == "original":
+            mixer.widget_skin = "calm"
         widget_theme = data.get("widget_theme")
         if isinstance(widget_theme, str) and len(widget_theme) <= 80:
             mixer.widget_theme = widget_theme  # an id that no longer exists shows the window's theme
-        if isinstance(data.get("look_colors"), bool):
-            mixer.look_colors = data["look_colors"]
+        skin_colors = data.get("skin_colors", data.get("look_colors"))
+        if isinstance(skin_colors, bool):
+            mixer.skin_colors = skin_colors
         else:  # settings from before 0.11.5 had one switch for Nexus and one for Tile: off only if both were switched off
-            mixer.look_colors = not (data.get("nexus_colors") is False and data.get("tile_colors") is False)
+            mixer.skin_colors = not (data.get("nexus_colors") is False and data.get("tile_colors") is False)
         mixer.reduce_effects = data.get("reduce_effects") is True
         mixer.see_through = data.get("see_through") is not False
         for key_name in ("desktop_widgets", "hidden_widgets"):

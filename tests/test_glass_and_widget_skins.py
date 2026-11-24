@@ -17,9 +17,9 @@ from sluice.model import Mixer  # noqa: E402
 from sluice.ui import MainWindow  # noqa: E402
 
 
-def make(qapp, tmp_path, look="calm", theme="dark"):
+def make(qapp, tmp_path, skin="calm", theme="dark"):
     mixer = Mixer.demo()
-    mixer.look, mixer.theme = look, theme
+    mixer.skin, mixer.theme = skin, theme
     mixer.hints_seen.append("firstrun")
     engine = Engine(mixer, MockSystem(), NullIO(realtime=False), NullLinker())
     engine.start()
@@ -32,9 +32,9 @@ def make(qapp, tmp_path, look="calm", theme="dark"):
 
 
 def test_glass_is_a_skin_with_see_through_panes_on_a_tinted_backdrop():
-    assert themes.LOOKS["glass"] == "Glass"
+    assert themes.SKINS["glass"] == "Glass"
     for theme in ("dark", "light"):
-        sheet = themes.build_style(themes.look_colors(themes.BUILT_IN[theme], "glass"), "glass")
+        sheet = themes.build_style(themes.skin_colors(themes.BUILT_IN[theme], "glass"), "glass")
         assert "qlineargradient" in sheet.split("QWidget#root {")[1].split("}")[0]  # the backdrop wash (under the painted shapes)
         strip = sheet.split("QFrame#strip, QFrame#row, QFrame#mix {")[-1].split("}")[0]
         assert "rgba(" in strip and "border-top" in strip  # see-through, with a lit top edge
@@ -43,11 +43,11 @@ def test_glass_is_a_skin_with_see_through_panes_on_a_tinted_backdrop():
 
 def test_glass_skin_is_saved_and_loaded(tmp_path):
     mixer = Mixer.demo()
-    mixer.look, mixer.widget_look, mixer.widget_theme = "glass", "glass", "light"
+    mixer.skin, mixer.widget_skin, mixer.widget_theme = "glass", "glass", "light"
     engine = Engine(mixer, MockSystem(), NullIO(realtime=False), NullLinker())
     engine.save_config(tmp_path / "c.json")
     loaded = Mixer.load(tmp_path / "c.json")
-    assert (loaded.look, loaded.widget_look, loaded.widget_theme) == ("glass", "glass", "light")
+    assert (loaded.skin, loaded.widget_skin, loaded.widget_theme) == ("glass", "glass", "light")
 
 
 def test_an_unknown_widget_skin_is_the_window_s():
@@ -57,19 +57,19 @@ def test_an_unknown_widget_skin_is_the_window_s():
     folder = Path(tempfile.mkdtemp())
     (folder / "c.json").write_text(json.dumps({"widget_look": "chrome", "widget_theme": 5}))
     loaded = Mixer.load(folder / "c.json")
-    assert (loaded.widget_look, loaded.widget_theme) == ("", "")
+    assert (loaded.widget_skin, loaded.widget_theme) == ("", "")
 
 
 def test_dressed_as_swaps_the_skin_and_colours_and_puts_them_back():
-    themes.set_look("calm")
+    themes.set_skin("calm")
     themes.set_current(dict(themes.DARK))
-    before = (themes.current_look(), themes.color("panel"), themes.generation())
-    light = themes.look_colors(themes.BUILT_IN["light"], "glass")
+    before = (themes.current_skin(), themes.color("panel"), themes.generation())
+    light = themes.skin_colors(themes.BUILT_IN["light"], "glass")
     with themes.dressed_as("glass", light):
-        assert themes.current_look() == "glass" and themes.color("panel") == light["panel"]
+        assert themes.current_skin() == "glass" and themes.color("panel") == light["panel"]
         inside = themes.generation()
         assert inside < 0 and inside != before[2]
-    assert (themes.current_look(), themes.color("panel"), themes.generation()) == before
+    assert (themes.current_skin(), themes.color("panel"), themes.generation()) == before
     with themes.dressed_as("glass", light):
         assert themes.generation() == inside  # the same skin and colours keep the same number (caches keep their entry)
     with themes.dressed_as(None, None):
@@ -77,21 +77,21 @@ def test_dressed_as_swaps_the_skin_and_colours_and_puts_them_back():
 
 
 def test_the_widgets_can_have_their_own_skin_and_theme(qapp, tmp_path):
-    win, engine = make(qapp, tmp_path, look="calm", theme="dark")
+    win, engine = make(qapp, tmp_path, skin="calm", theme="dark")
     try:
         win.desktop.open("channel", channel="system")
         widget = win.desktop.open_widgets[("channel", None, "system")]
         assert win.desktop.dressing() == (None, None)  # the default: as the window
         seen = []
         original = widget.paintEvent
-        widget.paintEvent = lambda event: (seen.append((themes.current_look(), themes.color("panel"))), original(event))
-        win.set_widget_dress(look="glass", theme="light")
+        widget.paintEvent = lambda event: (seen.append((themes.current_skin(), themes.color("panel"))), original(event))
+        win.set_widget_dress(skin="glass", theme="light")
         widget.grab()
-        light_panel = themes.look_colors(themes.BUILT_IN["light"], "glass")["panel"]
+        light_panel = themes.skin_colors(themes.BUILT_IN["light"], "glass")["panel"]
         assert seen[-1] == ("glass", light_panel)
-        assert themes.current_look() == "calm" and engine.mixer.look == "calm"  # the window keeps its own
+        assert themes.current_skin() == "calm" and engine.mixer.skin == "calm"  # the window keeps its own
         assert widget.height() == widget.insets()[0] + widget.header_height() + 2 * 36 - 6 + widget.insets()[1]
-        win.set_widget_dress(look="", theme="")
+        win.set_widget_dress(skin="", theme="")
         widget.grab()
         assert seen[-1][0] == "calm"
     finally:
@@ -104,11 +104,11 @@ def test_the_settings_window_offers_the_widgets_skin_and_theme(qapp, tmp_path):
         win.open_settings()
         window = win.settings_window
         skins = [window.widget_skin.itemData(i) for i in range(window.widget_skin.count())]
-        assert skins == [""] + list(themes.LOOKS)
+        assert skins == [""] + list(themes.SKINS)
         assert window.widget_skin.itemText(0) == "Same as the window"
         window.widget_skin.setCurrentIndex(skins.index("glass"))
         window.widget_skin.activated.emit(skins.index("glass"))
-        assert engine.mixer.widget_look == "glass"
+        assert engine.mixer.widget_skin == "glass"
         index = window.widget_theme.findData("light")
         window.widget_theme.activated.emit(index)
         assert engine.mixer.widget_theme == "light"
@@ -151,9 +151,9 @@ def test_the_blur_function_name_is_the_one_kwindowsystem_exports():
 
 def test_every_skin_draws_a_preview(qapp):
     from sluice.ui_skins import BLURBS, draw_preview
-    for look in themes.LOOKS:
-        assert look in BLURBS
-        assert not draw_preview(look, themes.look_colors(themes.BUILT_IN["dark"], look)).isNull()
+    for skin in themes.SKINS:
+        assert skin in BLURBS
+        assert not draw_preview(skin, themes.skin_colors(themes.BUILT_IN["dark"], skin)).isNull()
 
 
 def test_blur_is_not_tried_when_the_system_qt_is_another_version_or_has_no_plugins(tmp_path):
@@ -180,7 +180,7 @@ def test_text_on_glass_panes_reads_over_what_is_behind_them(theme, see):
     the backdrop puts behind it (and, for a see-through window, over a white, black or grey wallpaper through the window's tint)."""
     from sluice import depth
     from sluice.skin_glass import backdrop_colours, glass_values
-    values = dict(themes.look_colors(themes.BUILT_IN[theme], "glass"))
+    values = dict(themes.skin_colors(themes.BUILT_IN[theme], "glass"))
     values.update(themes.mix_colors(values, "glass"))
     glass = glass_values(values, see)
     alpha = glass["glass_pane_alpha"]
@@ -197,7 +197,7 @@ def test_text_on_glass_panes_reads_over_what_is_behind_them(theme, see):
 def test_the_window_is_made_see_through_only_on_kde_with_blur_in_glass():
     from sluice import ui_glass
     mixer = Mixer.demo()
-    mixer.look = "glass"
+    mixer.skin = "glass"
 
     class Blur:
         available = True
@@ -212,7 +212,7 @@ def test_the_window_is_made_see_through_only_on_kde_with_blur_in_glass():
     assert not ui_glass.wants_see_through(mixer, kde, Blur())
     mixer.see_through, mixer.reduce_effects = True, True
     assert not ui_glass.wants_see_through(mixer, kde, Blur())
-    mixer.reduce_effects, mixer.look = False, "calm"
+    mixer.reduce_effects, mixer.skin = False, "calm"
     assert not ui_glass.wants_see_through(mixer, kde, Blur())
 
 
@@ -231,7 +231,7 @@ def test_glass_paints_a_backdrop_behind_the_panes_unless_effects_are_reduced(qap
     """Without a see-through window, Sluice paints soft shapes in the theme's colours behind the panes (the old flat gradient
     was too close to the panes' own colour for them to look like glass)."""
     from PySide6.QtGui import QColor
-    win, engine = make(qapp, tmp_path, look="glass")
+    win, engine = make(qapp, tmp_path, skin="glass")
     try:
         assert win.glass_backdrop.active()
         picture = win.centralWidget().grab().toImage()
@@ -247,23 +247,23 @@ def test_glass_paints_a_backdrop_behind_the_panes_unless_effects_are_reduced(qap
 
 def test_choosing_glass_while_running_says_the_window_turns_see_through_at_the_next_start(qapp, tmp_path, monkeypatch):
     from sluice import ui_glass
-    win, engine = make(qapp, tmp_path, look="calm")
+    win, engine = make(qapp, tmp_path, skin="calm")
     try:
-        monkeypatch.setattr(ui_glass, "wants_see_through", lambda mixer, *a: mixer.look == "glass")
-        win.choose_look("glass")
+        monkeypatch.setattr(ui_glass, "wants_see_through", lambda mixer, *a: mixer.skin == "glass")
+        win.choose_skin("glass")
         assert "next time Sluice starts" in win.status_label.text()
     finally:
         win.shutdown()
 
 
-@pytest.mark.parametrize("look", [look for look in themes.LOOKS if look != "glass"])
-def test_a_see_through_window_in_a_solid_skin_shows_nothing_through(look):
+@pytest.mark.parametrize("skin", [skin for skin in themes.SKINS if skin != "glass"])
+def test_a_see_through_window_in_a_solid_skin_shows_nothing_through(skin):
     """The window's see-through-ness is fixed at start; switching from Glass to another skin while it runs must leave the window
     solid: the window's body and its status bar are painted in the theme's background in every other skin."""
-    colors = themes.look_colors(themes.BUILT_IN["dark"], look)
-    sheet = themes.build_style(colors, look, see=True)
+    colors = themes.skin_colors(themes.BUILT_IN["dark"], skin)
+    sheet = themes.build_style(colors, skin, see=True)
     status = sheet.split("QStatusBar {")[1].split("}")[0]
     assert "background: #" in status and "rgba" not in status
     assert "rgba" not in sheet.split("QWidget#root")[1].split("}")[0] if "QWidget#root" in sheet else True
-    glass = themes.build_style(themes.look_colors(themes.BUILT_IN["dark"], "glass"), "glass", see=True)
+    glass = themes.build_style(themes.skin_colors(themes.BUILT_IN["dark"], "glass"), "glass", see=True)
     assert "rgba" in glass.split('QWidget#root[seethrough="true"] {')[1].split("}")[0]  # only Glass lets it through

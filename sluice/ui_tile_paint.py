@@ -3,11 +3,10 @@
 the icon well. Everything paints with the depth colours of the theme in use (``skin_tile.paint_colors``) and caches what it can."""
 from __future__ import annotations
 
-import numpy as np
 from typing import Optional
 
 from PySide6.QtCore import QPoint, QPointF, QRectF, Qt
-from PySide6.QtGui import QBrush, QColor, QFont, QImage, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtGui import QBrush, QColor, QFont, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import QFrame, QWidget
 
 from . import skin_tile, themes, ui_icons as icons
@@ -26,57 +25,10 @@ SCALE_MARKS = ((MIN_DB, "-∞"), (-40.0, "-40"), (-20.0, "-20"), (-10.0, "-10"),
 
 
 # ----------------------------------------------------------------------------- painting helpers
-_SHADOWS: dict = {}
-SHADOW_CACHE = 320
-
-
-def _box_blur(a: np.ndarray, r: int, axis: int) -> np.ndarray:
-    if r < 1:
-        return a
-    pad = [(0, 0), (0, 0)]
-    pad[axis] = (r + 1, r)
-    c = np.cumsum(np.pad(a, pad), axis=axis, dtype=np.float32)
-    n = 2 * r + 1
-    return (c[n:] - c[:-n]) / n if axis == 0 else (c[:, n:] - c[:, :-n]) / n
-
-
 def soft_shape(width: float, height: float, blur: int, alpha: float, color: str, ratio: float, radius: float = RADIUS) -> tuple:
-    """A blurred rounded rectangle (a shadow or a halo) as (pixmap, pad): draw it ``pad`` points up and left of the shape.
-    Blurred once with numpy (three box passes, close to a Gaussian) and cached by size, so it costs nothing to draw again."""
-    key = (round(width), round(height), blur, round(alpha, 3), color, round(ratio, 2), round(radius))
-    hit = _SHADOWS.get(key)
-    if hit is not None:
-        return hit
-    pad = blur * 2
-    w, h = max(1, int((width + 2 * pad) * ratio)), max(1, int((height + 2 * pad) * ratio))
-    mask = QImage(w, h, QImage.Format.Format_Grayscale8)
-    mask.fill(0)
-    p = QPainter(mask)
-    p.setRenderHint(QPainter.RenderHint.Antialiasing)
-    p.setPen(Qt.PenStyle.NoPen)
-    p.setBrush(QColor(255, 255, 255))
-    p.drawRoundedRect(QRectF(pad * ratio, pad * ratio, width * ratio, height * ratio), radius * ratio, radius * ratio)
-    p.end()
-    stride = mask.bytesPerLine()
-    a = np.frombuffer(mask.constBits(), dtype=np.uint8, count=stride * h).reshape(h, stride)[:, :w].astype(np.float32)
-    r = max(1, int(blur * ratio / 2))
-    for _ in range(3):
-        a = _box_blur(_box_blur(a, r, 0), r, 1)
-    a = np.clip(a * alpha, 0, 255).astype(np.uint8)
-    tint = QColor(color)
-    rgba = np.zeros((h, w, 4), dtype=np.uint8)
-    premultiply = a.astype(np.float32) / 255.0
-    rgba[..., 0] = (tint.blue() * premultiply).astype(np.uint8)   # ARGB32 in memory on little-endian machines: B, G, R, A
-    rgba[..., 1] = (tint.green() * premultiply).astype(np.uint8)
-    rgba[..., 2] = (tint.red() * premultiply).astype(np.uint8)
-    rgba[..., 3] = a
-    image = QImage(rgba.data, w, h, 4 * w, QImage.Format.Format_ARGB32_Premultiplied).copy()
-    pixmap = QPixmap.fromImage(image)
-    pixmap.setDevicePixelRatio(ratio)
-    while len(_SHADOWS) >= SHADOW_CACHE:  # the oldest first: Nexus keeps eight steps of glow for each card
-        _SHADOWS.pop(next(iter(_SHADOWS)))
-    _SHADOWS[key] = (pixmap, pad)
-    return pixmap, pad
+    """The one way Sluice makes a shadow or a halo (0.12.0: it lives in ui_paint); here with Tile's corner radius by default."""
+    from .ui_paint import soft_shape as make
+    return make(width, height, blur, alpha, color, ratio, radius)
 
 
 def paint_surface(p: QPainter, rect: QRectF, ratio: float, focus: Optional[str] = None, lifted: bool = False,
@@ -185,39 +137,24 @@ def stripe_brush(base: str, stripe: str) -> QBrush:
 
 
 def paint_groove(p: QPainter, shape: QPainterPath, track: QRectF, pc: dict) -> None:
-    """A groove pressed into the face: dark at its top edge (in shadow), a faint light line at its bottom edge."""
-    p.save()
-    p.setClipPath(shape)
-    shade = QLinearGradient(track.topLeft(), QPointF(track.left(), track.top() + min(5.0, track.height() / 2)))
-    shade.setColorAt(0.0, QColor(0, 0, 0, round(255 * pc["groove_shadow"] * 0.55)))
-    shade.setColorAt(1.0, QColor(0, 0, 0, 0))
-    p.fillRect(track, shade)
-    p.restore()
-    light = QColor(255, 255, 255, 230 if pc["light"] else 14)
-    p.setPen(QPen(light, 1))
-    r = track.height() / 2.0
-    p.drawLine(QPointF(track.left() + r, track.bottom() + 0.5), QPointF(track.right() - r, track.bottom() + 0.5))
+    """A groove pressed into the face: dark at its top edge (in shadow), a faint light line at its bottom edge. (``shape`` is
+    the groove's outline as the caller made it; ui_paint.groove makes the same one.)"""
+    from . import ui_paint
+    ui_paint.groove(p, track, None, round(255 * pc["groove_shadow"] * 0.55), 5.0,
+                    light_line=QColor(255, 255, 255, 230 if pc["light"] else 14))
 
 
-def paint_handle(p: QPainter, thumb: QRectF, pc: dict, muted: bool) -> None:
+def paint_handle(p: QPainter, thumb: QRectF, pc: dict, muted: bool, focus: Optional[QColor] = None) -> None:
     """A raised white handle with a soft shadow and a grip line."""
-    radius = min(thumb.width(), thumb.height()) / 2.0
-    p.setPen(Qt.PenStyle.NoPen)
-    p.setBrush(QColor(0, 0, 0, 70 if pc["light"] else 130))
-    p.drawRoundedRect(thumb.translated(0, 1.5), radius, radius)
+    from . import ui_paint
     if muted:
-        p.setBrush(QColor(pc["handle_muted"]))
+        brush = QColor(pc["handle_muted"])
     else:
-        gradient = QLinearGradient(thumb.topLeft(), thumb.bottomLeft())
-        gradient.setColorAt(0.0, QColor(pc["handle"]))
-        gradient.setColorAt(1.0, QColor(pc["handle_bottom"]))
-        p.setBrush(gradient)
-    if pc["light"]:
-        p.setPen(QPen(QColor(0, 0, 0, 30), 1))
-    p.drawRoundedRect(thumb, radius, radius)
-    p.setPen(QPen(QColor(0, 0, 0, 55), 1.2))
-    centre = thumb.center().x()
-    p.drawLine(QPointF(centre, thumb.top() + 5), QPointF(centre, thumb.bottom() - 5))
+        brush = QLinearGradient(thumb.topLeft(), thumb.bottomLeft())
+        brush.setColorAt(0.0, QColor(pc["handle"]))
+        brush.setColorAt(1.0, QColor(pc["handle_bottom"]))
+    ui_paint.handle(p, thumb, brush, QPen(QColor(0, 0, 0, 30), 1) if pc["light"] else None, 70 if pc["light"] else 130,
+                    grip=QColor(0, 0, 0, 55), focus=focus)
 
 
 def paint_slot(p: QPainter, rect: QRectF) -> None:
@@ -383,18 +320,20 @@ class TrayPainter:
     def reset(self) -> None:
         self._cache = None
 
-    def draw(self, widget: QWidget, p: QPainter) -> None:
+    def draw(self, widget: QWidget, p: QPainter, size=None) -> None:
+        """The tray over all of ``widget``, or (0.12.0) only its top-left ``size``: the part the tiles are in."""
         ratio = widget.devicePixelRatioF()
-        key = (widget.size(), ratio, themes.generation())
+        size = widget.size() if size is None else size
+        key = (size, ratio, themes.generation())
         if self._cache is None or key != self._key:
             pc = skin_tile.paint_colors()
-            pixmap = QPixmap(max(1, int(widget.width() * ratio)), max(1, int(widget.height() * ratio)))
+            pixmap = QPixmap(max(1, int(size.width() * ratio)), max(1, int(size.height() * ratio)))
             pixmap.setDevicePixelRatio(ratio)
             pixmap.fill(Qt.GlobalColor.transparent)
             q = QPainter(pixmap)
             q.setRenderHint(QPainter.RenderHint.Antialiasing)
             r = self.RADIUS
-            plate = QRectF(widget.rect()).adjusted(1, 1, -1, -1 - self.LIP)
+            plate = QRectF(0, 0, size.width(), size.height()).adjusted(1, 1, -1, -1 - self.LIP)
             q.setPen(Qt.PenStyle.NoPen)
             if not pc["flat"]:
                 pixmap_shadow, pad = soft_shape(plate.width() - 24, plate.height(), 16, pc["shadow_alpha"] * 0.9, pc["shadow_color"],
@@ -438,7 +377,29 @@ class TileTray(QWidget):
         self.tray.reset()
         self.update()
 
+    def content_size(self):
+        """0.12.0: the tray ends with the tiles: the area round the tiles (and the Add channel button) with the layout's margins,
+        not the whole of the scroll area. Empty, or before layout: all of it."""
+        from PySide6.QtCore import QRect, QSize
+        layout = self.layout()
+        shown = [w.geometry() for w in self.findChildren(QWidget) if w.parentWidget() is self and w.isVisible()]
+        if layout is None or not shown:
+            return self.size()
+        union = QRect(shown[0])
+        for rect in shown[1:]:
+            union = union.united(rect)
+        margins = layout.contentsMargins()
+        width = min(self.width(), union.right() + 1 + margins.right())
+        height = min(self.height(), union.bottom() + 1 + margins.bottom() + TrayPainter.LIP)
+        return QSize(max(width, 2 * TrayPainter.RADIUS), max(height, 2 * TrayPainter.RADIUS + TrayPainter.LIP))
+
+    def event(self, event) -> bool:
+        from PySide6.QtCore import QEvent
+        if event.type() in (QEvent.Type.LayoutRequest, QEvent.Type.ChildRemoved):  # a tile came, went or moved: the tray's end too
+            self.update()
+        return super().event(event)
+
     def paintEvent(self, _event) -> None:
         p = QPainter(self)
-        self.tray.draw(self, p)
+        self.tray.draw(self, p, self.content_size())
         p.end()

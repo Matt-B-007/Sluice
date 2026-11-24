@@ -341,8 +341,8 @@ def test_values_never_changed_are_compared_by_their_defaults():
 
 
 def test_the_noise_gate_threshold_is_ignored_by_the_ready_made_choices_but_kept_by_your_own():
-    entries = [{"type": "noise_gate", "bypass": False, "params": {"threshold_db": -30.0, "ratio": 4.0}}]
-    gate = chain(("noise_gate", False, {"threshold_db": -55.0, "ratio": 4.0}))
+    entries = [{"type": "noise_gate", "bypass": False, "params": {"threshold_db": -30.0, "depth_db": 24.0}}]
+    gate = chain(("noise_gate", False, {"threshold_db": -55.0, "depth_db": 24.0}))
     assert presets.matches(gate, entries)
     assert not presets.matches(gate, entries, personal=True)
 

@@ -69,6 +69,7 @@ pub enum Shape {
     LowShelf,
     HighShelf,
     Peak,
+    HighPass, // 0.11.0: a 12 dB/octave Butterworth high-pass (-3 dB at the cutoff; the "q" is 1/sqrt(2))
 }
 
 pub struct Biquad {
@@ -91,6 +92,17 @@ impl Biquad {
         let omega = 2.0 * PI * self.freq.max(2.0) / sr;
         let (b0, b1, b2, a0, a1, a2);
         match self.shape {
+            Shape::HighPass => {
+                // RBJ cookbook high-pass
+                let alpha = omega.sin() / (self.q * 2.0);
+                let coso = omega.cos();
+                b0 = (1.0 + coso) / 2.0;
+                b1 = -(1.0 + coso);
+                b2 = (1.0 + coso) / 2.0;
+                a0 = 1.0 + alpha;
+                a1 = -2.0 * coso;
+                a2 = 1.0 - alpha;
+            }
             Shape::Peak => {
                 let alpha = omega.sin() / (self.q * 2.0);
                 let c2 = -2.0 * omega.cos();

@@ -18,12 +18,12 @@ from sluice.model import Mixer  # noqa: E402
 from sluice.ui import MainWindow  # noqa: E402
 from sluice.ui_menus import SHORTCUT_GAP, plain  # noqa: E402
 
-SKINS = list(themes.LOOKS)
+SKINS = list(themes.SKINS)
 
 
 def make(qapp, tmp_path, skin):
     mixer = Mixer.demo()
-    mixer.look = skin
+    mixer.skin = skin
     engine = Engine(mixer, MockSystem(), NullIO(realtime=False), NullLinker())
     engine.start()
     win = MainWindow(engine, tmp_path / "config.json")
@@ -35,11 +35,11 @@ def make(qapp, tmp_path, skin):
 
 def all_menus(win):
     win._fill_theme_menu()
-    win._fill_look_menu()
+    win._fill_skin_menu()
     win._fill_widgets_menu()
     win._refresh_view_menu()
-    menus, todo = [], [win.main_menu, win.window_menu, win.theme_menu, win.widgets_menu]
-    todo += [a.menu() for a in win.menuBar().actions() if a.menu() is not None]
+    menus, todo = [], [win.theme_menu, win.widgets_menu]
+    todo += list(win.action_groups)
     while todo:
         menu = todo.pop()
         if menu in menus:
@@ -127,7 +127,7 @@ def test_widgets_put_away_come_back_after_a_restart(qapp, tmp_path):
         win.shutdown()
     mixer = Mixer.load(tmp_path / "saved.json")
     assert [w["channel"] for w in mixer.hidden_widgets] == ["mic"] and not mixer.desktop_widgets
-    mixer.look = "calm"
+    mixer.skin = "calm"
     from sluice.audio_io import NullIO
     from sluice.backend import MockSystem
     from sluice.engine import Engine
@@ -183,7 +183,7 @@ def test_settings_window_can_be_used_from_the_keyboard(qapp, tmp_path):
     try:
         win.open_settings()
         window = win.settings_window
-        cards = [window.look_cards[k] for k in themes.LOOKS]
+        cards = [window.skin_cards[k] for k in themes.SKINS]
         assert all(card.focusPolicy() & Qt.FocusPolicy.TabFocus for card in cards)
         assert all(card.accessibleName().endswith(" skin") for card in cards)
         cards[0].setFocus()
@@ -193,7 +193,7 @@ def test_settings_window_can_be_used_from_the_keyboard(qapp, tmp_path):
         assert window.focusWidget() is cards[0]
         cards[1].setFocus()
         QTest.keyClick(cards[1], Qt.Key.Key_Space)
-        assert engine.mixer.look == list(themes.LOOKS)[1]
+        assert engine.mixer.skin == list(themes.SKINS)[1]
         assert window.sections.accessibleName() == "Settings sections"
     finally:
         win.shutdown()

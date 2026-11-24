@@ -22,7 +22,7 @@ def make(qapp, tmp_path, theme="dark", size=(1456, 900), recording=False):
     mixer = Mixer.demo()
     if recording:
         mixer.set_recording_mix(True)
-    mixer.look, mixer.layout, mixer.theme = "tile", "columns", theme
+    mixer.skin, mixer.layout, mixer.theme = "tile", "columns", theme
     engine = Engine(mixer, MockSystem(), NullIO(realtime=False), NullLinker())
     engine.start()
     win = MainWindow(engine, tmp_path / "config.json")

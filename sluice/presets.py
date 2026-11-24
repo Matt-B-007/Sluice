@@ -153,8 +153,9 @@ def factory_effects(stable_ids: bool = False) -> list:
 
 
 # ---------------------------------------------------------------- which one is in use, and what it did
-EFFECT_LABELS = {"echo_reducer": "Echo Reducer", "noise_reducer": "Noise Reducer", "eq": "EQ", "noise_gate": "Noise Gate",
-                 "compressor": "Compressor", "highpass": "High-pass", "limiter": "Limiter", "gain": "Gain"}
+from .model import BUILTIN_NAMES  # noqa: E402  (the names are written once, in model)
+
+EFFECT_LABELS = {**BUILTIN_NAMES, "eq": "EQ"}  # "3-Band EQ" is shortened in the one-line summary
 TOLERANCE = 1e-3
 
 

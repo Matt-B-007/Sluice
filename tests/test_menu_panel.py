@@ -20,9 +20,9 @@ from sluice.model import Mixer  # noqa: E402
 from sluice.ui import MainWindow  # noqa: E402
 
 
-def make(qapp, tmp_path, look="calm"):
+def make(qapp, tmp_path, skin="calm"):
     mixer = Mixer.demo()
-    mixer.look = look
+    mixer.skin = skin
     mixer.hints_seen.append("firstrun")
     engine = Engine(mixer, MockSystem(), NullIO(realtime=False), NullLinker())
     engine.start()
@@ -45,7 +45,7 @@ def test_the_menu_button_opens_the_panel_with_its_groups(qapp, tmp_path):
         panel = open_panel(qapp, win)
         assert panel.isVisible() and win.menu_button.menu() is None  # a panel, not the old nested menus
         sections = [label.text() for label in panel.findChildren(type(panel.rows[0].name)) if label.objectName() == "panelsection"]
-        assert sections == ["QUICK MUTES", "LAYOUT", "MIXER AND DESKTOP", "HELP"]
+        assert sections == ["QUICK MUTES", "MIXER AND DESKTOP", "HELP"]  # 0.12.0: Columns and Rows are in the top bar
         assert [t.name.text() for t in panel.tiles] == ["Mute my mic", "Add channel", "Refresh"]
         names = [r.name.text() for r in panel.rows]
         assert names[-2:] == ["Settings…", "Quit"]
@@ -98,8 +98,6 @@ def test_the_panel_drives_the_same_actions(qapp, tmp_path):
         assert win.mic_action.isChecked() and panel.isVisible() and mic.name.text() == "Mic muted"  # a toggle keeps it open
         mic.click()
         assert not win.mic_action.isChecked()
-        panel.layout_buttons["rows"].click()
-        assert engine.mixer.layout == "rows" and panel.layout_buttons["rows"].isChecked()
         listen = panel.mute_buttons[0]
         listen.click()
         assert win.mute_actions["monitor"].isChecked() and listen.isChecked()
@@ -113,10 +111,10 @@ def test_the_panel_drives_the_same_actions(qapp, tmp_path):
         win.shutdown()
 
 
-@pytest.mark.parametrize("look", [look for look in themes.LOOKS if look != "original"])
-def test_the_panel_looks_the_same_in_every_skin(qapp, tmp_path, look):
+@pytest.mark.parametrize("skin", list(themes.SKINS))
+def test_the_panel_looks_the_same_in_every_skin(qapp, tmp_path, skin):
     """The panel is styled by the shared sheet (the theme's colours), never by a skin."""
-    win, _ = make(qapp, tmp_path, look)
+    win, _ = make(qapp, tmp_path, skin)
     try:
         panel = open_panel(qapp, win)
         assert panel.card.width() == panel.WIDTH and all(r.height() in (36, 40) for r in panel.rows)

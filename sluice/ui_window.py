@@ -14,7 +14,7 @@ from typing import Optional
 from PySide6.QtCore import QEvent, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import QAction, QDesktopServices, QGuiApplication
 from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QFileDialog, QFrame, QHBoxLayout, QInputDialog, QLabel, QMainWindow, QMessageBox, QPushButton, QScrollArea, QSizePolicy,
+    QApplication, QCheckBox, QFileDialog, QFrame, QHBoxLayout, QInputDialog, QLabel, QMainWindow, QMessageBox, QPushButton, QScrollArea,
     QVBoxLayout, QWidget,
 )
 
@@ -23,11 +23,11 @@ from .engine import Engine
 from .flow import FlowLayout, OverlapLayout
 from .model import Channel, list_backups, Mixer, RECORDING, STREAM
 from .ui_base import (
-    _icon_button, _is_nexus, _is_original, _is_tile, _label, ADD_MIX_WIDTH, AUTO_UPDATE_DELAY_MS, AUTOSAVE_MS, CLOSE_HINT, DEFAULT_SIZE, default_size,
+    _icon_button, _is_nexus, _is_tile, _label, AUTO_UPDATE_DELAY_MS, AUTOSAVE_MS, CLOSE_HINT, DEFAULT_SIZE, default_size,
     DISCORD_URL, ElidedLabel, FIRST_RUN_WIDTH, ISSUES_URL, LAYOUTS, MIX_HEADINGS, MIX_TAGS, PROJECT_URL, ROW_CELL_MIN, ROW_NAME_WIDTH,
     ROW_TOOLS_WIDTH, TILE_GAP, TOP_BAR_GAP, TOP_BAR_HEIGHT,
 )
-from .ui_channel import AppsBar, ChannelStrip, OriginalAppsBar
+from .ui_channel import AppsBar, ChannelStrip
 from .ui_widgets import DesktopWidgetManager
 from .ui_menus import MenusMixin
 from .ui_mini import MiniStrip
@@ -69,7 +69,7 @@ class FirstRun(QFrame):
             ("3", "Pick Sluice in your streaming app", "In OBS or Discord, choose “Sluice (Broadcast)” as the microphone. "
              "That is the processed sound.", "Show me how", False, window.first_run_streaming),
             ("4", "Make it look like yours", "Five skins and a choice of colours. Compare them side by side now, or change them later "
-             "in Settings.", "Compare skins", False, window.compare_looks),
+             "in Settings.", "Compare skins", False, window.compare_skins),
         )
         for number, name, text, button_text, primary, slot in steps:
             row = QHBoxLayout()
@@ -126,7 +126,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         if config_file is not None and not self._config_existed and not whatsnew.read_marker(config_file):
             whatsnew.write_marker(config_file, __version__)
         self.controls = None  # set by attach_controls()
-        self.setWindowTitle(f"Sluice {__version__}")
+        self.setWindowTitle("Sluice")  # 0.12.0: the version is shown in About and at the foot of Settings only
         from . import fonts
         fonts.load()  # Inter and JetBrains Mono, for the Tile look (added for Sluice alone; nothing is installed)
         from . import ui_glass
@@ -151,6 +151,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         self._update_progress_dialog = None
         self._auto_update_started = False
         QTimer.singleShot(AUTO_UPDATE_DELAY_MS, self._auto_update_check)
+        QTimer.singleShot(AUTO_UPDATE_DELAY_MS + 2000, self.offer_move_once)  # 0.12.0: once, for a copy in its download folder
 
         root = QWidget()
         root.setObjectName("root")
@@ -172,8 +173,6 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         self.content_layout.setContentsMargins(0, 0, 0, 0)
         self.content_layout.setSpacing(0)
         outer.addWidget(self.content, 1)
-        self.orig_apps_bar = OriginalAppsBar(engine, self)  # the Original look's "Playing now" strip under the cards
-        outer.addWidget(self.orig_apps_bar)
         self.apps_bar = AppsBar(engine, self)
         self.apps_bar.setFixedHeight(40)
         self.apps_button_holder.addWidget(self.apps_bar)
@@ -207,19 +206,6 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         self.raw_mic_button.clicked.connect(self.show_raw_mic)
         self.raw_mic_button.hide()
         self.statusBar().addPermanentWidget(self.raw_mic_button)
-        # the Original look keeps what the top bar shows (health, version, demo) in the status bar, as 0.9.7 did
-        demo = "Demo" in engine.io.label
-        self.orig_perf = QLabel("")
-        self.orig_perf.setObjectName("status")
-        self.orig_version = QLabel(f"v{__version__}")
-        self.orig_version.setObjectName("status")
-        self.orig_version.setToolTip("The Sluice version you are running. Please include it in bug reports.")
-        self.orig_demo = QLabel("Demo mode (no audio is touched)")
-        self.orig_demo.setObjectName("demo")
-        self.orig_demo.setVisible(False)
-        self._orig_demo_wanted = demo
-        for widget in (self.orig_perf, self.orig_version, self.orig_demo):
-            self.statusBar().addPermanentWidget(widget)
         self._apply_chrome()
         self.repopulate_devices()
         self._show_layout_choice()
@@ -279,12 +265,6 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         name.setObjectName("appname")
         self.app_name = name
         row.addWidget(name)
-        version = QLabel(f"v{__version__}")
-        version.setObjectName("version")
-        version.setToolTip("The Sluice version you are running. Please include it in bug reports.")
-        row.addSpacing(-8)
-        self.version_label = version
-        row.addWidget(version)
         demo = "Demo" in self.engine.io.label
         self.live_chip = QLabel("Demo mode" if demo else "\u25cf  Live")
         self.live_chip.setObjectName("demo" if demo else "livechip")
@@ -354,25 +334,15 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         total, _ours = self.engine.dropout_counts()
         color = themes.color("live_fg") if total == 0 else themes.color("warn")
         self.perf_dot.setStyleSheet(f"background: {color}; border-radius: 4px;")
-        if hasattr(self, "orig_perf"):
-            self.orig_perf.setText(text)
-            self.orig_perf.setToolTip(tip)
 
     def _apply_chrome(self) -> None:
-        """Show the window frame of the look in use: the Calm look has the top bar and keeps the menus behind its buttons; the
-        Original look has the menu bar across the top, the "Playing now" strip under the cards, and its details in the status bar."""
-        original = themes.current_look() == "original"
-        self.top_bar.setVisible(not original)
-        self.menuBar().setVisible(original)
-        self.orig_apps_bar.setVisible(original)
-        for widget in (self.orig_perf, self.orig_version):
-            widget.setVisible(original)
-        self.orig_demo.setVisible(original and self._orig_demo_wanted)
-        margins, spacing = ((12, 12, 12, 6), 8) if original else ((24, 24, 24, 8), 24)
-        self._outer.setContentsMargins(*margins)
-        self._outer.setSpacing(spacing)
+        """The window's frame, the same in every skin (0.12.0: the Original skin and its menu bar are gone): the top bar, with the
+        menus behind its ☰ and ⚙ buttons."""
+        self.top_bar.setVisible(True)
+        self._outer.setContentsMargins(24, 24, 24, 8)
+        self._outer.setSpacing(24)
 
-    def _restructure_for_look(self) -> None:
+    def _restructure_for_skin(self) -> None:
         """A different look has different parts, not only different colours: rebuild the cards in it."""
         self._apply_chrome()
         self._tune_meter_rate()
@@ -385,12 +355,11 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
 
     def _refresh_apps(self) -> None:
         self.apps_bar.refresh()
-        self.orig_apps_bar.refresh()
 
     def _refresh_plan(self) -> bool:
         """Work out how the window should be arranged at its size now; True when the cards have to be rebuilt for it."""
         size = self._plan_size
-        plan = sizing.plan_for(size.width(), size.height(), self.engine.mixer.layout, themes.current_look(), self._plan,
+        plan = sizing.plan_for(size.width(), size.height(), self.engine.mixer.layout, themes.current_skin(), self._plan,
                                mixes=len(self.engine.mixer.mixes))
         changed = self._plan is None or (plan.mode, plan.dock) != (self._plan.mode, self._plan.dock)
         self._plan = plan
@@ -399,11 +368,10 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
 
     def _apply_step(self) -> None:
         """Show as much of the top bar as the width allows (the same few controls, in the same places, only fewer of them)."""
-        if not hasattr(self, "version_label") or self._plan is None:
+        if not hasattr(self, "live_chip") or self._plan is None:
             return
         step = self._plan.step
         compact, mini = step in ("compact", "mini"), step == "mini"
-        self.version_label.setVisible(not compact)
         self.live_chip.setVisible(not compact)
         self.rate_label.setVisible(not compact)
         self.status_divider.setVisible(not compact)
@@ -411,15 +379,8 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         self.app_name.setVisible(not mini)
         self.layout_frame.setVisible(not mini)
         self._outer.setContentsMargins(*self._margins_for(step))
-        if themes.current_look() == "original":  # its strip and status bar are cut down the same way
-            self.orig_apps_bar.setVisible(step != "mini")
-            self.orig_version.setVisible(step != "mini")
-            self.orig_demo.setVisible(self._orig_demo_wanted and not compact)
 
     def _margins_for(self, step: str) -> tuple:
-        original = themes.current_look() == "original"
-        if original:
-            return (12, 12, 12, 6)
         return {"roomy": (24, 24, 24, 8), "standard": (24, 24, 24, 8), "compact": (16, 16, 16, 6), "mini": (10, 10, 10, 6)}[step]
 
     def resizeEvent(self, event) -> None:
@@ -460,7 +421,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
             "scale": f"{screen.devicePixelRatio():g}" if screen is not None else "?",
             "step": plan.step if plan else "?", "mode": plan.mode if plan else "?", "dock": plan.dock if plan else "?",
             "chosen": self._chosen_layout(), "relayouts": self._relayouts,
-            "look_colors": bool(self.engine.mixer.look_colors),
+            "skin_colors": bool(self.engine.mixer.skin_colors),
             "widgets": self._widgets_summary(),
             "minimize": self.minimize_detection(),
             "layout": "\n".join(parts),
@@ -493,7 +454,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
             if strip.combo:
                 strip.combo.about_to_show.connect(self._on_popup)
         self.channels_row = None
-        self.mini = MiniStrip(self, tile=themes.current_look() == "tile")
+        self.mini = MiniStrip(self, tile=themes.current_skin() == "tile")
         self.channels_widget = self.mini
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -532,45 +493,34 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
             self._build_mini()
             return
         rows = self.layout_mode == "rows"
-        original = _is_original(rows)
         tray = _is_tile() and not rows
-        bottom = self._dock == "bottom" and not original
+        bottom = self._dock == "bottom"
         tile_keys = _is_tile() and not rows  # Listen and Broadcast as short keys, stacked beside the tiles or side by side below them
         if tile_keys:
             from .ui_tile import MIX_KEY_OVERLAP  # here: ui_tile imports the channel cards, which import this module
         self.mix_strips = [
             MixStrip(m, self.engine, self.toggle_recording_mix if m.id == RECORDING else None,
-                     self.toggle_recording_mix if m.id == STREAM and not self.engine.mixer.has_recording_mix and not original else None,
+                     self.toggle_recording_mix if m.id == STREAM and not self.engine.mixer.has_recording_mix else None,
                      rows=rows or (bottom and not tile_keys))
             for m in self.engine.mixer.mixes]
         self.add_mix_button = next((s.add_button for s in self.mix_strips if s.add_button is not None), None)
-        if original and not self.engine.mixer.has_recording_mix:  # 0.9.7: the third mix is one click away in a strip of its own
-            self.add_mix_button = QPushButton("+\nAdd a\nRecording\nmix")
-            self.add_mix_button.setObjectName("addmix")
-            self.add_mix_button.setFixedWidth(ADD_MIX_WIDTH)
-            self.add_mix_button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
-            self.add_mix_button.setCursor(Qt.CursorShape.PointingHandCursor)
-            self.add_mix_button.setToolTip("Add a third mix, \u201cRecording\u201d: a second virtual microphone with its own faders "
-                                           "and mutes, so a recorder can get a different blend from the one your audience hears. "
-                                           "Sluice restarts to add it.")
-            self.add_mix_button.clicked.connect(self.toggle_recording_mix)
         for strip in self.mix_strips:
             if strip.combo:
                 strip.combo.about_to_show.connect(self._on_popup)
         # Nexus and Calm: the floor paints each card's shadow (soft in Calm), and in Nexus the glow that follows its sound.
-        glass = (_is_nexus(rows) or themes.current_look() == "calm") and not original and not rows
+        floored = (_is_nexus(rows) or themes.current_skin() == "calm") and not rows  # the cards sit on a CardFloor
         if tray:  # the Tile look's keys sit in a tray
             from .ui_tile_paint import TileTray
             self.channels_widget = TileTray()
-        elif glass:
-            from .ui_nexus import GlassFloor
-            self.channels_widget = GlassFloor(soft=not _is_nexus(rows))
+        elif floored:
+            from .ui_nexus import CardFloor
+            self.channels_widget = CardFloor(soft=not _is_nexus(rows))
         else:
             self.channels_widget = QWidget()
             self.channels_widget.setObjectName("channels")
         page = QHBoxLayout()
         page.setContentsMargins(0, 0, 0, 0)
-        page.setSpacing(8 if original else (8 if tray else 24))
+        page.setSpacing((8 if tray else 24))
         if rows:
             self.channels_row = QVBoxLayout(self.channels_widget)
             self.channels_row.setContentsMargins(0, 0, 8, 0)
@@ -579,8 +529,8 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         else:
             # The cards wrap onto new lines as the window narrows. A tile keeps room round itself for its shadows, so the tiles
             # overlap by that room: 28 px of tray shows between two keys.
-            self.channels_row = FlowLayout(self.channels_widget, 8 if original else (TILE_GAP if tray else 24 if glass else 16))
-            self.channels_row.setContentsMargins(*((10, 18, 10, 20) if tray else (14, 14, 14, 26) if glass else (0, 0, 8, 8)))
+            self.channels_row = FlowLayout(self.channels_widget, (TILE_GAP if tray else 24 if floored else 16))
+            self.channels_row.setContentsMargins(*((10, 18, 10, 20) if tray else (14, 14, 14, 26) if floored else (0, 0, 8, 8)))
             scroll = QScrollArea()
             scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setWidgetResizable(True)
@@ -630,26 +580,20 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
             page.addWidget(holder)
         else:
             page.addWidget(scroll, 1)
-            if original:
-                divider = QFrame()
-                divider.setObjectName("divider")
-                page.addWidget(divider)
             masters = QHBoxLayout()
-            masters.setSpacing(8 if original else 24 if glass else 16)
+            masters.setSpacing(24 if floored else 16)
             for strip in self.mix_strips:
                 masters.addWidget(strip)
-            if original and self.add_mix_button is not None:
-                masters.addWidget(self.add_mix_button)
-            if glass:
-                from .ui_nexus import GlassFloor
-                holder = GlassFloor("masters", soft=not _is_nexus(rows))
+            if floored:
+                from .ui_nexus import CardFloor
+                holder = CardFloor("masters", soft=not _is_nexus(rows))
                 masters.setContentsMargins(14, 14, 14, 26)
             else:
                 holder = QWidget()
                 masters.setContentsMargins(0, 0, 0, 16)
             holder.setLayout(masters)
             page.addWidget(holder)
-            self._glass_mixes(holder)
+            self._floor_mixes(holder)
         if bottom:  # narrow: Listen and Broadcast in a bar under the channels, everything still in view
             column = QVBoxLayout()
             column.setContentsMargins(0, 0, 0, 0)
@@ -693,20 +637,20 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         own = f"; their own skin: {skin}" if skin else ""
         return f"{count} open, shown as {desktop_place.status()}{own}. Each: {', '.join(each)}"
 
-    def _glass_mixes(self, holder) -> None:
+    def _floor_mixes(self, holder) -> None:
         """The Nexus look: Listen and Broadcast glow on their floor with their sound, as the channel cards do."""
-        from .ui_nexus import GlassFloor
-        if not isinstance(holder, GlassFloor):
+        from .ui_nexus import CardFloor
+        if not isinstance(holder, CardFloor):
             return
         for strip in self.mix_strips:
             holder.add(strip, strip.ring.color if strip.ring is not None else themes.color("accent"))
             if strip.ring is not None:
                 strip.ring.on_glow = partial(holder.set_glow, strip)
 
-    def _glass_channels(self) -> None:
-        from .ui_nexus import GlassFloor
+    def _floor_channels(self) -> None:
+        from .ui_nexus import CardFloor
         floor = self.channels_widget
-        if not isinstance(floor, GlassFloor):
+        if not isinstance(floor, CardFloor):
             return
         for strip in self.strips:
             floor.add(strip, strip.tint)
@@ -761,8 +705,8 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
             button.blockSignals(False)
         for key, action in self.layout_actions.items():
             action.setChecked(key == chosen)
-        if hasattr(self, "look_colors_action"):
-            self._show_look_items()
+        if hasattr(self, "skin_colors_action"):
+            self._show_skin_items()
 
     # ------------------------------------------------------------------ first run
     def _needs_first_run(self) -> bool:
@@ -1001,14 +945,13 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
                 item.widget().deleteLater()
         self.first_run = None
         self.strips = [self._channel_strip(c, rows) for c in self.engine.mixer.channels]
+        self.even_sources()
         for strip in self.strips:
             if rows:
                 strip.setMaximumHeight(104)
             self.channels_row.addWidget(strip, 1 if rows else 0)
         add = QPushButton("+  Add channel")
         add.setObjectName("addchannel")
-        if _is_original(rows):  # 0.9.7 had no such button: a channel is added from Mixer > Add channel
-            add.hide()
         add.setCursor(Qt.CursorShape.PointingHandCursor)
         add.setToolTip("Add a channel for another app or group of apps")
         add.clicked.connect(self.add_channel)
@@ -1019,13 +962,13 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         else:
             add.setFixedSize(160, 56)
             self.channels_row.addWidget(add)
-            self._glass_channels()
+            self._floor_channels()
         self.refresh_theme_widgets()
         self._update_first_run()
 
     def _channel_strip(self, channel: Channel, rows: bool) -> "ChannelStrip":
         """A channel's card in the look in use: a tile in the Tile look (Columns), a ChannelStrip everywhere else."""
-        if themes.current_look() == "tile" and not rows:
+        if themes.current_skin() == "tile" and not rows:
             from .ui_tile import TileStrip
             return TileStrip(channel, self.engine, self)
         return ChannelStrip(channel, self.engine, self, rows=rows)
@@ -1073,6 +1016,15 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         self.engine.remove_channel(channel_id)
         self.rebuild_channels()
         self._refresh_apps()
+
+    def even_sources(self) -> None:
+        """0.12.0: the lists of sources are as tall as the longest one needs (one chip at least, two before they scroll), the same
+        on every card, so the cards in a row stay the same height and short lists leave no empty band."""
+        cards = [s for s in self.strips if not s.rows and hasattr(s, "sources_needed")]
+        if cards:
+            height = max(s.sources_needed() for s in cards)
+            for strip in cards:
+                strip.set_sources_height(height)
 
     def refresh_sources(self) -> None:
         for strip in self.strips:
@@ -1210,6 +1162,21 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
     # ------------------------------------------------------------------- help
     def say(self, text: str) -> None:
         self.status_label.setText(text)
+
+    def hint_missing_part(self, key: str) -> bool:
+        """0.12.0: the moment an optional part would be used (Glass blur, KDE widgets, VST3) and it is missing, say so once, with
+        where to find the command that installs it. Returns whether the hint was shown."""
+        from . import setup_check
+        seen = self.engine.mixer.hints_seen
+        tag = f"setup-{key}"
+        if tag in seen or key not in setup_check.BY_KEY:
+            return False
+        result = setup_check.check(setup_check.BY_KEY[key])
+        if not result.missing:
+            return False
+        seen.append(tag)
+        self.say(f"{result.part.name} is missing: {result.reason}. Settings > Setup check has the command that installs it.")
+        return True
 
     def show_about(self) -> None:
         import platform
@@ -1445,7 +1412,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
 
     def _meter_interval(self) -> int:
         """33 ms normally; 66 ms in Nexus while this window is not the one in use (it is still live, for a second screen beside a game)."""
-        slow = themes.current_look() == "nexus" and self.isVisible() and not self.isActiveWindow()
+        slow = themes.current_skin() == "nexus" and self.isVisible() and not self.isActiveWindow()
         self._meter_slow = 2.0 if slow else 1.0
         return 66 if slow else 33
 

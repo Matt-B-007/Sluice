@@ -15,3 +15,8 @@ pwmix-report.txt
 .previous/
 rust/sluice_dsp/target/
 *.so
+
+# Secrets: never commit these (added by StowLock)
+.env
+.env.*
+!.env.example

@@ -551,3 +551,61 @@ def rebuild_engine(root: Path, run: Callable = subprocess.run, python: str = sys
     log.info("rebuilt the Rust engine (VIRTUAL_ENV=%s)", venv)
     remember_rebuild_("")
     return ""
+
+
+# ----------------------------------------------------------------------------- moving out of the download folder (0.12.0)
+def _program_dir() -> Path:
+    from .launcher import program_dir
+    return program_dir()
+
+
+def runs_from_download(root: Optional[Path]) -> bool:
+    """True when this Sluice runs from the folder it was downloaded to (how it was installed before 0.12.0), so it can be
+    moved to its own folder and the download deleted. Never for a git clone (that is someone working on Sluice) or for the
+    installed copy itself."""
+    if root is None or (root / ".git").exists() or not (root / "install.sh").is_file():
+        return False
+    try:
+        return root.resolve() != _program_dir().resolve()
+    except OSError:
+        return False
+
+
+def move_log() -> Path:
+    from . import logs
+    return logs.state_dir() / "move.log"
+
+
+def move_script(root: Path) -> list:
+    """The command that moves Sluice, run after it has closed: install.sh copies it to its own folder (with its own
+    environment, the Rust engine if it was built, the command and the menu entry), then the new copy starts with
+    ``--finish-move``, which deletes the old folder. If install.sh fails, the old folder is untouched and still works."""
+    new = _program_dir() / ".venv" / "bin" / "sluice"
+    log_file = move_log()
+    script = ('sleep 3; mkdir -p "$(dirname "$3")"; '
+              'command -v notify-send >/dev/null 2>&1 && notify-send -i sluice "Moving Sluice" '
+              '"This takes a minute or two. Sluice starts again when it is done."; '
+              'if bash "$1/install.sh" --no-system --yes > "$3" 2>&1; then exec "$2" --finish-move "$1"; fi; '
+              'command -v notify-send >/dev/null 2>&1 && notify-send -i sluice "Sluice could not be moved" '
+              '"It still works from where it was. Details: $3"; exec "$1/.venv/bin/sluice"')
+    return ["sh", "-c", script, "sluice-move", str(root), str(new), str(log_file)]
+
+
+def finish_move(old: Path) -> str:
+    """In the moved copy: delete the old download folder, if it plainly is one. Returns a sentence for the status bar."""
+    from .uninstall import folder_problem
+    old = Path(old)
+    if not old.exists():
+        return f"Sluice now runs from {_program_dir()}."
+    if not runs_from_download(old):
+        return f"Sluice now runs from {_program_dir()}. {old} was left as it is."
+    problem = folder_problem(old)
+    if problem:
+        return f"Sluice now runs from {_program_dir()}. The old folder {old} stays: {problem}."
+    try:
+        shutil.rmtree(old)
+    except OSError as exc:
+        log.warning("could not delete the old Sluice folder %s: %s", old, exc)
+        return f"Sluice now runs from {_program_dir()}. Could not delete the old folder {old} ({exc}); you can delete it."
+    log.info("moved: deleted the old Sluice folder %s", old)
+    return f"Sluice moved to its own folder ({_program_dir()}), and the old folder {old} was deleted."
