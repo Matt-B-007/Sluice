@@ -45,14 +45,14 @@ def test_a_non_https_address_is_refused():
 def test_a_list_of_releases_uses_the_newest_that_is_not_a_draft():
     releases = [
         {"tag_name": "v9.9.9", "html_url": "https://example.com/draft", "draft": True},
-        {"tag_name": "v0.7.0", "html_url": "https://example.com/beta", "prerelease": True},
+        {"tag_name": "v0.7.0-beta.1", "html_url": "https://example.com/beta", "prerelease": True},
         {"tag_name": "v0.6.0", "html_url": "https://example.com/old"},
     ]
     stable = check("0.6.0", url="https://x.example/releases", fetch=lambda url, timeout: releases)
-    assert stable.status == "up_to_date"  # 0.12.2: Stable never offers a pre-release
+    assert stable.status == "up_to_date"  # 0.12.2: Stable never offers a test version
     result = check("0.6.10", url="https://x.example/releases", fetch=lambda url, timeout: releases, channel="beta")
-    assert result.status == "available" and result.latest == "0.7.0" and result.page == "https://example.com/beta"
-    again = check("0.7.0", url="https://x.example/releases", fetch=lambda url, timeout: releases, channel="beta")
+    assert result.status == "available" and result.latest == "0.7.0-beta.1" and result.page == "https://example.com/beta"
+    again = check("0.7.0-beta.1", url="https://x.example/releases", fetch=lambda url, timeout: releases, channel="beta")
     assert again.status == "up_to_date"
     empty = check("0.6.10", url="https://x.example/releases", fetch=lambda url, timeout: [])
     assert empty.status == "error" and "no releases" in empty.message

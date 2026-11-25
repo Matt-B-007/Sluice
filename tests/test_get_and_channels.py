@@ -41,6 +41,9 @@ def test_stable_takes_only_full_releases_and_beta_takes_the_newest():
     assert pick_release(RELEASES, "beta")["tag_name"] == "v0.13.0-beta.2"
     marked_only_by_name = [{"tag_name": "v0.14.0-beta.1"}, {"tag_name": "v0.13.0"}]
     assert pick_release(marked_only_by_name, "stable")["tag_name"] == "v0.13.0"
+    # the name decides, not GitHub's tick: every release before 0.12.2 was ticked as a pre-release by the old workflow
+    old_workflow = [{"tag_name": "v0.12.1", "prerelease": True}, {"tag_name": "v0.12.0", "prerelease": True}]
+    assert pick_release(old_workflow, "stable")["tag_name"] == "v0.12.1"
 
 
 def test_check_follows_the_channel_and_can_go_back_to_stable():
@@ -143,3 +146,46 @@ def test_the_double_click_installer_and_the_release_tool_are_there():
     assert "Terminal=true" in desktop and "install.sh" in desktop and "%k" in desktop
     assert os.access(ROOT / "get.sh", os.X_OK) and os.access(ROOT / "tools" / "make-release.sh", os.X_OK)
     assert "--prerelease" in (ROOT / "tools" / "make-release.sh").read_text()
+
+
+# ----------------------------------------------------------------------------- releasing: the tag can never disagree with the code
+def _load_checker():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("check_version", ROOT / "tools" / "check-version.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_version_files_and_the_changelogs_agree():
+    """What the Release workflow checks, checked on every test run, so a release never fails on it."""
+    assert _load_checker().problems() == []
+
+
+def test_a_tag_that_does_not_match_the_code_is_explained(tmp_path):
+    checker = _load_checker()
+    version = checker.read_version()
+    assert checker.problems(tag=f"v{version}") == []
+    (wrong,) = checker.problems(tag="v99.0.0")
+    assert "does not match" in wrong and "Run workflow" in wrong and "release.sh --set 99.0.0" in wrong
+
+
+def test_release_sh_sets_a_new_version_everywhere(tmp_path):
+    import shutil
+    for name in ("sluice/__init__.py", "pyproject.toml", "CHANGELOG.md", "sluice/data/CHANGELOG.md", "tools/release.sh",
+                 "tools/check-version.py"):
+        (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(ROOT / name, tmp_path / name)
+    out = subprocess.run(["bash", "tools/release.sh", "--set", "0.99.0-beta.1"], cwd=tmp_path, capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr
+    checker = _load_checker()
+    assert checker.problems(tmp_path) == [] and checker.read_version(tmp_path) == "0.99.0-beta.1"
+    assert "(say what changed)" in (tmp_path / "CHANGELOG.md").read_text()  # and release.sh refuses to tag until it is written
+    bad = subprocess.run(["bash", "tools/release.sh", "--set", "0.99"], cwd=tmp_path, capture_output=True, text=True)
+    assert bad.returncode != 0 and "not a version" in (bad.stderr + bad.stdout)
+
+
+def test_the_release_workflow_makes_test_versions_pre_releases_and_nothing_else():
+    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text()
+    assert "check-version.py --tag" in workflow and "workflow_dispatch" in workflow
+    assert "startsWith(github.ref_name, 'v0.')" not in workflow  # every 0.x used to be a pre-release, hiding it from Stable

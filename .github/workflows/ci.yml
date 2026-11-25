@@ -123,3 +123,6 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - run: bash -n install.sh && bash -n tools/set-github-repo.sh && ./install.sh --help
+      - run: bash -n get.sh && bash -n tools/release.sh && bash -n tools/make-release.sh
+      - name: The version files and the changelogs agree (so a release made from main never fails on them)
+        run: python3 tools/check-version.py

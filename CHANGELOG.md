@@ -29,6 +29,12 @@ Easier to install and keep up to date, four skins redrawn, and the interface mad
 - The compact list and the desktop widgets share one small-mixer design (the channel's drawing in a tinted tile, then its lane).
 - The scrollbar between the channels and the mixes is drawn as a track, so it no longer looks like a stray line.
 - `tools/make-release.sh` builds a release's zip and checksum with the names the installer and the updater expect.
+- **Releasing cannot go wrong on the version any more.** *Actions > Release > Run workflow* on GitHub (or `tools/release.sh`)
+  makes the tag from the version in the code; `tools/release.sh --set 0.13.0` sets a new version everywhere. Every push checks that
+  the version files and the changelogs agree, and a tag that does not match the code is refused with what to do instead.
+- **Only test versions are pre-releases.** The release workflow marked every 0.x version as a pre-release, which would have hidden
+  them all from the Stable channel and the one-line installer. Now only versions such as `0.13.0-beta.1` are, and Stable goes by
+  the version name, so the earlier releases count as the stable versions they are.
 
 ## 0.12.1
 Fixes for what testing 0.12.0 found: Quit from the tray, a Sluice that would not start again, and the audio buffer.

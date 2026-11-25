@@ -73,14 +73,15 @@ CHANNELS = ("stable", "beta")
 
 
 def pick_release(releases: list, channel: str = "stable") -> Optional[dict]:
-    """From GitHub's list of releases: the newest one this channel takes. Stable takes only full releases (not marked
-    pre-release on GitHub, no "-beta" in the tag); Beta takes either, whichever is newest."""
+    """From GitHub's list of releases: the newest one this channel takes. Stable takes only full versions (no "-beta" or "-rc"
+    in the tag); Beta takes either, whichever is newest. The version name decides, not GitHub's pre-release tick: releases before
+    0.12.2 were all ticked as pre-releases, and the Release workflow now ticks exactly the test versions."""
     best, best_key = None, ()
     for item in releases:
         if not isinstance(item, dict) or item.get("draft") or not item.get("tag_name"):
             continue
         tag = str(item["tag_name"])
-        if channel != "beta" and (item.get("prerelease") or is_prerelease(tag)):
+        if channel != "beta" and is_prerelease(tag):
             continue
         key = version_key(tag)
         if key and key > best_key:

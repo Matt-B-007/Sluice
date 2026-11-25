@@ -77,7 +77,7 @@ for rel in json.load(open(path)):
     if want:
         if tag.lstrip("vV") != want:
             continue
-    elif channel != "beta" and (rel.get("prerelease") or re.search(r"\d\s*[-.]?\s*(alpha|beta|pre|rc|a|b)", tag, re.I)):
+    elif channel != "beta" and (re.search(r"\d\s*[-.]?\s*(alpha|beta|pre|rc|a|b)", tag, re.I)):
         continue
     assets = {a.get("name"): a.get("browser_download_url") for a in rel.get("assets") or [] if isinstance(a, dict)}
     zips = [n for n in assets if n and re.fullmatch(r"sluice-[A-Za-z0-9._-]+\.zip", n) and n + ".sha256" in assets]

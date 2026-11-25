@@ -2,6 +2,7 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:    # Actions > Release > Run workflow: releases the version in the code, making its tag for you
 permissions:
   contents: write
   id-token: write       # for the build attestation below
@@ -11,21 +12,42 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - name: Check the tag matches the version
+      - name: Work out the tag (from the version in the code when run by hand)
+        id: tag
         run: |
-          v=$(python -c "import re;print(re.search(r'__version__ = \"(.+?)\"',open('sluice/__init__.py').read()).group(1))")
-          [ "v$v" = "${GITHUB_REF_NAME}" ] || { echo "tag ${GITHUB_REF_NAME} does not match version $v"; exit 1; }
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            tag="v$(python tools/check-version.py --print)"
+          else
+            tag="${GITHUB_REF_NAME}"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "TAG=$tag" >> "$GITHUB_ENV"
+      - name: Check the version files, the changelogs and the tag agree
+        run: python tools/check-version.py --tag "$TAG"
+      - name: Make the tag (run by hand only)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "::error::$TAG already exists. Set a new version first (tools/release.sh --set <next version>), commit and push."
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Sluice ${TAG#v}"
+          git push origin "$TAG"
       - name: Build
         run: |
           pip install build
           python -m build
           mkdir -p out
-          git archive --prefix=sluice/ -o "out/sluice-${GITHUB_REF_NAME}.zip" HEAD
+          git archive --prefix=sluice/ -o "out/sluice-${TAG}.zip" HEAD
           # The in-app updater downloads this file next to the zip and refuses a zip that does not match it.
-          (cd out && sha256sum "sluice-${GITHUB_REF_NAME}.zip" > "sluice-${GITHUB_REF_NAME}.zip.sha256")
+          (cd out && sha256sum "sluice-${TAG}.zip" > "sluice-${TAG}.zip.sha256")
       - name: Attest where the files came from (GitHub build provenance; a failure here never stops the release)
         continue-on-error: true
         uses: actions/attest-build-provenance@v3
@@ -35,17 +57,23 @@ jobs:
             dist/*
       - name: Release notes from the changelog
         run: |
-          v="${GITHUB_REF_NAME#v}"
+          v="${TAG#v}"
           awk -v v="$v" '$0 ~ "^## " v "$" {on=1; next} /^## / {on=0} on' CHANGELOG.md > notes.md
           [ -s notes.md ] || { echo "CHANGELOG.md has no section '## $v': add one before tagging"; exit 1; }
-          case "$v" in 0.*) echo "title=Sluice $v (beta)" ;; *) echo "title=Sluice $v" ;; esac >> "$GITHUB_OUTPUT"
+          # A test version (0.13.0-beta.1, 1.0.0-rc.1) is a pre-release: only the Beta channel and get.sh --beta take it.
+          # Every other version is a normal release, which the Stable channel and the one-line installer install.
+          case "$v" in
+            *-*) echo "title=Sluice $v (test version)"; echo "prerelease=true" ;;
+            *)   echo "title=Sluice $v"; echo "prerelease=false" ;;
+          esac >> "$GITHUB_OUTPUT"
         id: notes
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ steps.tag.outputs.tag }}
           name: ${{ steps.notes.outputs.title }}
           body_path: notes.md
-          prerelease: ${{ startsWith(github.ref_name, 'v0.') }}  # every 0.x version is a beta
+          prerelease: ${{ steps.notes.outputs.prerelease }}
+          make_latest: ${{ steps.notes.outputs.prerelease != 'true' }}
           files: |
             dist/*
             out/*.zip

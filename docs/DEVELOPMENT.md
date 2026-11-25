@@ -70,16 +70,24 @@ Run them one Python version at a time on a small machine: the window tests use a
 
 ## Publishing a release
 
-1. Set the version in `pyproject.toml` and `sluice/__init__.py`, and add its notes to `CHANGELOG.md` and its copy
-   `sluice/data/CHANGELOG.md` (the two must be identical; a test checks).
-2. Run `tools/make-release.sh`. It writes `dist/sluice-v<version>.zip` and `dist/sluice-v<version>.zip.sha256` and prints the
-   `gh release create` command to publish them.
-3. The two files must keep exactly those names: `get.sh` and the in-app updater look for `sluice-<tag>.zip` and
-   `sluice-<tag>.zip.sha256` among the release's assets, and stop if the checksum is missing or does not match.
+The tag is always made from the version in the code, so the two can never disagree.
 
-**Stable and Beta.** A version with a pre-release tag (`0.13.0-beta.1`, `0.13.0-rc.1`) is a test version: publish it with
-`--prerelease` (the script adds it for you). Only people on the Beta channel, or who run `get.sh --beta`, are offered it.
+1. `tools/release.sh --set 0.13.0` sets the version in `sluice/__init__.py` and `pyproject.toml` and starts a `## 0.13.0` section in
+   both changelogs. Write that section in `CHANGELOG.md`, copy it to `sluice/data/CHANGELOG.md`, run the tests, commit and push.
+   (On every push GitHub checks that the version files and the changelogs agree, so a mistake shows up here, not at release.)
+2. Release it, either way:
+   - **On GitHub:** *Actions > Release > Run workflow*. No tag to type: it reads the version, checks everything and makes the tag.
+   - **From a terminal:** `tools/release.sh`. It checks the same things, that everything is committed and pushed, and that the
+     tag is new, then pushes the tag.
+
+GitHub then builds `sluice-v<version>.zip` and `sluice-v<version>.zip.sha256` (the names `get.sh` and the in-app updater look
+for) and publishes the release with its notes from the changelog. Do not make the tag by hand or in GitHub's *Draft a new
+release* page: a tag that does not match the code is refused, with what to do instead.
+
+**Stable and Beta.** A version with a test part (`0.13.0-beta.1`, `1.0.0-rc.1`) is a test version: the workflow marks it a
+pre-release, and only the Beta channel and `get.sh --beta` take it. Every other version is a normal release that everyone gets.
 Versions sort as people mean them: `0.13.0-beta.1` < `0.13.0-beta.2` < `0.13.0-rc.1` < `0.13.0`.
 
-`get.sh` can be tried against a local feed: `SLUICE_RELEASES_URL=file:///path/releases.json bash get.sh` (a JSON list in the
-shape of GitHub's releases API; `tests/test_get_and_channels.py` builds one).
+`python3 tools/check-version.py` runs the checks on their own. `tools/make-release.sh` builds the same two files locally, to try
+an install before releasing; `get.sh` can be tried against a local feed with `SLUICE_RELEASES_URL=file:///path/releases.json bash
+get.sh` (a JSON list in the shape of GitHub's releases API; `tests/test_get_and_channels.py` builds one).
