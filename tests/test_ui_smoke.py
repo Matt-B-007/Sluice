@@ -444,8 +444,11 @@ def test_check_for_updates_reports_each_outcome(ui, monkeypatch):
         (UpdateResult("error", "0.3.2", message="offline"), "offline"),
     ]:
         win._show_update_result(result)
-        assert expect in shown[-1]
-    win._update_check = lambda current: UpdateResult("up_to_date", current)
+        if result.status == "up_to_date":  # 0.12.2: good news needs no window; it is said in the status line
+            assert expect in win.status_label.text()
+        else:
+            assert expect in shown[-1]
+    win._update_check = lambda current, **kw: UpdateResult("up_to_date", current)
     win.check_for_updates()
     assert "Checking" in win.status_label.text()
     for _ in range(100):  # the answer comes back from a worker thread
@@ -497,7 +500,7 @@ def test_menu_bar_has_the_usual_menus_in_the_usual_order(ui):
     assert _texts(_menu(win, "Settings")) == [
         "Startup and background", "Running in the background", "Add Sluice to the applications menu",
         "Audio", "Audio buffer", "Controllers", "MIDI controllers and Stream Deck…",
-        "Updates", "Update automatically when a new version is found", "Check for updates…", "Go back to the previous version…"]
+        "Updates", "Update automatically when a new version is found", "Check for updates…", "Go back to the previous version…", "Which versions"]
     assert _texts(_menu(win, "Window")) == ["Layout", "Columns (a card for each channel)", "Rows (a line for each channel)",
                                           "Themes and skins", "Skin", "Theme", "Skin's own colours on Dark and Light",
                                           "Reduce effects", "See-through window (Glass on KDE Plasma)", "Desktop", "Desktop widgets",

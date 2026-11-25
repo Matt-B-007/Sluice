@@ -145,8 +145,9 @@ def test_a_straight_icon_line_is_sharp_at_every_size(qapp):
         image = ui_icons.render("plus", "#ffffff", px).toImage()
         column = [image.pixelColor(int(px * 0.2), y).alpha() for y in range(px)]
         lit = [a for a in column if a]
-        # one even-width stroke centred on the pixel grid: equal rows, nothing smeared over a third row
-        assert 2 <= len(lit) <= 3 and lit == lit[::-1] and max(lit) >= 200, (px, column)
+        # one stroke of whole pixels on the pixel grid: as many solid rows as it is wide, nothing smeared beyond (0.12.2: bolder)
+        width = max(1, round(2.4 * px / 24))
+        assert width <= len(lit) <= width + 1 and lit == lit[::-1] and max(lit) >= 200, (px, column)
 
 
 def test_every_source_has_a_picture_and_a_letter_when_there_is_none(qapp):

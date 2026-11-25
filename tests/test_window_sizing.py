@@ -336,7 +336,7 @@ def test_the_first_run_card_offers_a_look_and_a_note_says_why_the_list_is_compac
     win.resize(1456, 800); win.show(); settle(qapp)
     try:
         assert win.first_run is not None
-        assert [b.text() for b in win.first_run.buttons][-1] == "Compare skins"
+        assert [b.text() for b in win.first_run.buttons][-1] == "See the skins"
         win.resize(500, 800); settle(qapp)
         assert "compact list" in win.status_label.text()
         win.status_label.setText("")
@@ -368,7 +368,7 @@ def test_tiles_take_their_own_key_colours_on_dark_and_light_while_the_look_colou
         assert themes.skin_colors(midnight, "tile")["panel"] == midnight.colors["panel"]  # option A: only Dark and Light
         assert themes.skin_colors(light, "tile")["panel"] == skin_tile.TILE_LIGHT["panel"]
         assert themes.skin_colors(contrast, "tile") == themes.finish(contrast.colors)
-        assert themes.skin_colors(dark, "calm") == themes.finish(dark.colors)
+        assert themes.skin_colors(contrast, "calm") == themes.finish(contrast.colors)  # 0.12.2: Calm has its own Dark and Light
         themes.set_skin_colors(False)
         assert themes.skin_colors(dark, "tile") == themes.finish(dark.colors)
     finally:

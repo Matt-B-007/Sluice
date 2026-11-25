@@ -216,8 +216,8 @@ def test_a_new_install_shows_room_normal_and_voice_natural_ticked(two):
     win, engine, _ = two
     dialog = open_effects(win, engine)
     assert ticked(dialog, "room") == ["Normal"] and ticked(dialog, "style") == ["Natural"]
-    assert choice(dialog, "room", "Normal").text() == "\u2713 Normal"
-    assert choice(dialog, "style", "Natural").text() == "\u2713 Natural"
+    assert choice(dialog, "room", "Normal").property("ticked") and choice(dialog, "room", "Normal").text() == "Normal"
+    assert choice(dialog, "style", "Natural").property("ticked")
     assert not dialog._axis_reset["room"].isVisibleTo(dialog)
 
 
@@ -243,7 +243,7 @@ def test_a_tiny_nudge_shows_changed_and_reset_puts_it_back(two):
     assert dialog._axis_reset["room"].isVisibleTo(dialog)
     assert choice(dialog, "room", "Noisy").text() == "Noisy"  # no check mark any more
     dialog._axis_reset["room"].click()
-    assert dialog._axis_status["room"].text() == "" and choice(dialog, "room", "Noisy").text() == "\u2713 Noisy"
+    assert dialog._axis_status["room"].text() == "" and choice(dialog, "room", "Noisy").property("ticked")
 
 
 def test_bypassing_a_reducer_updates_the_choices_too(two):
@@ -272,7 +272,7 @@ def test_your_own_preset_is_ticked_when_it_matches_and_keeps_the_gate_threshold(
     dialog._update_presets_button()
     dialog._user_presets(reload=True)
     dialog._update_presets_button()
-    assert dialog.mine_button.text().startswith("\u2713 Mine")
+    assert dialog.mine_button.text().startswith("My preset: Mine")
 
 
 def test_saving_is_always_possible_even_after_a_tiny_change_and_deleting_works(two, monkeypatch):
@@ -290,12 +290,12 @@ def test_saving_is_always_possible_even_after_a_tiny_change_and_deleting_works(t
     assert save.isEnabled()
     monkeypatch.setattr(QInputDialog, "getText", staticmethod(lambda *a, **k: ("Mine", True)))
     dialog._save_preset()
-    assert dialog.mine_button.text().startswith("\u2713 Mine")
+    assert dialog.mine_button.text().startswith("My preset: Mine")
     stored = presets.load_user(dialog._presets_file())["Mine"]
     assert next(e for e in stored if e["type"] == "compressor")["params"]["ratio"] == 2.51
     dialog._delete_preset("Mine")
     assert "Mine" not in presets.load_user(dialog._presets_file())
-    assert dialog.mine_button.text() == "My presets \u25be"
+    assert dialog.mine_button.text() == "My presets"
 
 
 def test_hear_my_original_microphone_switches_the_chain_off_and_closing_restores_it(two):

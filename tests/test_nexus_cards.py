@@ -84,17 +84,13 @@ def test_listen_is_cyan_and_broadcast_coral_or_the_themes_second_colour(qapp, tm
     assert listen == paper["accent"] and broadcast != listen
 
 
-def test_light_themes_have_no_glow_and_a_coloured_top_edge(qapp, tmp_path):
-    from sluice import ui_meters
+def test_nexus_stays_dark_with_a_light_theme_and_keeps_its_glow(qapp, tmp_path):
+    """0.12.2: Nexus is dark only. Chosen with Light, it shows its own dark colours and glows as on Dark."""
     win, _ = make(qapp, tmp_path, theme="light")
     try:
         floor = win.channels_widget
-        game = _loud(win, qapp)
-        assert not floor._glows()
-        before = len(ui_meters._GLOWS)
-        game.ring.grab()
-        assert len(ui_meters._GLOWS) == before  # no halo is drawn round the ring either
-        assert "border-top: 3px solid" in game.frame.styleSheet()
+        _loud(win, qapp)
+        assert themes.color("bg") == "#05080f" and floor._glows()
     finally:
         win.shutdown()
 

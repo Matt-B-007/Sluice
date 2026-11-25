@@ -26,12 +26,11 @@ class AppPickerDialog(QDialog):
     programs and games, and (by typing a name that is not in the list) any other program."""
 
     def __init__(self, catalog: Catalog, channel_label: str, owner_of: Callable[[str], Optional[str]],
-                 parent: Optional[QWidget] = None, running: Optional[list] = None) -> None:
+                 parent: Optional[QWidget] = None, running: Optional[list] = None, anchor: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.catalog = catalog
         self.owner_of = owner_of  # key -> label of the channel that has it now, or None
         self.running = list(running or [])  # [(label, key)] of programs playing sound right now
-        self.setWindowTitle(f"Add an app or game to {channel_label}")
         self.resize(460, 520)
         layout = QVBoxLayout(self)
 
@@ -62,6 +61,8 @@ class AppPickerDialog(QDialog):
         self.list.itemDoubleClicked.connect(lambda _item: self.accept())
         self.list.itemSelectionChanged.connect(self._selection_changed)
         self._fill()
+        from .ui_dialog import card_panel  # 0.12.2: drops from the card's menu, not a separate window
+        card_panel(self, f"Add an app or game to {channel_label}", anchor)
         self.search.setFocus()
 
     def _fill(self) -> None:

@@ -151,7 +151,7 @@ def test_restarting_into_an_update_saves_installs_and_restarts_in_that_order(mak
 def test_automatic_updates_are_off_by_default_and_do_nothing_then(make, monkeypatch, tmp_path, qapp):
     updatable(monkeypatch, tmp_path)
     win, _ = make(auto=False)
-    win._update_check = lambda current: (_ for _ in ()).throw(AssertionError("no request may be made"))
+    win._update_check = lambda current, **kw: (_ for _ in ()).throw(AssertionError("no request may be made"))
     win._auto_update_check()
     assert not win.auto_update_action.isChecked() and win._auto_update_started is False
 
@@ -160,7 +160,7 @@ def test_automatic_update_downloads_in_the_background_and_waits_for_closing(make
     updatable(monkeypatch, tmp_path)
     win, shown = make(auto=True)
     staged = []
-    win._update_check = lambda current: offer()
+    win._update_check = lambda current, **kw: offer()
     win._stage_update = lambda res, root, progress=None: staged.append(res.latest) or res.latest
     win._auto_update_check()
     win._auto_update_check()  # a second call does nothing
@@ -179,7 +179,7 @@ def test_automatic_update_downloads_in_the_background_and_waits_for_closing(make
 def test_automatic_update_skips_a_copy_that_cannot_update_itself(make, monkeypatch):
     monkeypatch.setattr(update_install, "install_root", lambda *a: None)
     win, _ = make(auto=True)
-    win._update_check = lambda current: (_ for _ in ()).throw(AssertionError("no request may be made"))
+    win._update_check = lambda current, **kw: (_ for _ in ()).throw(AssertionError("no request may be made"))
     win._auto_update_check()
     assert win._auto_update_started is False
 

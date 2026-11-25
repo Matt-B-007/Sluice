@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.12.2
+Easier to install and keep up to date, four skins redrawn, and the interface made sharp at every size.
+- **Install with one command.** `curl -fsSL https://raw.githubusercontent.com/Matt-B-007/Sluice/main/get.sh | bash` finds the
+  newest release, downloads it, checks it against the release's checksum (and stops if they differ), installs it and deletes the
+  download. Run the same line again to update or repair Sluice; your settings stay. `--beta` gets the newest test version and
+  `--version 0.12.1` a particular one. The zip also has an **Install Sluice** file to double-click.
+- **Stable or Beta.** *Settings > Updates > Which versions*: Stable (the default) gets tested releases only, Beta also gets test
+  versions. Going back to Stable from a test version asks whether to go to the latest stable now or wait until stable is newer.
+- **Test versions sort correctly.** Before, `0.13.0-beta.1` counted as equal to `0.13.0`, so someone on a beta was never offered
+  the final release.
+- **Four skins redrawn.** Calm: warm white cards (Light) or graphite ones (Dark), the channel's drawing in a tinted tile, meters
+  in the channel's colour and dB marks beside the mix faders. Tile keeps its shape, with an LCD strip for each name, sideways LED
+  meters, metal fader caps, keys that light up when on, and a silver Light theme. Glass: frosted panes on a mix of coloured
+  light, pearl knobs and mix panes tinted in their mix's colour. Nexus: glowing level rings, faders drawn as beams of light,
+  capitals and monospaced numbers on a blueprint grid. **Nexus is dark only**: with a light theme it stays dark, and the theme
+  picker says so. The pictures in Settings are drawn from the new designs.
+- **Sharp at every size.** Bolder icons; drawn chevrons, arrows, ticks and crosses in place of typed ▾ ◀ ▶ ✓ ×; smooth edges in
+  every drawing; text at least 13 px (12 px for small capital headings), with small headings less heavy; dropdowns with a
+  drawn arrow. Apps show their real icon where the desktop has one, instead of a letter.
+- **Sluice's own message window** for questions and warnings: a drawn icon, the title as a heading, a comfortable width and the
+  main button in the accent colour. News that needs no answer ("Sluice is the latest version", "there is no earlier version")
+  is said in the status line instead of a window to close.
+- **Fewer windows.** Controllers are set up in *Settings > Controllers*, and *Compare skins* opens *Settings > Themes and
+  skins*. *Add an app or game* and *Recording devices for OBS* drop down from the card as panels.
+- **The Effects window** shows what an empty chain does (a straight line: nothing changes) with one-click *Add Noise Gate* and
+  *Add Compressor*. The live panel adds level bars going in and coming out, and what your room and your voice measure.
+- The compact list and the desktop widgets share one small-mixer design (the channel's drawing in a tinted tile, then its lane).
+- The scrollbar between the channels and the mixes is drawn as a track, so it no longer looks like a stray line.
+- `tools/make-release.sh` builds a release's zip and checksum with the names the installer and the updater expect.
+
 ## 0.12.1
 Fixes for what testing 0.12.0 found: Quit from the tray, a Sluice that would not start again, and the audio buffer.
 - **Quit from the tray really quits.** With *keep running in the tray*, Quit with the window hidden shut the audio down but left

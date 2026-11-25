@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Install Sluice
+Comment=Installs Sluice for you (in a terminal; it asks before installing any system packages)
+Exec=sh -c 'cd "$(dirname "$1")" && bash ./install.sh; echo; printf "Press Enter to close this window. "; read -r _' sluice-install %k
+Icon=audio-card
+Terminal=true
+Categories=Utility;

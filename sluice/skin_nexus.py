@@ -58,6 +58,12 @@ QMenu { border: 1px solid $border2; }
 QMenu::item:selected { background: $accent_bg; color: $accent_text; }
 QToolTip { border: 1px solid $accent; }
 QWidget#channels, QWidget#masters { background: transparent; }
+/* 0.12.2: a heads-up display's type: numbers in a monospaced face, headings in capitals with wide spacing (set in code) */
+QLineEdit#readout, QLabel#readout { font-family: "JetBrains Mono", "DejaVu Sans Mono", monospace; font-weight: 500; }
+QLabel#name, QLabel#title { letter-spacing: 1px; }
+QPushButton#limiter[mix="monitor"]:checked { border-color: $listen; }
+QPushButton#limiter[mix="stream"]:checked { border-color: $broadcast; }
+QLabel#tag { font-family: "JetBrains Mono", "DejaVu Sans Mono", monospace; letter-spacing: 1.5px; }
 """
 
 NEXUS_STYLE_EXTRA = Template(NEXUS_EXTRA)

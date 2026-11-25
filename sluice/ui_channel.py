@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QToolButton, QVBoxLayout, QWidget,
 )
 
+from . import ui_dialog
 from . import themes, ui_icons as icons
 from .engine import Engine
 from .model import Channel, MAX_DB, MIN_DB, Mix
@@ -49,7 +50,8 @@ class Chip(QFrame):
         self.label.setToolTip(tooltip or text)
         close = QToolButton()
         close.setObjectName("remove")
-        close.setText("×")
+        close.setIcon(icons.themed_icon("x", "text_dim"))  # 0.12.2: drawn, not a typed ×
+        close.setIconSize(QSize(14, 14))
         close.setFixedSize(24, 24)
         close.setToolTip("Remove")
         close.setAccessibleName(f"Remove {text}")
@@ -73,7 +75,6 @@ class OwnDevicesDialog(QDialog):
     def __init__(self, engine: Engine, window: "MainWindow") -> None:
         super().__init__(window)
         self.engine, self.window_ = engine, window
-        self.setWindowTitle("Recording devices for OBS")
         self.resize(520, 360)
         layout = QVBoxLayout(self)
         intro = QLabel(
@@ -96,6 +97,8 @@ class OwnDevicesDialog(QDialog):
         close.rejected.connect(self.accept)
         close.accepted.connect(self.accept)
         layout.addWidget(close)
+        from .ui_dialog import card_panel  # 0.12.2: a panel from the menu, not a separate window
+        card_panel(self, "Recording devices for OBS")
 
     def _toggled(self, channel_id: str, on: bool) -> None:
         channel = self.engine.mixer.channel(channel_id)
@@ -263,6 +266,8 @@ class ChannelStrip(QWidget):
         self.link_badge = None
         if self.nexus:  # 0.12.0: the name centred under the ring, one 32 px thing each side: the mic (or the link badge), the menu
             self.title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            from .skin_tile import lcd_caps
+            lcd_caps(self.title)  # 0.12.2: Nexus's names in capitals, like a heads-up display
             head.setSpacing(2)  # every pixel to the name: "Browser" fits at Nexus's title size
             self.head_left = QWidget()
             self.head_left.setFixedWidth(32)
@@ -278,8 +283,12 @@ class ChannelStrip(QWidget):
             left.addWidget(self.mic_button)
             head.addWidget(self.head_left)
             head.addWidget(self.title, 1)
-        else:
-            head.addWidget(self.dot)
+        else:  # 0.12.2: a tinted icon tile with the channel's drawing, instead of a coloured dot
+            from . import skin_tile
+            from .ui_tile_paint import IconWell
+            self.well = IconWell(self.tint, skin_tile.channel_icon(self.channel), self.channel.label, 32)
+            self.dot.hide()
+            head.addWidget(self.well)
             head.addWidget(self.title, 1)
             head.addWidget(self.mic_button)
         head.addWidget(self.menu_button)
@@ -504,6 +513,9 @@ class ChannelStrip(QWidget):
             return
         self.tint = tint
         self.dot.setStyleSheet(f"background: {tint}; border-radius: 6px;")
+        if getattr(self, "well", None) is not None and not _is_tile():
+            self.well.color = tint
+            self.well.update()
         if getattr(self, "accent_bar", None) is not None:
             self.accent_bar.setStyleSheet(f"background: {tint};")
         if self.ring is not None:
@@ -518,6 +530,10 @@ class ChannelStrip(QWidget):
     def refresh_theme(self) -> None:
         """Icons and the few colours set in code, from the theme in use."""
         self._retint()
+        own = self.tint if themes.current_skin() in ("calm", "glass", "nexus") else None  # 0.12.2: meters in the channel's colour
+        for meter in self.meters.values():
+            if hasattr(meter, "set_tint"):
+                meter.set_tint(own)
         text2, muted = themes.color("text2"), themes.color("text_dim")
         self.fx_button.setIcon(icons.icon("sliders", text2, 18))
         self.link.setIcon(icons.icon("link", themes.color("accent_text") if self.link.isChecked() else muted, 18))
@@ -680,7 +696,8 @@ class ChannelStrip(QWidget):
             if stream.assign_key not in seen:
                 seen.add(stream.assign_key)
                 running.append((stream.name, stream.assign_key))
-        dialog = AppPickerDialog(self.engine.catalog, self.channel.label, owner_of, self, running=running)
+        dialog = AppPickerDialog(self.engine.catalog, self.channel.label, owner_of, self, running=running,
+                                 anchor=getattr(self, "add_button", None))
         if dialog.exec():
             for key in dialog.selected_keys():
                 self.engine.assign_app(key, self.channel.id)
@@ -696,7 +713,7 @@ class ChannelStrip(QWidget):
             self.window.refresh_sources()
 
     def delete(self) -> None:
-        answer = QMessageBox.question(
+        answer = ui_dialog.question(
             self, "Delete channel", f"Delete “{self.channel.label}”? Apps on it go back to your default output."
         )
         if answer == QMessageBox.StandardButton.Yes:

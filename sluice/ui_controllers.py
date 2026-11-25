@@ -86,9 +86,8 @@ class Controls:
             log.warning("could not save controller bindings: %s", exc)
 
     def show_dialog(self) -> None:
-        self.dialog = ControllersDialog(self, self.window)
-        self.dialog.exec()
-        self.dialog = None
+        """0.12.2: controllers are set up in Settings > Controllers (one window fewer)."""
+        self.window.open_settings("Controllers")
 
     def close(self) -> None:
         self.poll_timer.stop()
@@ -98,13 +97,14 @@ class Controls:
         self.save()
 
 
-class ControllersDialog(QDialog):
+class ControllersPanel(QWidget):
+    """MIDI bindings: the devices heard, your bindings, and adding one by touching the control. Shown in Settings > Controllers."""
+
     def __init__(self, controls: Controls, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.controls = controls
-        self.setWindowTitle("Controllers")
-        self.resize(640, 520)
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
 
         self.devices = QLabel()
         self.devices.setWordWrap(True)
@@ -157,10 +157,19 @@ class ControllersDialog(QDialog):
         self.control.currentIndexChanged.connect(self._control_changed)
         self._action_changed()
         self._refresh()
-        self.finished.connect(lambda _code: controls.hub.learn(None))
-        self.timer = QTimer(self)  # device list can change while the window is open
+        self.timer = QTimer(self)  # device list can change while it is shown
         self.timer.timeout.connect(self._refresh_devices)
         self.timer.start(1000)
+
+    def hideEvent(self, event) -> None:  # noqa: N802
+        self.controls.hub.learn(None)  # leaving the page cancels a Learn
+        self.timer.stop()
+        super().hideEvent(event)
+
+    def showEvent(self, event) -> None:  # noqa: N802
+        self._refresh()
+        self.timer.start(1000)
+        super().showEvent(event)
 
     # ------------------------------------------------------------------ view
     def _action_changed(self) -> None:
@@ -234,7 +243,7 @@ class ControllersDialog(QDialog):
         self.controls.save()
         log.info("controller binding added: %s -> %s", binding.source, binding.describe())
         self.learn_button.setText("Learn: then touch the control on your device")
-        self.message.setText(f"Bound {event.source} to {binding.describe()}. Add another, or close this window.")
+        self.message.setText(f"Bound {event.source} to {binding.describe()}. Add another the same way.")
         self._refresh()
 
     def _remove(self) -> None:
@@ -244,3 +253,19 @@ class ControllersDialog(QDialog):
             hub.set_bindings(hub.bindings[:row] + hub.bindings[row + 1:])
             self.controls.save()
             self._refresh()
+
+
+class ControllersDialog(QDialog):
+    """The controllers page on its own window (kept for ``sluice`` tools and tests; the app shows it in Settings)."""
+
+    def __init__(self, controls: Controls, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Controllers")
+        self.resize(640, 520)
+        layout = QVBoxLayout(self)
+        self.panel = ControllersPanel(controls, self)
+        layout.addWidget(self.panel)
+        self.finished.connect(lambda _code: controls.hub.learn(None))
+
+    def __getattr__(self, name):
+        return getattr(self.__dict__.get("panel") or super().__getattribute__("panel"), name)

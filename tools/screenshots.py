@@ -5,6 +5,8 @@
     QT_QPA_PLATFORM=offscreen python3 tools/screenshots.py            # both
     QT_QPA_PLATFORM=offscreen python3 tools/screenshots.py docs       # only docs/screenshot*.png
     QT_QPA_PLATFORM=offscreen python3 tools/screenshots.py previews   # only themes/previews/*.jpg
+    QT_QPA_PLATFORM=offscreen python3 tools/screenshots.py compare DIR          # every skin and theme at 1x
+    QT_QPA_PLATFORM=offscreen QT_SCALE_FACTOR=2 python3 tools/screenshots.py compare DIR   # ...and at 2x
 """
 from __future__ import annotations
 
@@ -28,6 +30,7 @@ DOCS = (  # file, look, theme, layout, size
     ("screenshot-nexus.png", "nexus", "dark", "columns", (1680, 860)),
     ("screenshot-glass.png", "glass", "dark", "columns", (1680, 860)),
 )
+COMPARE = [(skin, theme) for skin in ("calm", "tile", "glass", "nexus") for theme in ("dark", "light")]  # 0.12.2: before and after
 SOUND = {"game": 0.7, "chat": 0.45, "music": 0.55, "browser": 0.3, "mic": 0.6}
 
 
@@ -71,8 +74,17 @@ def shoot(app, skin: str, theme_id: str, layout: str, size: tuple, theme_file: P
     return picture
 
 
-def main(which: str = "both") -> None:
+def main(which: str = "both", folder: str = "") -> None:
     app = QApplication.instance() or QApplication(sys.argv)
+    if which == "compare":
+        out = Path(folder or "compare")
+        out.mkdir(parents=True, exist_ok=True)
+        scale = os.environ.get("QT_SCALE_FACTOR", "1")
+        for skin, theme in COMPARE:
+            path = out / f"{skin}-{theme}-{scale}x.png"
+            shoot(app, skin, theme, "columns", (1440, 820)).save(str(path))
+            print("wrote", path)
+        return
     if which in ("both", "docs"):
         for name, skin, theme, layout, size in DOCS:
             shoot(app, skin, theme, layout, size).save(str(ROOT / "docs" / name))
@@ -86,4 +98,4 @@ def main(which: str = "both") -> None:
 
 
 if __name__ == "__main__":
-    main(sys.argv[1] if len(sys.argv) > 1 else "both")
+    main(*(sys.argv[1:3] or ["both"]))

@@ -100,6 +100,7 @@ class GlassBackdrop(QObject):
         if event.type() == QEvent.Type.Paint and obj in self.parts and self.active():
             w = self.window
             p = QPainter(obj)
+            p.setRenderHints(QPainter.RenderHint.Antialiasing | QPainter.RenderHint.SmoothPixmapTransform)  # 0.12.2: smooth edges everywhere
             colours = tuple(sorted(themes._current.items()))
             offset = obj.mapTo(w, obj.rect().topLeft()) if obj is not w else obj.rect().topLeft()
             p.drawPixmap(-offset.x(), -offset.y(), backdrop(w.width(), w.height(), colours, obj.devicePixelRatioF()))

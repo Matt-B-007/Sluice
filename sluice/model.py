@@ -252,6 +252,7 @@ class Mixer:
         self.vst3_folders: list = []  # extra places to look for VST3 plugins, added by the user
         self.hints_seen: list = []  # one-time tips already shown (they are only ever shown once)
         self.buffer_frames = DEFAULT_BUFFER  # used the next time Sluice starts
+        self.update_channel = "stable"  # 0.12.2: "stable" (full releases) or "beta" (pre-releases too)
         self.auto_update = False  # download new releases in the background and install them when Sluice closes (off by default)
         self.layout = "columns"  # how the channels are laid out: "columns" (a card each) or "rows" (a line each); a saved "free" (gone in 0.11.5) loads as columns
         self.widget_skin = ""   # 0.11.6: the desktop widgets' own skin; "" is the same as the window
@@ -417,6 +418,7 @@ class Mixer:
             "buffer_frames": self.buffer_frames,
             "close_action": self.close_action,
             "auto_update": self.auto_update,
+            "update_channel": self.update_channel,
             "theme": self.theme,
             "skin": self.skin,
             "layout": self.layout,
@@ -478,6 +480,8 @@ class Mixer:
         if data.get("close_action") in CLOSE_CHOICES:
             mixer.close_action = data["close_action"]
         mixer.auto_update = data.get("auto_update") is True
+        if data.get("update_channel") in ("stable", "beta"):
+            mixer.update_channel = data["update_channel"]
         theme = data.get("theme")
         if isinstance(theme, str) and 0 < len(theme) <= 80:
             mixer.theme = theme  # an id that no longer exists simply shows the default theme

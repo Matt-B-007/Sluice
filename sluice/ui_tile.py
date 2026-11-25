@@ -27,14 +27,14 @@ from PySide6.QtCore import QPoint, QPointF, QRectF, QSize, Qt
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QMenu, QPushButton, QSizePolicy, QVBoxLayout, QWidget
 
-from . import depth, skin_tile, themes, ui_icons as icons
+from . import skin_tile, themes, ui_icons as icons
 from .flow import FlowLayout
 from .model import MIN_DB
 from .ui_base import db_to_fader_position, ElidedLabel, EMPTY_HINTS, format_db, level_fraction, mute_tip, ReadoutEdit
 from .ui_channel import ChannelStrip
 from .ui_meters import Fader, SourcePicture
 from .ui_tile_paint import (
-    _HANDLES, CLIP_HOLD, CLIP_NOTE, face_gradient, frame_of, IconWell, LANE_EXTRA_H, OPEN_W, PAD, paint_groove, paint_handle,
+    _HANDLES, CLIP_HOLD, CLIP_NOTE, face_gradient, frame_of, IconWell, LANE_EXTRA_H, OPEN_W, PAD, paint_groove, paint_handle, paint_leds,
     SCALE_MARKS, SHADOW, SKIRT, stripe_brush, TileFrame,
 )
 
@@ -54,7 +54,7 @@ class TileLane(Fader):
     PEAK_FALL = 0.006
 
     def __init__(self, color: str, on_clip=None) -> None:
-        super().__init__(horizontal=True, thumb=(12, 18))
+        super().__init__(horizontal=True, thumb=(14, 20))
         self.set_fill(color)
         self.big = False
         self.muted = False
@@ -73,7 +73,7 @@ class TileLane(Fader):
     # -- state
     def set_big(self, on: bool) -> None:
         self.big = on
-        self.thumb = (14, 22) if on else (12, 18)
+        self.thumb = (16, 24) if on else (14, 20)
         self.setFixedHeight(44 if on else 28)
         self.update()
 
@@ -110,6 +110,10 @@ class TileLane(Fader):
                 self._peak = max(self._level, self._peak - self.PEAK_FALL)
         if self._shown() != self._painted:  # a silent, settled track costs nothing
             self.update()
+
+    def _led_marks(self) -> tuple:
+        """Where the segments turn amber (-12 dB) and red (-3 dB), on the live signal's scale."""
+        return self._x_for(-12.0), self._x_for(-3.0)
 
     def _x_for(self, db: float) -> float:
         half, span = self._travel()
@@ -148,6 +152,7 @@ class TileLane(Fader):
                 return pixmap
             base, overlay = canvas(), canvas()
             q = QPainter(base)
+            q.setRenderHints(QPainter.RenderHint.Antialiasing | QPainter.RenderHint.SmoothPixmapTransform)  # 0.12.2: smooth edges everywhere
             background = face_gradient(self, frame)
             if background is not None:
                 q.fillRect(QRectF(0, 0, self.width(), self.height()), background)
@@ -155,6 +160,8 @@ class TileLane(Fader):
             q.setPen(Qt.PenStyle.NoPen)
             q.setBrush(stripe_brush(pc["track"], pc["stripe"]) if self.muted else QColor(pc["track"]))
             q.drawPath(shape)
+            if not self.muted:  # 0.12.2: the unlit LED segments, all along the groove
+                paint_leds(q, track, track.right(), pc, False, *self._led_marks())
             if self.big:
                 self._paint_scale(q, track, pc)
             q.end()
@@ -169,7 +176,7 @@ class TileLane(Fader):
         """The handle (with its shadow) as a picture, and where its top-left sits relative to the handle's own rectangle."""
         tw, th = self.thumb
         ratio = self.devicePixelRatioF()
-        key = (tw, th, ratio, themes.generation(), self.muted)
+        key = (tw, th, ratio, themes.generation(), self.muted, self.fill_color)
         cached = _HANDLES.get(key)
         if cached is None:
             room = 3
@@ -178,7 +185,7 @@ class TileLane(Fader):
             pixmap.fill(Qt.GlobalColor.transparent)
             q = QPainter(pixmap)
             q.setRenderHint(QPainter.RenderHint.Antialiasing)
-            paint_handle(q, QRectF(room, room, tw, th), pc, self.muted)
+            paint_handle(q, QRectF(room, room, tw, th), pc, self.muted, line=self.fill_color)
             q.end()
             cached = (pixmap, room)
             if len(_HANDLES) > 32:
@@ -188,6 +195,7 @@ class TileLane(Fader):
 
     def paintEvent(self, _event) -> None:
         p = QPainter(self)
+        p.setRenderHints(QPainter.RenderHint.Antialiasing | QPainter.RenderHint.SmoothPixmapTransform)  # 0.12.2: smooth edges everywhere
         pc = skin_tile.paint_colors()
         track = self._track_rect()
         radius = track.height() / 2.0
@@ -198,14 +206,12 @@ class TileLane(Fader):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         centre = float(round(self._centre()))
         live, peak, clipping = self._shown()
-        if not self.muted:  # the fills: pills from the left end of the groove (no clip path: a frame must stay cheap)
+        if not self.muted:  # 0.12.2: the fader's position as a thin line in the channel's colour, the live signal as lit LEDs
             p.setPen(Qt.PenStyle.NoPen)
-            color = QColor(self.fill_color)
-            p.setBrush(QColor(depth.position_fill(self.fill_color, pc["track"], 0.28)))  # solid: yellow stays yellow
-            p.drawRoundedRect(QRectF(track.left(), track.top(), max(track.height(), centre - track.left()), track.height()), radius, radius)
+            p.setBrush(QColor(self.fill_color))
+            p.drawRoundedRect(QRectF(track.left() + 2, track.bottom() - 2.5, max(0.0, centre - track.left() - 2), 1.6), 0.8, 0.8)
             if live >= 0:
-                p.setBrush(color)
-                p.drawRoundedRect(QRectF(track.left(), track.top(), max(track.height(), live - track.left()), track.height()), radius, radius)
+                paint_leds(p, track, live, pc, True, *self._led_marks())
         p.drawPixmap(0, 0, overlay)
         if clipping:
             p.setBrush(Qt.BrushStyle.NoBrush)
@@ -230,7 +236,7 @@ class TileLane(Fader):
         if self.hasFocus():
             p.setBrush(Qt.BrushStyle.NoBrush)
             p.setPen(QPen(QColor(pc["focus"]), 2))
-            p.drawRoundedRect(thumb.adjusted(-2.5, -2.5, 2.5, 2.5), tw / 2.0 + 2.5, tw / 2.0 + 2.5)
+            p.drawRoundedRect(thumb.adjusted(-2.5, -2.5, 2.5, 2.5), 5.5, 5.5)
         p.end()
         self._painted = (live, peak, clipping)
 
@@ -483,9 +489,12 @@ class TileStrip(ChannelStrip):
         grip.setSpacing(10)
         self.well = IconWell(self.tint, skin_tile.channel_icon(channel), channel.label)
         grip.addWidget(self.well)
-        texts = QVBoxLayout()
-        texts.setContentsMargins(0, 0, 0, 0)
-        texts.setSpacing(1)
+        self.lcd = QFrame()  # 0.12.2: the name and source sit on a small LCD
+        self.lcd.setObjectName("tilelcd")
+        self.lcd.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        texts = QVBoxLayout(self.lcd)
+        texts.setContentsMargins(8, 2, 8, 3)
+        texts.setSpacing(0)
         self.title.setObjectName("tilename")
         self.title.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.source_line = ElidedLabel("")
@@ -493,7 +502,8 @@ class TileStrip(ChannelStrip):
         self.source_line.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         texts.addWidget(self.title)
         texts.addWidget(self.source_line)
-        grip.addLayout(texts, 1)
+        grip.addWidget(self.lcd, 1)
+        self._ink_lcd()
         self.grip.setToolTip("Drag to move this tile. Double-click the name to rename.")
         self.mic_button.setObjectName("tilemute")
         self.mic_button.setFixedSize(28, 28)
@@ -510,10 +520,10 @@ class TileStrip(ChannelStrip):
         head.addWidget(self.menu_button)
         self.head = QWidget()
         self.head.setObjectName("tilerow")
-        self.head.setFixedHeight(36)
+        self.head.setFixedHeight(42)
         self.head.setLayout(head)
         root.addWidget(self.head)
-        root.addSpacing(14)
+        root.addSpacing(8)  # (0.12.2: the LCD header is 6 px taller, so the tile keeps its size)
 
         self.empty_hint = QLabel(EMPTY_HINTS.get(channel.id, "Add the apps for this channel."))
         self.empty_hint.setObjectName("tilehint")
@@ -854,6 +864,7 @@ class TileStrip(ChannelStrip):
     # ------------------------------------------------------------------ ChannelStrip parts, as a tile shows them
     def refresh_theme(self) -> None:
         self.retint(skin_tile.channel_color(self.channel))  # 0.11.6: a channel's colour is shaded for the theme in use
+        self._ink_lcd()
         text2 = themes.color("text2")
         self.fx_button.setIcon(icons.icon("sliders", text2, 16))
         self.link.setIcon(icons.icon("link", themes.color("accent_text") if self.link.isChecked() else text2, 16))
@@ -864,6 +875,12 @@ class TileStrip(ChannelStrip):
         for mix in self.engine.mixer.mixes:
             self._show_mute(mix)
         self.show_mic_state()
+
+    def _ink_lcd(self) -> None:
+        """The channel's name lit in its own colour on the LCD (0.12.2)."""
+        light = skin_tile.is_light(themes.color("panel"))
+        self.title.setStyleSheet(f"color: {skin_tile.lcd_ink(self.tint, light)};")
+        skin_tile.lcd_caps(self.title)
 
     def retint(self, color: str) -> None:
         """Give the well, every lane and every app meter this colour (a new theme shades the channel's colour differently)."""
@@ -1053,16 +1070,22 @@ def build_mix_key(strip, mix, on_remove=None, on_add_recording=None) -> None:
     head.setSpacing(10)
     strip.well = IconWell(color, MIX_ICONS.get(mix.id, "speaker"), mix.label, 30)
     head.addWidget(strip.well, 0, Qt.AlignmentFlag.AlignTop)
-    names = QVBoxLayout()
+    strip.lcd = QFrame()  # 0.12.2: the name and device on a small LCD, as on the channel tiles
+    strip.lcd.setObjectName("tilelcd")
+    names = QVBoxLayout(strip.lcd)
+    names.setContentsMargins(8, 2, 8, 3)
     names.setSpacing(0)
     title = QLabel(mix.label)
     title.setObjectName("tilename")
+    title.setStyleSheet(f"color: {skin_tile.lcd_ink(color, skin_tile.is_light(themes.color('panel')))};")
+    strip.lcd_title = title
+    skin_tile.lcd_caps(title)
     names.addWidget(title)
     device_text = mix.source_description if mix.kind != "monitor" else "Your headphones or speakers"
     strip.device_line = ElidedLabel(device_text)
     strip.device_line.setObjectName("tilesource")
     names.addWidget(strip.device_line)
-    head.addLayout(names, 1)
+    head.addWidget(strip.lcd, 1)
     strip.limiter = QPushButton("Limiter")
     strip.limiter.setObjectName("tilelimiter")
     strip.limiter.setCheckable(True)

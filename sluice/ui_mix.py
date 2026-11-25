@@ -161,6 +161,9 @@ class MixStrip(QFrame):
         self.setProperty("mix", mix.id)
         title = QLabel(mix.label)
         title.setObjectName("title")
+        if nexus:  # 0.12.2: in capitals, like the channel names
+            from .skin_tile import lcd_caps
+            lcd_caps(title)
         if nexus:
             title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         names.addWidget(title)
@@ -227,8 +230,19 @@ class MixStrip(QFrame):
             row = QHBoxLayout()
             row.setSpacing(16)  # 0.12.0: the fader and its meter as one pair (40 px apart they read as two things)
             row.addStretch(1)
+            self.scale = None
+            if themes.current_skin() != "nexus":  # 0.12.2: dB marks beside the fader fill the empty column
+                from .ui_meters import DbScale
+                self.scale = DbScale(self.fader)
+                row.addWidget(self.scale)
+                row.addSpacing(-8)
             row.addWidget(self.fader)
             row.addWidget(self.meter)
+            if self.scale is not None:  # as wide again on the other side, so the fader and meter stay centred over the level
+                row.addSpacing(-8)
+                balance = QWidget()
+                balance.setFixedWidth(self.scale.width())
+                row.addWidget(balance)
             row.addStretch(1)
             layout.addLayout(row, 1)
             layout.addWidget(self.readout)
@@ -243,6 +257,7 @@ class MixStrip(QFrame):
         self.mute.setAccessibleName(f"Mute {mix.label}")
         self.limiter = QPushButton("Limiter on")
         self.limiter.setObjectName("limiter")
+        self.limiter.setProperty("mix", mix.id)  # 0.12.2: on, it takes the mix's own colour
         self.limiter.setCheckable(True)
         self.limiter.setFixedHeight(40)
         self.limiter.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -288,6 +303,7 @@ class MixStrip(QFrame):
     def paintEvent(self, event) -> None:
         if self.key is not None:
             p = QPainter(self)
+            p.setRenderHints(QPainter.RenderHint.Antialiasing | QPainter.RenderHint.SmoothPixmapTransform)  # 0.12.2: smooth edges everywhere
             self.key.draw(self, p)
             p.end()
             return
@@ -302,6 +318,7 @@ class MixStrip(QFrame):
         canvas.setDevicePixelRatio(ratio)
         canvas.fill(Qt.GlobalColor.transparent)
         p = QPainter(canvas)
+        p.setRenderHints(QPainter.RenderHint.Antialiasing | QPainter.RenderHint.SmoothPixmapTransform)  # 0.12.2: smooth edges everywhere
         p.drawPixmap(3, 3, pixmap)
         p.end()
         return canvas
@@ -324,13 +341,26 @@ class MixStrip(QFrame):
             self.fader.set_fill(self.tint)
             self.well.color = self.tint
             self.well.update()
+            from . import skin_tile
+            self.lcd_title.setStyleSheet(f"color: {skin_tile.lcd_ink(self.tint, skin_tile.is_light(themes.color('panel')))};")
             self.fold.setIcon(icons.icon("chevron_up" if self.fold.isChecked() else "chevron_down", themes.color("text2"), 16))
             self._show_toggles()
             return
-        self.fader.set_fill(self.ring.color if self.ring is not None else themes.color("accent"))
+        own = self._own_color()
+        self.fader.set_fill(self.ring.color if self.ring is not None else own)
+        self.meter.set_tint(own if themes.current_skin() in ("calm", "glass", "nexus") else None)
+        if getattr(self, "scale", None) is not None:
+            self.scale.update()
         if self.menu_button is not None:
             self.menu_button.setIcon(icons.icon("more", themes.color("text_dim"), 20))
         self._show_toggles()
+
+    def _own_color(self) -> str:
+        """The mix's colour (0.12.2): Listen's and Broadcast's from the theme, the mute colour for Recording."""
+        mixc = themes.mix_colors(themes._current)
+        if self.mix.id == RECORDING:
+            return themes.color("mute")
+        return mixc.get({MONITOR: "listen", STREAM: "broadcast"}.get(self.mix.id, ""), themes.color("accent"))
 
     def _show_toggles(self) -> None:
         muted = self.mute.isChecked()

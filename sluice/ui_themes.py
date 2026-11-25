@@ -14,6 +14,7 @@ from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QActionGroup, QColor, QDesktopServices, QGuiApplication, QPalette
 from PySide6.QtWidgets import QFileDialog, QMessageBox
 
+from . import ui_dialog
 from . import logs, themes
 from .ui_base import THEMES_URL
 
@@ -107,9 +108,9 @@ class ThemesMixin:
         menu.setToolTipsVisible(True)
 
     def compare_skins(self) -> None:
-        """Show a picture of each look in the colours of the theme in use, with a button to pick one."""
-        from .ui_skins import CompareSkinsDialog
-        CompareSkinsDialog(self).exec()
+        """A picture of each skin in the colours of the theme in use, to pick one: Settings > Themes and skins (0.12.2: one window
+        fewer; the pictures there are the same)."""
+        self.open_settings("Themes and skins")
 
     def choose_skin(self, skin_id: str) -> None:
         """Change the shapes and sizes of the window (the colours stay as chosen under View > Theme)."""
@@ -165,7 +166,12 @@ class ThemesMixin:
         group = QActionGroup(menu)
         chosen = themes.canonical_id(self.engine.mixer.theme, self._themes_folder())
 
-        def add(theme_id: str, text: str, tip: str = "") -> None:
+        nexus = themes.valid_skin(self.engine.mixer.skin) == "nexus"
+
+        def add(theme_id: str, text: str, tip: str = "", theme=None) -> None:
+            if nexus and theme is not None and themes.is_light_theme(theme):  # 0.12.2: the picker says Nexus stays dark
+                text += " (Nexus stays dark)"
+                tip = themes.NEXUS_DARK_ONLY
             action = menu.addAction(text)
             action.setCheckable(True)
             action.setActionGroup(group)
@@ -177,13 +183,13 @@ class ThemesMixin:
         from .ui_menus import heading
         heading(menu, "Your themes")
         for theme in themes.BUILT_IN.values():
-            add(theme.id, theme.name)
+            add(theme.id, theme.name, theme=theme)
         add(themes.SYSTEM, themes.SYSTEM_LABEL, "Dark or Light, following your desktop's own setting")
         custom = themes.custom_themes(self._themes_folder())
         if custom:
             menu.addSeparator()
             for theme in custom:
-                add(theme.id, theme.name)
+                add(theme.id, theme.name, theme=theme)
         if chosen.startswith(themes.CUSTOM_PREFIX) and not any(t.id == chosen for t in custom):  # not in the folder any more
             menu.addSeparator()
             missing = menu.addAction("An imported theme that is no longer in the themes folder (showing Dark)")
@@ -224,10 +230,11 @@ class ThemesMixin:
 
     def choose_theme(self, theme_id: str) -> None:
         theme = self.apply_theme(theme_id)
+        dark_only = " " + themes.NEXUS_DARK_ONLY if themes.valid_skin(self.engine.mixer.skin) == "nexus" and themes.is_light_theme(theme) else ""
         if theme_id == themes.SYSTEM:
-            self.say(f"Theme: following your system (right now {theme.name}).")
+            self.say(f"Theme: following your system (right now {theme.name}).{dark_only}")
         else:
-            self.say(f"Theme: {theme.name}.")
+            self.say(f"Theme: {theme.name}.{dark_only}")
 
     def import_theme_from(self, path) -> "themes.Theme":
         """Check a theme file, keep a copy in the themes folder and switch to it. Raises ThemeError."""
@@ -237,7 +244,7 @@ class ThemesMixin:
         theme, notes = themes.load_file(path)
         problems = themes.contrast_problems(theme.colors)
         if problems:
-            ask = QMessageBox.question(
+            ask = ui_dialog.question(
                 self, "Hard to read",
                 f"The theme \u201c{theme.name}\u201d may be hard to read:\n\n" + "\n".join("\u2022 " + p for p in problems[:4])
                 + "\n\nUse it anyway? You can switch back in View > Theme.")
@@ -255,7 +262,7 @@ class ThemesMixin:
         try:
             self.import_theme_from(path)
         except themes.ThemeError as exc:
-            QMessageBox.warning(self, "Could not import the theme", str(exc))
+            ui_dialog.warning(self, "Could not import the theme", str(exc))
 
     def export_theme_to(self, path) -> None:
         theme = self.current_theme()
@@ -271,7 +278,7 @@ class ThemesMixin:
             try:
                 self.export_theme_to(path)
             except OSError as exc:
-                QMessageBox.warning(self, "Could not save the theme", str(exc))
+                ui_dialog.warning(self, "Could not save the theme", str(exc))
 
     def remove_theme(self, theme_id: str) -> None:
         if themes.remove_custom(theme_id, self._themes_folder()):

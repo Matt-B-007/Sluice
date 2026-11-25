@@ -241,9 +241,9 @@ QFrame#accent { border: none; border-radius: 2px; }
 QLabel { background: transparent; }
 QLabel#appname { font-size: 20px; font-weight: 700; color: $title; }
 QLabel#title { font-size: 20px; font-weight: 700; color: $title; }
-QLabel#name { font-size: 20px; font-weight: 600; color: $title; }
+QLabel#name { font-size: 17px; font-weight: 600; color: $title; }
 QLabel#tag { font-size: 12px; font-weight: 600; letter-spacing: 0.5px; color: $text_faint; }
-QLabel#tag[narrow="true"] { font-size: 11px; letter-spacing: 0; }
+QLabel#tag[narrow="true"] { font-size: 11px; letter-spacing: 0; }  /* the one exception to 13 px: a capitals label squeezed into a narrow card */
 QLabel#tag[mix="monitor"] { color: $listen_text; }
 QLabel#tag[mix="stream"] { color: $broadcast_text; }
 QFrame#mix[mix="monitor"] { border-color: $listen_edge; }
@@ -251,21 +251,21 @@ QFrame#mix[mix="stream"] { border-color: $broadcast_edge; }
 QFrame#mixcell { background: transparent; border: 1px solid transparent; border-radius: 12px; }
 QFrame#mixcell[mix="monitor"] { background: $listen_tint; border-color: $listen_edge; }
 QFrame#mixcell[mix="stream"] { background: $broadcast_tint; border-color: $broadcast_edge; }
-QLabel#mixheading { font-size: 12px; font-weight: 700; letter-spacing: 0.5px; background: transparent; }
+QLabel#mixheading { font-size: 12px; font-weight: 600; letter-spacing: 0.5px; background: transparent; }
 QLabel#mixheading[mix="monitor"] { color: $listen_text; }
 QLabel#mixheading[mix="stream"] { color: $broadcast_text; }
-QLabel#hint { font-size: 12px; color: $text_dim; }
-QLabel#feedback { font-size: 12px; color: $text_dim; }
-QLabel#chiptext { font-size: 12px; color: $text2; background: transparent; }
+QLabel#hint { font-size: 13px; color: $text_dim; }
+QLabel#feedback { font-size: 13px; color: $text_dim; }
+QLabel#chiptext { font-size: 13px; color: $text2; background: transparent; }
 QFrame#livepanel { background: $panel; border: 1px solid $border; border-radius: 24px; }
 QFrame#detail { background: $panel; border: 1px solid $border; border-radius: 24px; }
 QLabel#swatch { border-radius: 6px; background: $text_dim; }
 QLabel#swatch[who="out"] { background: $accent; }
 QLabel#bigvalue { font-size: 20px; font-weight: 700; color: $title; background: transparent; }
-QLabel#gatechip { font-size: 12px; font-weight: 600; padding: 4px 16px; border-radius: 12px; background: $surface2; color: $text2; }
+QLabel#gatechip { font-size: 13px; font-weight: 600; padding: 4px 16px; border-radius: 12px; background: $surface2; color: $text2; }
 QLabel#gatechip[open="true"] { background: $live_bg; color: $live_fg; }
-QLabel#livechip { font-size: 12px; font-weight: 600; color: $live_fg; background: $live_bg; border-radius: 16px; padding: 7px 16px; }
-QLabel#ratetext { font-size: 12px; color: $text_dim; }
+QLabel#livechip { font-size: 13px; font-weight: 600; color: $live_fg; background: $live_bg; border-radius: 16px; padding: 7px 16px; }
+QLabel#ratetext { font-size: 13px; color: $text_dim; }
 QLabel#dropouts { font-size: 14px; color: $text2; }
 QLabel#readout { font-size: 14px; font-weight: 600; color: $strong; background: transparent; border: none; }
 QLineEdit#readout { font-size: 14px; font-weight: 600; color: $strong; background: transparent; border: 2px solid transparent;
@@ -273,8 +273,8 @@ QLineEdit#readout { font-size: 14px; font-weight: 600; color: $strong; backgroun
 QLineEdit#readout:hover { border-color: $border2; }
 QLineEdit#readout:focus { border-color: $focus; background: $input; }
 QLineEdit#readout[big="true"] { font-size: 20px; font-weight: 700; }
-QLabel#status { color: $text_dim; font-size: 12px; padding: 0 8px; }
-QLabel#demo { color: #1b1300; background: #f5c542; font-weight: 700; font-size: 12px; border-radius: 8px; padding: 4px 12px; }
+QLabel#status { color: $text_dim; font-size: 13px; padding: 0 8px; }
+QLabel#demo { color: #1b1300; background: #f5c542; font-weight: 700; font-size: 13px; border-radius: 8px; padding: 4px 12px; }
 QLabel#step { font-size: 14px; font-weight: 700; color: $on_color; background: $accent; border-radius: 16px; }
 QLabel#stepoff { font-size: 14px; font-weight: 700; color: $text2; background: $track; border-radius: 16px; }
 QStatusBar { background: $bg; border: none; }
@@ -290,7 +290,7 @@ QPushButton:focus { border: 2px solid $focus; padding: 0 15px; }
 QPushButton:disabled { color: $text_off; }
 QPushButton:checked { color: $accent_text; background: $accent_bg; border-color: transparent; }
 QPushButton::menu-indicator { image: none; width: 0; }
-QPushButton[compact="true"] { border-radius: 8px; min-height: 30px; padding: 0 8px; font-size: 12px; font-weight: 500; }
+QPushButton[compact="true"] { border-radius: 8px; min-height: 30px; padding: 0 8px; font-size: 13px; font-weight: 500; }
 QPushButton[compact="true"]:focus { padding: 0 7px; }
 QPushButton#primary { background: $accent; color: $on_color; border-color: transparent; }
 QPushButton#primary:hover { border-color: $hover; }
@@ -299,9 +299,11 @@ QPushButton#iconbutton[compact="true"] { border-radius: 8px; }
 QPushButton#mute { background: $track; border: 2px solid transparent; padding: 0; }
 QPushButton#mute:checked { background: $mute_bg; border-color: transparent; }
 QPushButton#mute:focus { border-color: $focus; }
-QPushButton#limiter { border: 2px solid transparent; font-size: 12px; font-weight: 700; background: $track; color: $text2; }
+QPushButton#limiter { border: 2px solid transparent; font-size: 13px; font-weight: 700; background: $track; color: $text2; }
 QPushButton#limiter:checked { background: $accent_bg; color: $accent_text; border-color: transparent; }
 QPushButton#limiter:focus { border-color: $focus; }
+QPushButton#limiter[mix="monitor"]:checked { background: $listen_tint; color: $listen_text; }
+QPushButton#limiter[mix="stream"]:checked { background: $broadcast_tint; color: $broadcast_text; }
 QPushButton#link { padding: 0; border-radius: 8px; background: $surface2; border: 1px solid $border2; }
 QPushButton#link:checked { background: $accent_bg; border-color: $accent; }
 QPushButton#link:focus { border: 1px solid $focus; }
@@ -310,7 +312,7 @@ QPushButton#micmute:checked { background: $mute_bg; border-color: transparent; }
 QPushButton#micmute:focus { border-color: $focus; }
 QPushButton#iconbutton:focus { border: 1px solid $focus; }
 QPushButton#addchip { border: 2px dashed $dashed; color: $text_dim; background: transparent; border-radius: 8px;
-    min-height: 28px; font-size: 12px; font-weight: 500; padding: 0 8px; }
+    min-height: 28px; font-size: 13px; font-weight: 500; padding: 0 8px; }
 QPushButton#addchip:hover { border-color: $hover; color: $text; }
 QPushButton#addchip:focus { border: 2px solid $focus; padding: 0 8px; }
 QPushButton#addchip[iconly="true"]:focus { border: 1px solid $focus; padding: 0; }
@@ -319,7 +321,7 @@ QPushButton#plain { background: transparent; border: 2px solid transparent; padd
 QPushButton#plain:hover { background: $surface2; }
 QPushButton#plain:focus { border-color: $focus; }
 QFrame#segmented { background: transparent; border: 1px solid $border; border-radius: 12px; }
-QPushButton#segment { border: 2px solid transparent; background: transparent; min-height: 30px; border-radius: 9px; padding: 0 14px; font-size: 12px; color: $text2; }
+QPushButton#segment { border: 2px solid transparent; background: transparent; min-height: 30px; border-radius: 9px; padding: 0 14px; font-size: 13px; color: $text2; }
 QPushButton#segment:checked { background: $accent_bg; color: $accent_text; border-color: transparent; }
 QPushButton#segment:focus { border-color: $focus; }
 QLabel#intro { color: $text2; }
@@ -327,15 +329,15 @@ QPushButton#addchannel { border: 2px dashed $dashed; color: $text_dim; backgroun
     font-size: 14px; font-weight: 600; }
 QPushButton#addchannel:hover { border-color: $hover; color: $text; }
 QPushButton#addchannel:focus { border: 2px solid $focus; }
-QPushButton#quiet { background: transparent; border: 1px solid $border2; color: $text2; font-size: 12px; font-weight: 600; }
+QPushButton#quiet { background: transparent; border: 1px solid $border2; color: $text2; font-size: 13px; font-weight: 600; }
 QPushButton#quiet:checked { background: $accent_bg; color: $accent_text; border-color: transparent; }
 QPushButton#quiet:focus { border: 2px solid $focus; padding: 0 15px; }
-QPushButton#devicebutton { background: $surface2; border: 1px solid $border2; color: $text2; font-size: 12px; font-weight: 500;
+QPushButton#devicebutton { background: $surface2; border: 1px solid $border2; color: $text2; font-size: 13px; font-weight: 500;
     text-align: left; padding: 0 12px; }
 QPushButton#devicebutton:focus { border: 2px solid $focus; padding: 0 11px; }
 QPushButton#app { padding: 3px 12px; border-radius: 12px; }
 QPushButton#appassigned { padding: 3px 12px; border-radius: 12px; color: $strong; background: $applied; }
-QPushButton:flat { background: transparent; border: none; min-height: 0; padding: 2px 8px; font-size: 12px; }
+QPushButton:flat { background: transparent; border: none; min-height: 0; padding: 2px 8px; font-size: 13px; }
 QToolButton { background: transparent; border: 2px solid transparent; color: $text_dim; font-weight: 700; padding: 0 2px; border-radius: 8px; }
 QToolButton:hover { color: $strong; background: $surface2; }
 QToolButton:focus { border-color: $focus; }
@@ -344,11 +346,13 @@ QToolButton::menu-indicator { image: none; width: 0; }
 
 QComboBox {
     background: $surface2; border: 1px solid $border2; border-radius: 12px; padding: 0 12px; min-height: 38px;
-    font-size: 12px; font-weight: 500; color: $text2;
+    font-size: 13px; font-weight: 500; color: $text2;
 }
 QComboBox:hover { border-color: $hover; }
 QComboBox:focus { border: 2px solid $focus; padding: 0 11px; }
-QComboBox::drop-down { border: none; width: 24px; }
+QComboBox::drop-down { border: none; width: 28px; }
+QComboBox::down-arrow { image: url("$chevron_url"); width: 14px; height: 14px; }
+QComboBox::down-arrow:on { top: 1px; }
 QComboBox QAbstractItemView {
     background: $popup; border: 1px solid $button_border; selection-background-color: $select;
     selection-color: $select_text; font-size: 14px; padding: 8px; outline: 0;
@@ -357,13 +361,13 @@ QMenu { background: $popup; border: 1px solid $button_border; padding: 8px; bord
 QMenu::item { padding: 8px 24px; border-radius: 8px; }
 QMenu::item:selected { background: $select; color: $select_text; }
 QMenu::item:disabled { color: $menu_off; }
-QLabel#menuheading { font-size: 11px; font-weight: 700; letter-spacing: 0.6px; color: $text_dim; background: transparent;
+QLabel#menuheading { font-size: 12px; font-weight: 600; letter-spacing: 0.6px; color: $text_dim; background: transparent;
     padding: 12px 24px 4px 24px; border-top: 1px solid $border; margin-top: 4px; }
 QLabel#menuheading[first="true"] { padding-top: 4px; border-top: none; margin-top: 0; }
 QMenu::separator { height: 1px; background: $border; margin: 8px 8px; }
 QFrame#menupanel { background: $popup; border: 1px solid $button_border; border-radius: 20px; }
 QFrame#menupanel QLabel { background: transparent; }
-QFrame#menupanel QLabel#panelsection { font-size: 11px; font-weight: 700; letter-spacing: 0.8px; color: $text_dim; padding: 10px 10px 4px 10px; }
+QFrame#menupanel QLabel#panelsection { font-size: 12px; font-weight: 600; letter-spacing: 0.8px; color: $text_dim; padding: 10px 10px 4px 10px; }
 QFrame#menupanel QPushButton#panelrow, QFrame#menupanel QPushButton#panelfoot { background: transparent; border: 1px solid transparent;
     border-radius: 10px; text-align: left; padding: 0; }
 QFrame#menupanel QPushButton#panelrow:hover, QFrame#menupanel QPushButton#panelrow:focus { background: $chip; border-color: $chip; }
@@ -373,18 +377,18 @@ QFrame#menupanel QPushButton#panelfoot:hover { background: $hover; }
 QFrame#menupanel QPushButton#panelfoot:focus { border-color: $focus; }
 QFrame#menupanel QLabel#panelname { font-size: 14px; color: $text; }
 QFrame#menupanel QPushButton#panelfoot QLabel#panelname { font-weight: 600; }
-QFrame#menupanel QLabel#keycap { font-size: 11px; color: $text_dim; background: $chip; border: 1px solid $button_border;
+QFrame#menupanel QLabel#keycap { font-size: 12px; color: $text_dim; background: $chip; border: 1px solid $button_border;
     border-radius: 6px; padding: 1px 6px; }
 QFrame#menupanel QPushButton#paneltile { background: $button; border: 1px solid $button_border; border-radius: 14px; text-align: left; }
 QFrame#menupanel QPushButton#paneltile:hover { background: $hover; }
 QFrame#menupanel QPushButton#paneltile:focus { border-color: $focus; }
 QFrame#menupanel QPushButton#paneltile[on="true"] { background: $mute_bg; border-color: $mute; }
 QFrame#menupanel QLabel#tilename { font-size: 13px; font-weight: 600; color: $text; }
-QFrame#menupanel QLabel#tilekey { font-size: 11px; color: $text_dim; }
+QFrame#menupanel QLabel#tilekey { font-size: 12px; color: $text_dim; }
 QFrame#menupanel QLabel#tilename[on="true"] { color: $mute_fg; }
 QFrame#menupanel QLabel#panelname:disabled { color: $menu_off; }
 QFrame#menupanel QPushButton#panelchip { background: $button; border: 1px solid $button_border; border-radius: 12px; min-height: 36px;
-    font-size: 12px; font-weight: 600; color: $text; padding: 0 8px; }
+    font-size: 13px; font-weight: 600; color: $text; padding: 0 8px; }
 QFrame#menupanel QPushButton#panelchip:hover { background: $hover; }
 QFrame#menupanel QPushButton#panelchip:checked { background: $mute_bg; border-color: $mute; color: $mute_fg; }
 QFrame#menupanel QPushButton#panelchip:focus { border-color: $focus; }
@@ -401,20 +405,25 @@ QDialog QFrame#settingsgroup { background: $panel; border: 1px solid $border; bo
 QDialog QFrame#settingsrow { background: transparent; border: none; border-top: 1px solid $border_soft; }
 QDialog QFrame#settingsrow[first="true"] { border-top: none; }
 QDialog QFrame#settingsrow QLabel#rowname { font-size: 14px; font-weight: 500; color: $text; background: transparent; }
-QDialog QFrame#settingsrow QLabel#rowhint { font-size: 12px; color: $text_dim; background: transparent; }
+QDialog QFrame#settingsrow QLabel#rowhint { font-size: 13px; color: $text_dim; background: transparent; }
 QDialog QLabel#settingstitle { font-size: 22px; font-weight: 700; color: $text; }
 QDialog QFrame#settingsrow QLabel#setupok { font-size: 13px; font-weight: 600; color: $ok; background: transparent; }
 QDialog QFrame#settingsrow QLabel#setupmissing { font-size: 13px; font-weight: 600; color: $warn; background: transparent; }
 QDialog QFrame#settingsrow QLabel#setupneeded { font-size: 13px; font-weight: 600; color: $error; background: transparent; }
 QDialog QFrame#settingsrow QLabel#setupidle { font-size: 13px; color: $text_dim; background: transparent; }
-QDialog QFrame#settingsrow QLabel#setupcommand { font-family: monospace; font-size: 12px; color: $code; background: $well;
+QDialog QFrame#settingsrow QLabel#setupcommand { font-family: monospace; font-size: 13px; color: $code; background: $well;
     border: 1px solid $border_soft; border-radius: 8px; padding: 6px 10px; }
-QDialog QLabel#grouphead { font-size: 11px; font-weight: 700; letter-spacing: 0.8px; color: $text_dim; padding: 4px 4px 0 4px; }
+QDialog QLabel#grouphead { font-size: 12px; font-weight: 600; letter-spacing: 0.8px; color: $text_dim; padding: 4px 4px 0 4px; }
 QMenuBar { background: $bg; color: $button_text; }
 QMenuBar::item { padding: 8px 12px; border-radius: 8px; }
 QMenuBar::item:selected { background: $chip; }
 QDialog { background: $dialog; }
 QMessageBox { background: $dialog; }
+QDialog#cardpanel { background: $popup; border: 1px solid $button_border; }
+QDialog#cardpanel QLabel#panelheading { font-size: 17px; font-weight: 600; color: $title; background: transparent; }
+QMessageBox#sluicemessage QLabel { font-size: 14px; color: $text; }
+QMessageBox#sluicemessage QPushButton { min-width: 96px; }
+QMessageBox#sluicemessage QPushButton#primary { background: $accent; color: $on_color; border-color: transparent; }
 QProgressBar { background: $well; border: 1px solid $border_soft; border-radius: 8px; text-align: center; min-height: 16px; }
 QProgressBar::chunk { background: $accent; border-radius: 7px; }
 QTextBrowser { color: $list_text; background: $input; border: 1px solid $border_soft; border-radius: 12px; padding: 8px; }
@@ -441,10 +450,11 @@ QScrollBar::handle:horizontal { background: $line; border-radius: 6px; min-width
 QScrollBar::handle:horizontal:hover { background: $scroll_hover; }
 QScrollBar::handle:horizontal:pressed { background: $scroll_press; }
 QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { background: transparent; }
-QScrollBar:vertical { background: transparent; width: 8px; }
+QScrollBar:vertical { background: $scroll_track; width: 8px; border-radius: 4px; margin: 4px 0; }
 QScrollBar::handle:vertical { background: $line; border-radius: 4px; min-height: 24px; }
 QScrollBar::handle:vertical:hover { background: $scroll_hover; }
 QScrollBar::add-line, QScrollBar::sub-line { width: 0; height: 0; }
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
 
 /* sliders in dialogs (the faders of the mixer paint themselves) */
 QSlider::groove:horizontal { background: $track; height: 8px; border-radius: 4px; }
@@ -569,15 +579,33 @@ def skin_colors(theme: "Theme", skin: str) -> dict:
     small and drawn things can be seen."""
     skin = valid_skin(skin)
     colors = theme.colors
+    if skin == "nexus" and is_light_theme(theme):  # 0.12.2: Nexus is dark only; a light theme shows Nexus's own dark colours
+        from .skin_nexus import NEXUS_DARK
+        return finish(complete({**DARK, **NEXUS_DARK}, given=NEXUS_DARK.keys()))
     if skin == "nexus" and theme.id in NEXUS_THEMES and _skin_colors:
         from .skin_nexus import NEXUS_DARK
         colors = complete({**theme.colors, **NEXUS_DARK}, given=NEXUS_DARK.keys())
+    elif skin == "glass" and _skin_colors and theme.id in ("dark", "light"):  # 0.12.2: Glass's night blue and frosted white
+        from .skin_glass import GLASS_THEMES
+        own = GLASS_THEMES[theme.id]
+        colors = complete({**theme.colors, **own}, given=own.keys())
+    elif skin == "calm" and _skin_colors and theme.id in ("dark", "light"):  # 0.12.2: Calm's warm white and graphite
+        from .skin_calm import CALM_THEMES
+        own = CALM_THEMES[theme.id]
+        colors = complete({**theme.colors, **own}, given=own.keys())
     elif skin == "tile" and _skin_colors and theme.id in TILE_DARK_THEMES + TILE_LIGHT_THEMES:
         from .skin_tile import TILE_DARK, TILE_LIGHT
         own = TILE_DARK if theme.id in TILE_DARK_THEMES else TILE_LIGHT
         colors = complete({**theme.colors, **own}, given=own.keys())
     return finish(colors)
 
+
+def is_light_theme(theme: "Theme") -> bool:
+    """Whether a theme is a light one (its cards are light): Nexus shows its dark colours instead (0.12.2)."""
+    return luminance(theme.colors["panel"]) >= 0.4
+
+
+NEXUS_DARK_ONLY = "Nexus is dark only: it stays dark with a light theme. Light shows in Calm, Tile and Glass."
 
 TEXT_OFF_MINIMUM = 3.0  # greyed-out text (a switched-off control, an empty hint): still readable
 
@@ -598,6 +626,28 @@ def finish(colors: dict) -> dict:
     return c
 
 
+def chevron_file(color: str) -> str:
+    """0.12.2: a dropdown's arrow is Sluice's drawn chevron in the theme's colour, saved once as a small picture for the style sheet
+    (a style sheet can only show a picture from a file). "" when it cannot be made (no window system yet, or no writable folder)."""
+    import os
+    from pathlib import Path
+    folder = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "sluice" / "icons"
+    path = folder / f"chevron-{color.lstrip('#')}.png"
+    if path.is_file():
+        return path.as_posix()
+    try:
+        from PySide6.QtGui import QGuiApplication
+        if QGuiApplication.instance() is None:
+            return ""
+        from . import ui_icons
+        folder.mkdir(parents=True, exist_ok=True)
+        if ui_icons.render("chevron_down", color, 32).save(str(path), "PNG"):
+            return path.as_posix()
+    except Exception:  # noqa: BLE001 - only a nicer arrow is lost
+        pass
+    return ""
+
+
 def valid_skin(skin) -> str:
     """A saved look id that exists, or the default (an id from a newer or older Sluice never breaks the window)."""
     return skin if isinstance(skin, str) and skin in SKINS else DEFAULT_SKIN
@@ -610,6 +660,7 @@ def _style_for(items: tuple, skin: str = DEFAULT_SKIN) -> str:
     values["accent_edge"] = mix(values["panel"], values["accent"], 0.5)  # a thin neon outline for Nexus
     values["accent_soft"] = mix(values["panel"], values["accent"], 0.22)
     values["menu_off"] = mix(values["text_off"], values["text_dim"], 0.45)  # a greyed-out menu item: plainly off, still easy to read
+    values["chevron_url"] = chevron_file(values["text_dim"])
     if skin == "tile":  # the Calm sheet with the Tile rules after it: flat surfaces with a hairline edge
         from .skin_tile import TILE_STYLE_EXTRA, tile_colors
         values.update(tile_colors(values, mix))

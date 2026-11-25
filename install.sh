@@ -218,7 +218,7 @@ say "Something wrong?              $command --report"
 
 # 0.12.0: the download is no longer needed. Offer to delete it, only when it is plainly a Sluice download: not a git
 # clone (it may hold your own changes), not the installed copy, not your home folder.
-if [ "$download" != "$here" ]; then
+if [ "$download" != "$here" ] && [ -z "${SLUICE_FROM_GET:-}" ]; then  # (get.sh deletes its own download)
     safe=1
     [ -e "$download/.git" ] && safe=0
     case "$download" in "$HOME"|"/"|"$data_home"*) safe=0 ;; esac

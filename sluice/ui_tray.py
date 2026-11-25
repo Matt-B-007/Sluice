@@ -10,8 +10,8 @@ from functools import partial
 
 from PySide6.QtCore import QEvent, QObject, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import QMessageBox
 
+from . import ui_dialog
 from . import ui_icons as icons
 from .engine import REFRESH_SECONDS
 from .model import config_path
@@ -230,7 +230,7 @@ class TrayMixin:
         try:
             launcher.set_autostart(mode)
         except OSError as exc:
-            QMessageBox.warning(self, "Could not change start-up", str(exc))
+            ui_dialog.warning(self, "Could not change start-up", str(exc))
             return
         self.say({"off": "Sluice will not start by itself.",
                   "window": "Sluice will start when you log in, with its window open.",
@@ -248,7 +248,7 @@ class TrayMixin:
                 launcher.install()
                 self.say("Sluice is now in the applications menu: search for \u201cSluice\u201d in your launcher.")
         except OSError as exc:
-            QMessageBox.warning(self, "Could not change the applications menu", str(exc))
+            ui_dialog.warning(self, "Could not change the applications menu", str(exc))
 
     def open_settings_folder(self) -> None:
         folder = (self.config_file or config_path()).parent

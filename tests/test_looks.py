@@ -108,7 +108,8 @@ def test_nexus_is_a_look_with_its_own_dark_and_a_style_that_adds_to_calm(rig):
     dark = themes.BUILT_IN["dark"]
     nexus = themes.skin_colors(dark, "nexus")
     assert nexus["bg"] == "#05080f" and nexus["accent"] == "#22e5ff" and set(themes.TOKEN_NAMES) <= set(nexus)
-    assert themes.skin_colors(themes.BUILT_IN["paper"], "nexus") == themes.finish(themes.BUILT_IN["paper"].colors)  # others keep theirs
+    assert themes.skin_colors(themes.BUILT_IN["midnight"], "nexus") == themes.finish(themes.BUILT_IN["midnight"].colors)  # others keep theirs
+    assert themes.skin_colors(themes.BUILT_IN["paper"], "nexus")["bg"] == "#05080f"  # 0.12.2: but Nexus is dark only
     calm_sheet = themes.build_style(nexus, "calm")
     nexus_sheet = themes.build_style(nexus, "nexus")  # the Calm sheet (with Nexus's Listen and Broadcast colours) and Nexus's rules after it
     assert nexus_sheet.split("\n")[1] == calm_sheet.split("\n")[1] and len(nexus_sheet) > len(calm_sheet) and "$glass" not in nexus_sheet
@@ -183,9 +184,15 @@ def test_nexus_colours_apply_to_dark_only_and_can_be_switched_off(rig):
     win.choose_skin("nexus")
     win.choose_theme("dark")
     assert themes.color("bg") == "#05080f"
-    for theme_id in ("purple", "midnight", "amber", "contrast", "light"):  # every other theme keeps its own colours (0.11.5)
+    for theme_id in ("purple", "midnight", "amber", "contrast"):  # every other dark theme keeps its own colours (0.11.5)
         win.choose_theme(theme_id)
         assert themes.color("bg") == themes.BUILT_IN[theme_id].colors["bg"]
+    for theme_id in ("light", "paper"):  # 0.12.2: Nexus is dark only; a light theme keeps it dark, and Sluice says so
+        win.choose_theme(theme_id)
+        assert themes.color("bg") == "#05080f" and "Nexus is dark only" in win.status_label.text()
+    win._fill_theme_menu()
+    texts = [a.text() for a in win.theme_menu.actions()]
+    assert "Light (Nexus stays dark)" in texts and "Dark" in texts
     win.choose_theme("dark")
     win.set_skin_colors(False)
     assert themes.color("bg") == themes.BUILT_IN["dark"].colors["bg"] and not engine.mixer.skin_colors
@@ -228,18 +235,19 @@ def test_the_engine_checks_devices_less_often_while_the_window_is_hidden(rig):
     assert engine.refresh_seconds == REFRESH_SECONDS
 
 
-def test_compare_looks_shows_every_look_and_picks_one(rig):
-    from sluice.ui_skins import CompareSkinsDialog, draw_preview
+def test_compare_skins_opens_settings_with_a_picture_of_each(rig):
+    """0.12.2: Compare skins is Settings > Themes and skins (one window fewer), where every skin has its picture."""
+    from sluice.ui_skins import draw_preview
     win, engine = rig
-    dialog = CompareSkinsDialog(win)
-    assert set(dialog.buttons) == set(themes.SKINS)
-    assert not dialog.buttons["calm"].isEnabled()  # the one in use
-    dialog.buttons["nexus"].click()
+    win.compare_skins()
+    settings = win.settings_window
+    assert settings.isVisible() and set(settings.skin_cards) == set(themes.SKINS)
+    settings.skin_cards["nexus"].click()
     assert engine.mixer.skin == "nexus"
-    assert not dialog.buttons["nexus"].isEnabled() and dialog.buttons["calm"].isEnabled()
     colors = themes.skin_colors(win.current_theme(), "calm")
     for skin in themes.SKINS:
         assert not draw_preview(skin, colors).isNull()
+    settings.close()
 
 
 def test_the_look_menu_offers_compare_looks(rig):

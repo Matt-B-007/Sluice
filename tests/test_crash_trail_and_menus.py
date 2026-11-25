@@ -370,7 +370,7 @@ def test_every_menu_item_has_its_own_alt_key_letter(qapp, tmp_path):
             found = re.search(r"&(.)", action.text())
             name = action.text().replace("&", "")
             if not found:
-                if not path.endswith(("Running in the background", "Audio buffer")):  # lists of choices: reached by arrow keys
+                if not path.endswith(("Running in the background", "Audio buffer", "Which versions")):  # lists of choices: reached by arrow keys
                     problems.append(f"{path} > {name}: no Alt-key letter")
             else:
                 letters.setdefault(found.group(1).lower(), []).append(name)

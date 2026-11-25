@@ -15,6 +15,7 @@ from PySide6.QtCore import QUrl
 from PySide6.QtGui import QAction, QActionGroup, QDesktopServices, QKeySequence
 from PySide6.QtWidgets import QCheckBox, QLabel, QMenu, QMessageBox, QWidgetAction
 
+from . import ui_dialog
 from . import themes
 from .model import BUFFER_CHOICES, MONITOR, STREAM
 from .ui_base import DISCORD_URL, ISSUES_URL, PROJECT_URL, default_size
@@ -221,6 +222,15 @@ class MenusMixin:
                                                self.toggle_auto_update, checkable=True)
         self._action(settings_menu, "&Check for updates\u2026", self.check_for_updates)
         self.rollback_action = self._action(settings_menu, "&Go back to the previous version\u2026", self.rollback_update)
+        # 0.12.2: which versions to look for (a list of choices, like Audio buffer)
+        channel_menu = settings_menu.addMenu("Which &versions")
+        self.channel_actions = {
+            "stable": self._action(channel_menu, "Stable: tested releases (recommended)",
+                                   partial(self.set_update_channel, "stable"), checkable=True),
+            "beta": self._action(channel_menu, "Beta: new features first, may have rough edges",
+                                 partial(self.set_update_channel, "beta"), checkable=True),
+        }
+        channel_menu.aboutToShow.connect(self._refresh_settings_menu)
         settings_menu.aboutToShow.connect(self._refresh_settings_menu)
 
         # Help: learning it, when something is wrong, the community, and about.
@@ -336,7 +346,7 @@ class MenusMixin:
         from . import uninstall
 
         if "Demo" in self.engine.io.label:
-            QMessageBox.information(self, "Uninstall Sluice", "Demo mode changes nothing, so there is nothing to uninstall here.")
+            self.say("Demo mode changes nothing, so there is nothing to uninstall here.")
             return
         keep_plan = uninstall.plan(keep_settings=True)
         all_plan = uninstall.plan(keep_settings=False, remove_git=True)
@@ -344,7 +354,7 @@ class MenusMixin:
         def listing(result) -> str:
             return uninstall.describe(result).replace("Sluice will remove:", "This will remove:")
 
-        box = QMessageBox(self)
+        box = ui_dialog.Message(self)
         box.setWindowTitle("Uninstall Sluice")
         box.setText("How much of Sluice should be removed?")
         box.setInformativeText(
@@ -365,7 +375,7 @@ class MenusMixin:
         keep = clicked is keep_button
         remove_git = False
         if not keep and all_plan.git_folder:
-            answer = QMessageBox.question(
+            answer = ui_dialog.question(
                 self, "Delete the git folder?",
                 "The Sluice folder is a git clone. Deleting it also deletes any changes in it that you have not committed "
                 "or pushed.\n\nDelete it too?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
@@ -379,13 +389,13 @@ class MenusMixin:
             subprocess.Popen(["sh", "-c", script, "sluice-uninstall", *command], start_new_session=True,
                              stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except OSError as exc:
-            QMessageBox.warning(self, "Uninstall Sluice", f"Could not start the uninstall: {exc}\nRun this in a terminal instead: sluice --uninstall")
+            ui_dialog.warning(self, "Uninstall Sluice", f"Could not start the uninstall: {exc}\nRun this in a terminal instead: sluice --uninstall")
             return
         self.quit_app()
 
     def open_link(self, url: str) -> None:
         if not QDesktopServices.openUrl(QUrl(url)):
-            QMessageBox.information(self, "Open link", f"Sluice could not open your browser. The address is:\n\n{url}")
+            ui_dialog.information(self, "Open link", f"Sluice could not open your browser. The address is:\n\n{url}")
 
     def _refresh_mixer_menu(self) -> None:
         self.hear_action.setChecked(self.engine.hear_broadcast)
@@ -397,6 +407,8 @@ class MenusMixin:
     def _refresh_settings_menu(self) -> None:
         self._refresh_file_menu()
         self.auto_update_action.setChecked(self.engine.mixer.auto_update)
+        for name, action in getattr(self, "channel_actions", {}).items():
+            action.setChecked(self.engine.mixer.update_channel == name)
         self._refresh_update_menu()
 
     # ------------------------------------------------------------------ what the menu items do
@@ -406,7 +418,7 @@ class MenusMixin:
         text = ("Add a third mix, \u201cRecording\u201d: a second virtual microphone, \u201cSluice (Recording)\u201d, with its own "
                 "faders and mutes, so a recorder can get a different blend from the one your audience hears."
                 if turn_on else "Remove the Recording mix and its virtual microphone.")
-        ask = QMessageBox(self)
+        ask = ui_dialog.Message(self)
         ask.setWindowTitle("Recording mix")
         ask.setText(text + "\n\nSluice has to restart to do this. Your settings are saved first.")
         restart = ask.addButton("Restart now", QMessageBox.ButtonRole.AcceptRole)
@@ -463,7 +475,7 @@ class MenusMixin:
             self.say(f"Audio buffer: {frames} frames.")
             return
         if ask and self.config_file is not None:
-            box = QMessageBox(self)
+            box = ui_dialog.Message(self)
             box.setWindowTitle("Audio buffer")
             box.setText(f"Sluice runs at {running} frames now. {frames} frames takes effect when Sluice starts again.")
             box.setInformativeText("Restart now? The sound stops for a moment, then everything comes back as it was.")
@@ -515,7 +527,7 @@ class MenusMixin:
     def show_shortcuts(self) -> None:
         rows = self.shortcut_rows()
         table = "".join(f"<tr><td><b>{key}</b>&nbsp;&nbsp;&nbsp;</td><td>{what}</td></tr>" for key, what in rows)
-        QMessageBox.information(self, "Keyboard shortcuts", f"<table>{table}</table><br>"
+        ui_dialog.information(self, "Keyboard shortcuts", f"<table>{table}</table><br>"
                                 "Faders: scroll the mouse wheel over one, or use the arrow keys when it is selected.<br>"
                                 "For buttons and knobs outside the app, see <b>Settings > Controllers</b>.")
 

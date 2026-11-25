@@ -76,10 +76,11 @@ class MiniStrip(QWidget):
         line = QHBoxLayout(row)
         line.setContentsMargins(0, 0, 0, 0)
         line.setSpacing(8)
-        dot = QLabel()
-        dot.setFixedSize(10, 10)
+        from . import skin_tile
+        from .ui_tile_paint import IconWell
         color = channel.color if channel is not None else themes.color("accent")
-        dot.setStyleSheet(f"background: {color}; border-radius: 5px;")
+        # 0.12.2: the same small-mixer line as the desktop widgets: the channel's drawing in a tinted tile, then the lane
+        dot = IconWell(color, skin_tile.channel_icon(channel) if channel is not None else "speaker", text, 24)
         name = ElidedLabel(text)
         name.setObjectName("name")
         name.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
@@ -220,6 +221,7 @@ class MiniStrip(QWidget):
             from .ui_tile_paint import TrayPainter
             self._tray = TrayPainter()  # the same tray as behind the big tiles
         p = QPainter(self)
+        p.setRenderHints(QPainter.RenderHint.Antialiasing | QPainter.RenderHint.SmoothPixmapTransform)  # 0.12.2: smooth edges everywhere
         self._tray.draw(self, p)
         p.end()
 

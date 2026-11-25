@@ -14,6 +14,7 @@ from PySide6.QtCore import QEvent, QPoint, QPointF, QRectF, Qt, QTimer
 from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPen, QRadialGradient
 from PySide6.QtWidgets import QApplication, QMenu, QVBoxLayout, QWidget
 
+from . import ui_dialog
 from . import desktop_place, themes
 
 from .model import MAX_DESKTOP_WIDGETS as MAX_WIDGETS, clean_widget_spec as clean_spec  # noqa: E402  (the model keeps them: it has no Qt)
@@ -641,6 +642,7 @@ class StripWidget(DesktopWidget):
     def paintEvent(self, _event) -> None:
         if self.strip.tile:  # the list paints its own tray; the corners round it show the window's floor
             p = QPainter(self)
+            p.setRenderHints(QPainter.RenderHint.Antialiasing | QPainter.RenderHint.SmoothPixmapTransform)  # 0.12.2: smooth edges everywhere
             p.fillRect(self.rect(), QColor(themes.color("bg")))
             p.end()
             return
@@ -921,7 +923,7 @@ class LaneWidget(DesktopWidget):
         inner = self._inner()
         self.paint_header(p, inner)
         font = QFont(self.font())
-        font.setPixelSize(11)
+        font.setPixelSize(12)
         for (mix_id, label, icon, db, muted, live), row, mute, groove in self._rows():
             paint_icon_button(p, mute, icon, themes.color("text2"), muted, muted)
             paint_lane(p, groove, db_to_fader_position(db), live, muted, tint)
@@ -987,8 +989,15 @@ class ChannelWidget(LaneWidget):
         font.setPixelSize(13)
         font.setBold(True)
         p.setFont(font)
-        p.setPen(tint)
-        p.drawText(well, Qt.AlignmentFlag.AlignCenter, (channel.label[:1] if channel is not None else "?").upper())
+        if channel is not None:  # 0.12.2: the channel's drawing in its tinted tile, as on the cards and in the compact list
+            from . import skin_tile, ui_icons as icons
+            ratio = p.device().devicePixelRatioF() if p.device() is not None else 1.0
+            drawing = icons.render(skin_tile.channel_icon(channel), tint.name(), round(16 * ratio))
+            drawing.setDevicePixelRatio(ratio)
+            p.drawPixmap(QPointF(well.center().x() - 8, well.center().y() - 8), drawing)
+        else:
+            p.setPen(tint)
+            p.drawText(well, Qt.AlignmentFlag.AlignCenter, "?")
         p.setPen(QColor(themes.color("text")))
         name = channel.label if channel is not None else "This channel was removed"
         if themes.current_skin() == "nexus":
@@ -1175,7 +1184,7 @@ class DesktopWidgetManager:
         if desktop_place.kwin_rule_present():
             self.window.say("The KWin rule for Sluice's widgets is already there.")
             return
-        ask = QMessageBox.question(self.window, "Keep widgets on top",
+        ask = ui_dialog.question(self.window, "Keep widgets on top",
                                    "On KDE Plasma under Wayland, a window cannot keep itself on top. Sluice can add a KWin window rule "
                                    "(System Settings > Window Management > Window Rules) that keeps its desktop widgets above other "
                                    "windows. You can remove it there at any time.\n\nAdd the rule?")

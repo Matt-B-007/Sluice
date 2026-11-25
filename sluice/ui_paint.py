@@ -71,6 +71,30 @@ def handle(p: QPainter, rect: QRectF, brush, edge=None, shadow_alpha: int = 70, 
     p.restore()
 
 
+def pearl(p: QPainter, rect: QRectF, focus: Optional[QColor] = None, hover: bool = False) -> None:
+    """0.12.2, Glass: a round pearl knob, lit from the top left, on a soft shadow."""
+    from PySide6.QtGui import QRadialGradient
+    size = min(rect.width(), rect.height())
+    disc = QRectF(rect.center().x() - size / 2.0, rect.center().y() - size / 2.0, size, size)
+    p.save()
+    p.setPen(Qt.PenStyle.NoPen)
+    for grow, alpha in ((2.5, 28), (1.2, 55)):
+        p.setBrush(QColor(0, 0, 0, alpha))
+        p.drawEllipse(disc.adjusted(-grow, -grow + 2.5, grow, grow + 2.5))
+    shine = QRadialGradient(disc.left() + size * 0.36, disc.top() + size * 0.3, size * 0.75)
+    shine.setColorAt(0.0, QColor(255, 255, 255))
+    shine.setColorAt(0.45, QColor(242, 245, 250) if not hover else QColor(250, 251, 253))
+    shine.setColorAt(1.0, QColor(196, 204, 216))
+    p.setBrush(shine)
+    p.setPen(QPen(QColor(255, 255, 255, 200), 1))
+    p.drawEllipse(disc.adjusted(0.5, 0.5, -0.5, -0.5))
+    if focus is not None:
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.setPen(QPen(focus, 2))
+        p.drawEllipse(disc.adjusted(-3, -3, 3, 3))
+    p.restore()
+
+
 # ----------------------------------------------------------------------------- shadows and halos
 _SHADOWS: dict = {}
 SHADOW_CACHE = 320

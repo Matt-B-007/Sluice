@@ -102,6 +102,16 @@ class CardFloor(QWidget):
         layer.setDevicePixelRatio(ratio)
         layer.fill(Qt.GlobalColor.transparent)
         q = QPainter(layer)
+        q.setRenderHints(QPainter.RenderHint.Antialiasing | QPainter.RenderHint.SmoothPixmapTransform)  # 0.12.2: smooth edges everywhere
+        if not self.soft and not d["light"]:  # 0.12.2: Nexus's floor is a faint blueprint grid
+            from PySide6.QtGui import QPen
+            line = QColor(themes.color("accent"))
+            line.setAlphaF(0.05)
+            q.setPen(QPen(line, 1))
+            for x in range(0, self.width(), 40):
+                q.drawLine(x, 0, x, self.height())
+            for y in range(0, self.height(), 40):
+                q.drawLine(0, y, self.width(), y)
         if d["shadow_alpha"] > 0:
             for card, *_rest in self._cards.values():
                 if not card.isVisible():
@@ -124,6 +134,7 @@ class CardFloor(QWidget):
         glows = d["glow"] and not themes.reduce_effects() and not self.soft
         ratio = self.devicePixelRatioF()
         p = QPainter(self)
+        p.setRenderHints(QPainter.RenderHint.Antialiasing | QPainter.RenderHint.SmoothPixmapTransform)  # 0.12.2: smooth edges everywhere
         area = event.rect()
         layer = self._static_layer(d, ratio)
         p.drawPixmap(QRectF(area), layer, QRectF(area.x() * ratio, area.y() * ratio, area.width() * ratio, area.height() * ratio))

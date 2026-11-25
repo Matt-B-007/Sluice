@@ -10,6 +10,42 @@ from __future__ import annotations
 from string import Template
 
 
+# 0.12.2: Glass's own colours on the plain Dark and Light themes (Settings > Themes and skins > Skin's own colours): smoked panes on a
+# deep blue night for Dark, frosted white panes on a pale sky for Light. Listen is teal and Broadcast amber; violet and coral tint
+# the backdrop.
+GLASS_DARK = {
+    "bg": "#0e1b2e", "panel": "#1a2a44", "mix": "#1a2a44", "border": "#2d4060", "border_soft": "#2d4060",
+    "text": "#f3f6fb", "text_dim": "#b4c0d4", "text_faint": "#b4c0d4", "text_off": "#7d8aa3", "title": "#ffffff",
+    "strong": "#ffffff", "input": "#13233b", "well": "#0b1626", "chip": "#22344f", "button": "#22344f",
+    "button_text": "#f3f6fb", "button_border": "#34496b", "hover": "#5b6f92", "line": "#3a4f73", "accent": "#fbbf24",
+    "select": "#2b3f63", "select_soft": "#223553", "select_text": "#ffffff", "popup": "#18273f", "dialog": "#132238",
+    "fill": "#5eead4", "handle": "#ffffff", "handle_edge": "#ffffff", "handle_hover": "#ffffff", "applied": "#223553",
+    "scroll_track": "#13233b", "scroll_hover": "#4a5f84", "scroll_press": "#5b6f92", "row_hover": "#22344f",
+    "list_text": "#f3f6fb", "check_text": "#cfd8e6", "link": "#5eead4", "code": "#fcd34d", "ok": "#5eead4",
+    "alarm": "#b3262c", "warn": "#fde68a", "error": "#ff8a9b", "muted": "#7d8aa3", "mute": "#fb7185",
+    "limiter": "#5eead4", "linked": "#5eead4", "on_color": "#0e1b2e",
+    "surface2": "#22344f", "border2": "#34496b", "text2": "#cfd8e6", "track": "#13233b", "meter_bg": "#0b1626",
+    "accent_bg": "#3b3420", "accent_text": "#fde68a", "mute_bg": "#4a1f2c", "mute_fg": "#ff9aa9", "live_bg": "#123a3a",
+    "live_fg": "#5eead4", "dashed": "#4a5f84", "focus": "#a78bfa",
+}
+GLASS_LIGHT = {
+    "bg": "#e6ecf4", "panel": "#ffffff", "mix": "#ffffff", "border": "#d3dce9", "border_soft": "#d3dce9",
+    "text": "#10213a", "text_dim": "#4b5d78", "text_faint": "#4b5d78", "text_off": "#74839a", "title": "#0b1a30",
+    "strong": "#0b1a30", "input": "#f4f7fb", "well": "#dde5f0", "chip": "#f4f7fb", "button": "#f4f7fb",
+    "button_text": "#10213a", "button_border": "#d3dce9", "hover": "#8a98ad", "line": "#c3cedd", "accent": "#d97706",
+    "select": "#d5e4f7", "select_soft": "#e3edf9", "select_text": "#0b1a30", "popup": "#ffffff", "dialog": "#f4f7fb",
+    "fill": "#0d9488", "handle": "#ffffff", "handle_edge": "#c3cedd", "handle_hover": "#f4f7fb", "applied": "#e3edf9",
+    "scroll_track": "#dde5f0", "scroll_hover": "#9aa8bc", "scroll_press": "#7d8ba0", "row_hover": "#eef3f9",
+    "list_text": "#10213a", "check_text": "#2c3d57", "link": "#0d9488", "code": "#b45309", "ok": "#0f7a5c",
+    "alarm": "#c62828", "warn": "#8a5a00", "error": "#c62e42", "muted": "#74839a", "mute": "#e11d48",
+    "limiter": "#0d9488", "linked": "#0d9488", "on_color": "#ffffff",
+    "surface2": "#f4f7fb", "border2": "#d3dce9", "text2": "#2c3d57", "track": "#dde5f0", "meter_bg": "#dde5f0",
+    "accent_bg": "#fdf0d9", "accent_text": "#9a5300", "mute_bg": "#fde4ea", "mute_fg": "#be123c", "live_bg": "#dcf3ee",
+    "live_fg": "#0f7a5c", "dashed": "#9aa8bc", "focus": "#7c3aed",
+}
+GLASS_THEMES = {"dark": GLASS_DARK, "light": GLASS_LIGHT}
+
+
 def rgba(color: str, alpha: float) -> str:
     """A ``#rrggbb`` colour as a style-sheet ``rgba()`` at ``alpha`` (0..1)."""
     color = color.lstrip("#")
@@ -31,8 +67,10 @@ def readable_alpha(text: str, panel: str, behind: list, start: float, need: floa
 
 def backdrop_colours(values: dict) -> list:
     """The soft shapes Sluice paints behind Glass panes (when the wallpaper does not show through): the theme's own colours."""
-    return [values.get("listen", values["accent"]), values["accent"], values.get("broadcast", values["code"]), values["code"],
-            values.get("mute", values["accent"])]
+    # top left, middle, top right, bottom right, bottom left (ui_glass.SHAPES): Listen's colour, the focus colour (violet in Glass's
+    # own colours), Broadcast's, the theme's warm colour and its mute colour (0.12.2: a real mix of light, not one colour twice)
+    return [values.get("listen", values.get("link", values["accent"])), values.get("focus", values["accent"]),
+            values.get("broadcast", values["code"]), values["code"], values.get("mute", values["accent"])]
 
 
 def glass_values(values: dict, see_through: bool = False) -> dict:
@@ -70,6 +108,9 @@ def glass_values(values: dict, see_through: bool = False) -> dict:
         "glass_broadcast": rgba(broadcast, 0.16 if light else 0.14),
         "glass_broadcast_edge": rgba(broadcast, 0.50),
         "glass_accent": rgba(values["accent"], 0.24 if light else 0.22),
+        # 0.12.2: the mix panes are tinted glass in their mix's colour
+        "glass_listen_pane": rgba(depth.mix(panel, listen, 0.30 if not light else 0.14), min(0.96, pane + 0.10)),
+        "glass_broadcast_pane": rgba(depth.mix(panel, broadcast, 0.30 if not light else 0.14), min(0.96, pane + 0.10)),
         "glass_pane_alpha": pane,
     }
 
@@ -85,8 +126,10 @@ QStatusBar { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 $glass_w
 QFrame#strip, QFrame#row, QFrame#mix { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 $glass_pane_top, stop:0.35 $glass_pane,
     stop:1 $glass_pane); border: 1px solid $glass_edge; border-top: 1px solid $glass_edge_top; border-radius: 24px; }
 QFrame#strip[empty="true"], QFrame#empty { background: transparent; border: 2px dashed $glass_button_edge; }
-QFrame#mix[mix="monitor"] { border-color: $glass_listen_edge; border-top-color: $glass_edge_top; }
-QFrame#mix[mix="stream"] { border-color: $glass_broadcast_edge; border-top-color: $glass_edge_top; }
+QFrame#mix[mix="monitor"] { border-color: $glass_listen_edge; border-top-color: $glass_edge_top;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 $glass_pane_top, stop:0.3 $glass_listen_pane, stop:1 $glass_pane); }
+QFrame#mix[mix="stream"] { border-color: $glass_broadcast_edge; border-top-color: $glass_edge_top;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 $glass_pane_top, stop:0.3 $glass_broadcast_pane, stop:1 $glass_pane); }
 QFrame#mixcell[mix="monitor"] { background: $glass_listen; border-color: $glass_listen_edge; }
 QFrame#mixcell[mix="stream"] { background: $glass_broadcast; border-color: $glass_broadcast_edge; }
 QFrame#statuschip, QFrame#segmented { background: $glass_pane; border: 1px solid $glass_edge; border-top-color: $glass_edge_top;

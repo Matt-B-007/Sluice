@@ -50,6 +50,15 @@ class LevelMeter(QWidget):
         self._painted = None  # (bar length, peak line) as last drawn: nothing is repainted unless this changes
         self._well = _glass_well() or QColor(themes.color("meter_bg"))
         self._peak_color = QColor(themes.color("strong"))
+        self.tint: Optional[str] = None  # 0.12.2: Calm and Glass light a meter in its channel's or mix's colour, amber near the top
+
+    def set_tint(self, color: Optional[str]) -> None:
+        if color != self.tint:
+            self.tint = color
+            self._lit = None
+            self._rounded = None
+            self._painted = None
+            self.update()
 
     def refresh_theme(self) -> None:
         """Pick up the colours of the theme in use (the track behind the bar, the peak line)."""
@@ -106,12 +115,19 @@ class LevelMeter(QWidget):
             pixmap = QPixmap(max(1, int(width * ratio)), max(1, int(height * ratio)))
             pixmap.setDevicePixelRatio(ratio)
             p = QPainter(pixmap)
+            p.setRenderHints(QPainter.RenderHint.Antialiasing | QPainter.RenderHint.SmoothPixmapTransform)  # 0.12.2: smooth edges everywhere
             gradient = QLinearGradient(0, 0, width, 0) if self.horizontal else QLinearGradient(0, height, 0, 0)
             green, yellow, red = meter_colors()
-            gradient.setColorAt(0.00, QColor(green))
-            gradient.setColorAt(0.60, QColor(green))
-            gradient.setColorAt(0.80, QColor(yellow))
-            gradient.setColorAt(1.00, QColor(red))
+            if self.tint:  # the colour of what it measures, then amber from -12 dB and red at the very top
+                gradient.setColorAt(0.00, QColor(self.tint))
+                gradient.setColorAt(0.76, QColor(self.tint))
+                gradient.setColorAt(0.86, QColor(yellow))
+                gradient.setColorAt(1.00, QColor(red))
+            else:
+                gradient.setColorAt(0.00, QColor(green))
+                gradient.setColorAt(0.60, QColor(green))
+                gradient.setColorAt(0.80, QColor(yellow))
+                gradient.setColorAt(1.00, QColor(red))
             p.fillRect(QRectF(0, 0, width, height), gradient)
             p.end()
             self._lit = pixmap
@@ -137,6 +153,7 @@ class LevelMeter(QWidget):
 
     def paintEvent(self, _event) -> None:
         p = QPainter(self)
+        p.setRenderHints(QPainter.RenderHint.Antialiasing | QPainter.RenderHint.SmoothPixmapTransform)  # 0.12.2: smooth edges everywhere
         if getattr(self, "_backdrop", False):
             from .ui_nexus import card_backdrop
             brush = card_backdrop(self)
@@ -200,6 +217,8 @@ class Fader(QAbstractSlider):
         self.setSingleStep(8)
         self.setPageStep(60)
         self.thumb = thumb or ((16, 24) if horizontal else (32, 16))  # (width, height) of the handle
+        if themes.current_skin() == "glass" and not self.tile:  # 0.12.2: Glass's pearl knob is round
+            self.thumb = (24, 24)
         if horizontal:
             self.setMinimumWidth(96)
             self.setFixedHeight(self.thumb[1] + 4)
@@ -330,6 +349,10 @@ class Fader(QAbstractSlider):
             fill_rect = QRectF(x, centre, track, self.height() - centre)
             thumb_rect = QRectF((self.width() - tw) / 2.0, centre - th / 2.0, tw, th)
         p.setPen(Qt.PenStyle.NoPen)
+        if themes.current_skin() == "nexus" and not self.tile:  # 0.12.2: a beam of light, not a groove
+            self._paint_beam(p, track_rect, fill_rect, thumb_rect)
+            p.end()
+            return
         groove = track / 2.0
         glass = themes.current_skin() == "glass"
         # Calm, Nexus and Glass: the groove looks sunk in, a shade along its top inside edge (Tile shades its own below)
@@ -341,7 +364,14 @@ class Fader(QAbstractSlider):
                 halo.setAlphaF(alpha)
                 p.setBrush(halo)
                 p.drawRoundedRect(fill_rect.adjusted(-grow, -grow, grow, grow), groove + grow, groove + grow)
-        p.setBrush(QColor(self.fill_color))
+        if glass and fill_rect.height() > 0 and fill_rect.width() > 0:  # 0.12.2: the fill brightens toward the knob, lit from inside
+            lit = QLinearGradient(fill_rect.bottomLeft(), fill_rect.topLeft()) if not self.horizontal else \
+                QLinearGradient(fill_rect.topLeft(), fill_rect.topRight())
+            lit.setColorAt(0.0, QColor(self.fill_color))
+            lit.setColorAt(1.0, QColor(themes.mix(self.fill_color, "#ffffff", 0.45)))
+            p.setBrush(lit)
+        else:
+            p.setBrush(QColor(self.fill_color))
         p.drawRoundedRect(fill_rect, groove, groove)
         if self.tile:  # the Tile look: the track is a groove pressed into the key, the handle a raised white pill
             from . import skin_tile, ui_tile_paint as ui_tile
@@ -356,9 +386,49 @@ class Fader(QAbstractSlider):
             self._paint_wave(p, track_rect)
         if self.nexus and self._reveal and not themes.reduce_effects():  # a halo round the handle while it is in use
             p.drawPixmap(QPointF(thumb_rect.center().x() - 28, thumb_rect.center().y() - 28), _glow(QColor(self.fill_color).name(), 56, self.devicePixelRatioF(), 80))
-        ui_paint.handle(p, thumb_rect, themes.color("handle_hover" if self.underMouse() else "handle"), themes.color("handle_edge"),
-                        focus=QColor(themes.color("focus")) if self.hasFocus() else None)
+        if themes.current_skin() == "glass":  # 0.12.2: a pearl knob
+            ui_paint.pearl(p, thumb_rect, QColor(themes.color("focus")) if self.hasFocus() else None, self.underMouse())
+        else:
+            ui_paint.handle(p, thumb_rect, themes.color("handle_hover" if self.underMouse() else "handle"), themes.color("handle_edge"),
+                            focus=QColor(themes.color("focus")) if self.hasFocus() else None)
         p.end()
+
+    def _paint_beam(self, p: QPainter, track_rect: QRectF, fill_rect: QRectF, thumb_rect: QRectF) -> None:
+        """Nexus (0.12.2): the track is a faint line, the level a beam of light in the channel's colour that glows on dark themes, and
+        the handle a ring of light with a dark centre."""
+        thin = 3.0
+        if self.horizontal:
+            line = QRectF(track_rect.left(), track_rect.center().y() - thin / 2, track_rect.width(), thin)
+            beam = QRectF(fill_rect.left(), line.top(), fill_rect.width(), thin)
+        else:
+            line = QRectF(track_rect.center().x() - thin / 2, track_rect.top(), thin, track_rect.height())
+            beam = QRectF(line.left(), fill_rect.top(), thin, fill_rect.height())
+        dim = QColor(themes.color("border2"))
+        p.setBrush(dim)
+        p.drawRoundedRect(line, thin / 2, thin / 2)
+        color = QColor(self.fill_color)
+        if beam.width() > 0 and beam.height() > 0:
+            if _glows() and not themes.reduce_effects():
+                for grow, alpha in ((5.0, 0.10), (3.0, 0.18), (1.5, 0.32)):
+                    halo = QColor(color)
+                    halo.setAlphaF(alpha)
+                    p.setBrush(halo)
+                    p.drawRoundedRect(beam.adjusted(-grow, -grow, grow, grow), thin / 2 + grow, thin / 2 + grow)
+            p.setBrush(color)
+            p.drawRoundedRect(beam, thin / 2, thin / 2)
+        if self.nexus and self._reveal:
+            self._paint_wave(p, track_rect)
+        size = 18.0
+        dot = QRectF(thumb_rect.center().x() - size / 2, thumb_rect.center().y() - size / 2, size, size)
+        if _glows() and not themes.reduce_effects():
+            p.drawPixmap(QPointF(dot.center().x() - 18, dot.center().y() - 18), _glow(color.name(), 36, self.devicePixelRatioF(), 110))
+        p.setBrush(QColor(themes.color("bg")))
+        p.setPen(QPen(color, 3))
+        p.drawEllipse(dot.adjusted(1.5, 1.5, -1.5, -1.5))
+        if self.hasFocus():
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.setPen(QPen(QColor(themes.color("focus")), 2))
+            p.drawEllipse(dot.adjusted(-3, -3, 3, 3))
 
     def enterEvent(self, event) -> None:
         self._update_reveal()
@@ -381,6 +451,43 @@ class Fader(QAbstractSlider):
         super().focusOutEvent(event)
 
 
+SCALE_MARKS_DB = ((12.0, "+12"), (0.0, "0"), (-10.0, "-10"), (-20.0, "-20"), (-40.0, "-40"))
+
+
+class DbScale(QWidget):
+    """0.12.2: the dB marks beside an upright fader (a mix card had a tall empty column there), lined up with the fader's own travel
+    so the 0 mark is level with the handle at 0 dB."""
+
+    def __init__(self, fader: "Fader") -> None:
+        super().__init__()
+        self.fader = fader
+        self.setFixedWidth(28)
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+
+    def refresh_theme(self) -> None:
+        self.update()
+
+    def paintEvent(self, _event) -> None:
+        from PySide6.QtGui import QFont
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+        font = QFont(p.font())
+        font.setPixelSize(11)
+        p.setFont(font)
+        color = QColor(themes.color("text_off"))
+        offset = self.fader.mapTo(self.window(), QPointF(0, 0)).y() - self.mapTo(self.window(), QPointF(0, 0)).y()
+        half, span = self.fader._travel()
+        for db, text in SCALE_MARKS_DB:
+            y = offset + half + (1.0 - db_to_fader_position(db)) * span
+            p.setPen(QPen(color, 1))
+            p.drawLine(QPointF(self.width() - 5, y), QPointF(self.width() - 1, y))
+            p.setPen(color)
+            p.drawText(QRectF(0, y - 8, self.width() - 8, 16), Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, text)
+        p.end()
+
+
 class SourcePicture(QWidget):
     """The small picture in front of a source: the app's or game's own icon (a letter when it has none), or a microphone for a device.
     Drawn at the screen's real pixel density, so it stays sharp at 125%, 150% and 200%."""
@@ -393,6 +500,7 @@ class SourcePicture(QWidget):
 
     def paintEvent(self, _event) -> None:
         p = QPainter(self)
+        p.setRenderHints(QPainter.RenderHint.Antialiasing | QPainter.RenderHint.SmoothPixmapTransform)  # 0.12.2: smooth edges everywhere
         if self.device:
             ratio = self.devicePixelRatioF()
             pixmap = icons.render("mic", themes.color("text2"), round(self.size_ * ratio))
@@ -428,6 +536,7 @@ def _glow(color: str, diameter: int, ratio: float, peak: int = 90) -> QPixmap:
             c.setAlpha(alpha)
             gradient.setColorAt(stop, c)
         painter = QPainter(pix)
+        painter.setRenderHints(QPainter.RenderHint.Antialiasing | QPainter.RenderHint.SmoothPixmapTransform)  # 0.12.2: smooth edges everywhere
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(gradient)
         painter.drawEllipse(0, 0, size, size)
@@ -522,6 +631,7 @@ class NexusRing(QWidget):
         """The card behind the ring (it is opaque on a glass card), then the ring itself: one picture per (level step, shimmer step,
         state), drawn once and kept, so a moving ring costs a copy of a small picture (0.11.5)."""
         p = QPainter(self)
+        p.setRenderHints(QPainter.RenderHint.Antialiasing | QPainter.RenderHint.SmoothPixmapTransform)  # 0.12.2: smooth edges everywhere
         if getattr(self, "_on_card", False):
             from .ui_nexus import card_gradient
             backdrop = card_gradient(self)
@@ -551,34 +661,51 @@ class NexusRing(QWidget):
         c = self.SIZE / 2.0
         alive = self._step > 0
         phase = self._phase % self.PHASES
-        p.setBrush(Qt.BrushStyle.NoBrush)
-        p.setPen(QPen(QColor(themes.color("border2")), 1))
-        p.drawEllipse(QPointF(c, c), 25.0, 25.0)
         strength = self._step / self.STEPS
         if halo:  # a halo that grows with the sound (dark themes only)
-            p.setOpacity(min(1.0, 0.25 + strength))
-            p.drawPixmap(QPointF(0, 0), _glow(self.color, self.SIZE, ratio))
+            p.setOpacity(min(1.0, 0.2 + strength * 0.8))
+            p.drawPixmap(QPointF(0, 0), _glow(self.color, self.SIZE, ratio, 70))
             p.setOpacity(1.0)
-        path = QPainterPath()
-        for i, (cos, sin) in enumerate(self._ANGLES):
-            length = 2.0 + (14.0 * strength * (0.55 + 0.45 * abs(math.sin(i * 1.3 + phase * 1.05))) if alive else 0.0)
-            path.moveTo(c + cos * 28, c + sin * 28)
-            path.lineTo(c + cos * (28 + length), c + sin * (28 + length))
-        pen_color = QColor(self.color) if alive else QColor(themes.color("text_off"))
-        if not alive:
-            pen_color.setAlpha(120)
-        p.setPen(QPen(pen_color, 3, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-        p.drawPath(path)
+        # 0.12.2: glowing level rings. The outer ring's arc is the level, the inner one follows it with a little shimmer; the rest of
+        # each ring is a dim track. Arcs start at the top and run clockwise.
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        track = QColor(themes.color("border2"))
+        track.setAlpha(170)
+        outer = QRectF(c - 34, c - 34, 68, 68)
+        inner = QRectF(c - 27, c - 27, 54, 54)
+        p.setPen(QPen(track, 5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.FlatCap))
+        p.drawEllipse(outer)
+        track.setAlpha(110)
+        p.setPen(QPen(track, 2.5))
+        p.drawEllipse(inner)
+        if alive:
+            color = QColor(self.color)
+            span = -round(360 * 16 * min(1.0, 0.08 + 0.86 * strength))
+            if halo:
+                glow = QColor(color)
+                glow.setAlpha(70)
+                p.setPen(QPen(glow, 11, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+                p.drawArc(outer, 90 * 16, span)
+            p.setPen(QPen(color, 5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            p.drawArc(outer, 90 * 16, span)
+            shimmer = 0.82 + 0.12 * math.sin(phase * 1.05)
+            soft = QColor(themes.mix(self.color, "#ffffff", 0.45))
+            p.setPen(QPen(soft, 2.5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            p.drawArc(inner, 90 * 16, round(span * shimmer))
         if self._pix is None:
             self._pix = self._picture_for(ratio)
         p.setOpacity(1.0 if alive and not self.muted else 0.45)
-        p.drawPixmap(QPointF(c - 18, c - 18), self._pix)
+        p.save()
+        p.translate(c, c)
+        p.scale(0.78, 0.78)  # the picture sits inside the inner ring
+        p.drawPixmap(QPointF(-18, -18), self._pix)
+        p.restore()
         p.setOpacity(1.0)
         # (0.12.0: the chain badge for linked levels is in the card's header now, beside the name, not on the ring)
         if self.muted and small:  # too small for the word: the inner circle in the mute colour says it
             p.setBrush(Qt.BrushStyle.NoBrush)
             p.setPen(QPen(QColor(themes.color("mute")), 3))
-            p.drawEllipse(QPointF(c, c), 25.0, 25.0)
+            p.drawEllipse(QPointF(c, c), 27.0, 27.0)
         elif self.muted:
             p.setBrush(QColor(themes.color("mute_bg")))
             p.setPen(QPen(QColor(themes.color("mute")), 1))

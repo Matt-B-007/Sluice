@@ -7,6 +7,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
 
+from sluice.skin_calm import CALM_DARK, CALM_LIGHT  # 0.12.2: the window is in Calm, which has its own Dark and Light
 from sluice import themes
 from sluice.model import Mixer
 
@@ -287,31 +288,31 @@ def test_the_palette_follows_the_theme_for_dialogs_and_tooltips(win):
 
     win.apply_theme("light")
     palette = QGuiApplication.palette()
-    assert palette.color(QPalette.ColorRole.Window) == QColor(themes.LIGHT["bg"])
-    assert palette.color(QPalette.ColorRole.ToolTipBase) == QColor(themes.LIGHT["popup"])
+    assert palette.color(QPalette.ColorRole.Window) == QColor(CALM_LIGHT["bg"])
+    assert palette.color(QPalette.ColorRole.ToolTipBase) == QColor(CALM_LIGHT["popup"])
     win.apply_theme("dark")
-    assert QGuiApplication.palette().color(QPalette.ColorRole.Window) == QColor(themes.DARK["bg"])
+    assert QGuiApplication.palette().color(QPalette.ColorRole.Window) == QColor(CALM_DARK["bg"])
 
 
 def test_the_meters_pick_up_the_new_colours(win):
     from PySide6.QtGui import QColor
 
     meters = win.findChildren(LevelMeter)
-    assert meters and all(m._well == QColor(themes.DARK["meter_bg"]) for m in meters)
+    assert meters and all(m._well == QColor(CALM_DARK["meter_bg"]) for m in meters)
     meters[0]._lit_pixmap()
     win.apply_theme("light")
-    assert all(m._well == QColor(themes.LIGHT["meter_bg"]) for m in meters)
+    assert all(m._well == QColor(CALM_LIGHT["meter_bg"]) for m in meters)
     assert all(m._lit is None for m in meters)  # redrawn in the new colours on the next paint
 
 
 def test_match_my_system_follows_the_desktop(win, monkeypatch):
     monkeypatch.setattr(win, "_system_is_dark", lambda: False)
     win.choose_theme("system")
-    assert win.engine.mixer.theme == "system" and themes.LIGHT["bg"] in _sheet()
+    assert win.engine.mixer.theme == "system" and CALM_LIGHT["bg"] in _sheet()
     assert "following your system" in win.status_label.text()
     monkeypatch.setattr(win, "_system_is_dark", lambda: True)
     win._on_system_scheme_changed()  # the desktop switched while Sluice was running
-    assert themes.DARK["bg"] in _sheet()
+    assert CALM_DARK["bg"] in _sheet()
     win.apply_theme("purple")
     before = _sheet()
     monkeypatch.setattr(win, "_system_is_dark", lambda: False)
@@ -395,7 +396,7 @@ def test_removing_the_theme_in_use_goes_back_to_dark(win, tmp_path):
     win.import_theme_from(_write(tmp_path / "m.json", name="Moonlight", colors={"accent": "#7c5cff"}))
     win.remove_theme("custom:moonlight")
     assert win.engine.mixer.theme == "dark" and not (tmp_path / "themes" / "moonlight.json").exists()
-    assert themes.DARK["bg"] in _sheet()
+    assert CALM_DARK["bg"] in _sheet()
 
 
 def test_a_saved_choice_that_lost_its_file_shows_dark_and_says_so(win, tmp_path):
@@ -415,7 +416,7 @@ def test_demo_mode_has_no_themes_folder(qapp):
         window.open_theme_folder()
         assert "Demo mode" in window.status_label.text()
         window.apply_theme("light")  # the built-in ones work everywhere
-        assert themes.LIGHT["bg"] in _sheet()
+        assert CALM_LIGHT["bg"] in _sheet()
     finally:
         window.shutdown()
         themes.set_current(themes.DARK)
@@ -427,7 +428,7 @@ def test_the_dialogs_that_set_their_own_colours_use_the_theme(win):
     win.apply_theme("light")
     dialog = ui_whatsnew.NotesDialog("t", "h", "see `code` and [a link](https://example.com)", "", "", win)
     css = dialog.view.document().defaultStyleSheet()
-    assert themes.LIGHT["link"] in css and themes.LIGHT["code"] in css
+    assert CALM_LIGHT["link"] in css and CALM_LIGHT["code"] in css
 
 
 def test_get_more_themes_opens_the_collection_on_the_project_page(win, monkeypatch):

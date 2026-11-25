@@ -91,21 +91,22 @@ def test_a_theme_file_can_set_depth_colours_by_hand():
     assert depth.depth_colors(colors)["tray_top"] == "#123456"
 
 
-@pytest.mark.parametrize("skin", ["nexus", "tile"])
+@pytest.mark.parametrize("skin", ["nexus", "tile", "calm", "glass"])
 def test_look_colours_replace_only_dark_and_light(skin):
     themes.set_skin_colors(True)
     try:
         dark = themes.skin_colors(themes.BUILT_IN["dark"], skin)
         assert dark["bg"] != themes.finish(themes.BUILT_IN["dark"].colors)["bg"]
         seen = {}
-        for theme_id in ("purple", "midnight", "amber", "paper", "contrast"):
+        others = ("purple", "midnight", "amber", "contrast") + (() if skin == "nexus" else ("paper",))  # (Nexus is dark only)
+        for theme_id in others:
             shown = themes.skin_colors(themes.BUILT_IN[theme_id], skin)
             assert shown["bg"] == themes.BUILT_IN[theme_id].colors["bg"], theme_id  # every other theme keeps its own colours
             seen[shown["bg"]] = theme_id
-        assert len(seen) == 5  # and they all still look different from each other
+        assert len(seen) == len(others)  # and they all still look different from each other
         light = themes.skin_colors(themes.BUILT_IN["light"], skin)
         paper = themes.skin_colors(themes.BUILT_IN["paper"], skin)
-        assert light["panel"] != paper["panel"]
+        assert light["panel"] != paper["panel"] or skin == "nexus"
         themes.set_skin_colors(False)
         assert themes.skin_colors(themes.BUILT_IN["dark"], skin)["bg"] == themes.BUILT_IN["dark"].colors["bg"]
     finally:

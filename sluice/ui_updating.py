@@ -10,6 +10,7 @@ import threading
 from PySide6.QtCore import QObject, Qt, Signal
 from PySide6.QtWidgets import QMessageBox, QProgressDialog
 
+from . import ui_dialog
 from . import __version__, update_install
 
 log = logging.getLogger("sluice.ui")
@@ -32,7 +33,7 @@ class UpdatingMixin:
         root = update_install.install_root()
         problem = update_install.offer_problem(root, result)
         if problem:
-            QMessageBox.information(self, "Update", problem)
+            ui_dialog.information(self, "Update", problem)
             return
         dialog = QProgressDialog(f"Downloading Sluice {result.latest}\u2026", "", 0, 100, self)
         dialog.setWindowTitle("Updating Sluice")
@@ -71,14 +72,14 @@ class UpdatingMixin:
         version, message = outcome
         if not version:
             self.say(f"Could not update: {message.splitlines()[0] if message else 'unknown error'}")
-            QMessageBox.warning(self, "Could not update", message or "Unknown error.")
+            ui_dialog.warning(self, "Could not update", message or "Unknown error.")
             return
         self.say(f"Sluice {version} is downloaded and checked. It is installed when Sluice restarts or closes.")
         if self._ask_restart_for_update(version):
             self.restart_into_update()
 
     def _ask_restart_for_update(self, version: str) -> bool:
-        ask = QMessageBox(self)
+        ask = ui_dialog.Message(self)
         ask.setWindowTitle("Update ready")
         ask.setText(f"Sluice {version} was downloaded and checked.\n\nRestart now to start using it? Your settings are saved "
                     "first. If you choose later, it is installed the next time you close Sluice.")
@@ -86,6 +87,42 @@ class UpdatingMixin:
         ask.addButton("Later", QMessageBox.ButtonRole.RejectRole)
         ask.exec()
         return ask.clickedButton() is restart
+
+    # ------------------------------------------------------------------ Stable or Beta (0.12.2)
+    def set_update_channel(self, channel: str, ask: bool = True) -> None:
+        from .update_check import is_prerelease
+
+        mixer = self.engine.mixer
+        before, mixer.update_channel = mixer.update_channel, channel if channel in ("stable", "beta") else "stable"
+        for name, action in getattr(self, "channel_actions", {}).items():
+            action.setChecked(mixer.update_channel == name)
+        if mixer.update_channel == before:
+            return
+        log.info("update channel: %s", mixer.update_channel)
+        if mixer.update_channel == "beta":
+            self.say("Updates: Beta. Sluice also offers test versions, which bring new features first and may have rough edges.")
+            return
+        if not is_prerelease(__version__) or not ask:
+            self.say("Updates: Stable. Sluice offers only tested releases.")
+            return
+        box = ui_dialog.Message(self)
+        box.setWindowTitle("Back to Stable")
+        box.setText(f"You are running a beta, {__version__}.")
+        box.setInformativeText("Stay on it until a stable version is newer, or go to the latest stable version now? "
+                               "Your settings are kept either way.")
+        now = box.addButton("Go to the latest stable now", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton("Stay until stable is newer", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        if box.clickedButton() is not now:
+            self.say(f"Updates: Stable. You stay on {__version__} until a stable version is newer.")
+            return
+        self.say("Looking for the latest stable version\u2026")
+        check = self._update_check
+
+        def work() -> None:
+            self._update_bridge.done.emit(check(__version__, channel="stable", allow_older=True))
+
+        threading.Thread(target=work, name="sluice-update-check", daemon=True).start()
 
     # ------------------------------------------------------------------ moving out of the download folder (0.12.0)
     def runs_from_download(self) -> bool:
@@ -106,10 +143,10 @@ class UpdatingMixin:
 
         root = update_install.install_root()
         if not update_install.runs_from_download(root):
-            QMessageBox.information(self, "Move Sluice", "Sluice already runs from its own folder.")
+            self.say("Sluice already runs from its own folder.")
             return
         from .launcher import program_dir
-        ask = QMessageBox(self)
+        ask = ui_dialog.Message(self)
         ask.setWindowTitle("Move Sluice to its own folder")
         ask.setText(f"Sluice runs from the folder you downloaded:\n{root}\n\nIt can move itself to {program_dir()} (with its "
                     "menu entry and the sluice command) and then delete that folder. Your settings stay as they are.\n\n"
@@ -124,7 +161,7 @@ class UpdatingMixin:
             subprocess.Popen(update_install.move_script(root), start_new_session=True, stdin=subprocess.DEVNULL,
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except OSError as exc:
-            QMessageBox.warning(self, "Move Sluice", f"Could not start the move: {exc}\nIn a terminal, run:\n  {root}/install.sh")
+            ui_dialog.warning(self, "Move Sluice", f"Could not start the move: {exc}\nIn a terminal, run:\n  {root}/install.sh")
             return
         self.quit_app()
 
@@ -147,9 +184,9 @@ class UpdatingMixin:
             reason = update_install.unavailable_reason(update_install.install_root())
             if reason:
                 self.auto_update_action.setChecked(False)
-                QMessageBox.information(self, "Update automatically", reason)
+                ui_dialog.information(self, "Update automatically", reason)
                 return
-            ask = QMessageBox.question(
+            ask = ui_dialog.question(
                 self, "Update automatically",
                 "Sluice will ask GitHub once, shortly after it starts, whether there is a newer version. If there is, it "
                 "downloads it, checks it against its checksum, and installs it the next time you close Sluice. It never "
@@ -175,7 +212,7 @@ class UpdatingMixin:
 
         def work() -> None:
             try:
-                result = check(__version__)
+                result = check(__version__, channel=self.engine.mixer.update_channel)
                 if result.status != "available" or update_install.offer_problem(root, result):
                     return
                 bridge.quiet.emit((stage(result, root), ""))
@@ -198,9 +235,9 @@ class UpdatingMixin:
         root = update_install.install_root()
         previous = update_install.previous_version(root)
         if not previous:
-            QMessageBox.information(self, "Go back", "There is no earlier version to go back to.")
+            self.say("There is no earlier version to go back to.")
             return
-        ask = QMessageBox(self)
+        ask = ui_dialog.Message(self)
         ask.setWindowTitle("Go back to the previous version")
         ask.setText(f"Go back to Sluice {previous}?\n\nSluice restarts. Your settings are kept, but a newer version may have "
                     "saved things an older one does not understand, so a backup of your settings is a good idea first "

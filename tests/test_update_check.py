@@ -48,9 +48,11 @@ def test_a_list_of_releases_uses_the_newest_that_is_not_a_draft():
         {"tag_name": "v0.7.0", "html_url": "https://example.com/beta", "prerelease": True},
         {"tag_name": "v0.6.0", "html_url": "https://example.com/old"},
     ]
-    result = check("0.6.10", url="https://x.example/releases", fetch=lambda url, timeout: releases)
+    stable = check("0.6.0", url="https://x.example/releases", fetch=lambda url, timeout: releases)
+    assert stable.status == "up_to_date"  # 0.12.2: Stable never offers a pre-release
+    result = check("0.6.10", url="https://x.example/releases", fetch=lambda url, timeout: releases, channel="beta")
     assert result.status == "available" and result.latest == "0.7.0" and result.page == "https://example.com/beta"
-    again = check("0.7.0", url="https://x.example/releases", fetch=lambda url, timeout: releases)
+    again = check("0.7.0", url="https://x.example/releases", fetch=lambda url, timeout: releases, channel="beta")
     assert again.status == "up_to_date"
     empty = check("0.6.10", url="https://x.example/releases", fetch=lambda url, timeout: [])
     assert empty.status == "error" and "no releases" in empty.message
@@ -59,7 +61,7 @@ def test_a_list_of_releases_uses_the_newest_that_is_not_a_draft():
 def test_the_shipped_update_address_is_https_and_points_at_the_release_list():
     from sluice import update_check
 
-    assert update_check.RELEASE_URL.startswith("https://api.github.com/repos/") and update_check.RELEASE_URL.endswith("/releases?per_page=5")
+    assert update_check.RELEASE_URL.startswith("https://api.github.com/repos/") and update_check.RELEASE_URL.endswith("/releases?per_page=20")
 
 
 def test_the_notes_of_a_newer_release_come_with_the_answer_and_only_then():

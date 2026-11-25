@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import QEvent, QRectF, QSize, QTimer, Qt
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPen
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QIcon, QPainter, QPen
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -32,7 +32,8 @@ from PySide6.QtWidgets import (
 )
 
 from .effects import BUILTINS, ParamInfo, builtin_names, scan_vst3, vst3_plugin_names, vst3_search_paths
-from . import logs, presets, themes
+from . import ui_dialog
+from . import logs, presets, themes, ui_icons as icons
 from .model import MIN_DB, Effect, new_effect_id
 from .ui_room import MeasureEchoDialog, MeasureRoomDialog, MeasureVoiceDialog
 from .ui_live import LivePanel
@@ -326,7 +327,8 @@ class EffectsDialog(QDialog):
         side_box.setFixedWidth(264)
         side_box.setLayout(side)
         side.setContentsMargins(0, 0, 0, 0)
-        self.mine_button = QPushButton("My presets ▾")
+        self.mine_button = QPushButton("My presets")
+        icons.dropdown(self.mine_button)
         self.mine_button.setMenu(QMenu(self.mine_button))
         self.mine_button.menu().aboutToShow.connect(self._build_mine_menu)
         self.mine_button.setToolTip("Your own saved settings (they also keep the gate threshold and gain). "
@@ -386,10 +388,15 @@ class EffectsDialog(QDialog):
         chain.addWidget(self.list)
         buttons = QHBoxLayout()
         buttons.setSpacing(8)
-        self.add_button = QPushButton("Add ▾")
+        self.add_button = QPushButton("Add")
+        icons.dropdown(self.add_button)
         self.add_button.setMenu(QMenu(self.add_button))
         self.add_button.menu().aboutToShow.connect(self._build_add_menu)
-        up, down, remove = QPushButton("◀"), QPushButton("▶"), QPushButton("Remove")
+        up, down, remove = QPushButton(), QPushButton(), QPushButton("Remove")
+        for button, name, label in ((up, "chevron_left", "Move earlier"), (down, "chevron_right", "Move later")):  # 0.12.2: drawn arrows
+            button.setIcon(icons.themed_icon(name, "text"))
+            button.setIconSize(QSize(16, 16))
+            button.setAccessibleName(label)
         up.setToolTip("Move earlier (VST3 plugins only)")
         down.setToolTip("Move later (VST3 plugins only)")
         up.clicked.connect(lambda: self._move(-1))
@@ -428,7 +435,7 @@ class EffectsDialog(QDialog):
         right.addWidget(self.editor_button, 0, Qt.AlignmentFlag.AlignLeft)
         right.addWidget(self.params_area, 1)
         foot = QLabel("Switch an effect off to skip it. The built-in effects stay in the best order; VST3 plugins can be moved "
-                      "with ◀ and ▶.")
+                      "with the arrow buttons.")
         foot.setObjectName("hint")
         foot.setWordWrap(True)
         right.addWidget(foot)
@@ -547,7 +554,9 @@ class EffectsDialog(QDialog):
                     continue
                 on = n == name
                 button.setChecked(on)
-                button.setText(("\u2713 " if on and not changed else "") + n)
+                button.setText(n)  # 0.12.2: a drawn tick marks the choice in use, not a typed one
+                button.setIcon(icons.themed_icon("check", "accent_text") if on and not changed else QIcon())
+                button.setProperty("ticked", bool(on and not changed))
             status = self._axis_status[axis]
             if name is None:
                 status.setText("not on this channel yet")
@@ -556,7 +565,7 @@ class EffectsDialog(QDialog):
             else:
                 status.setText("")
             self._axis_reset[axis].setVisible(name is not None and changed)
-        self.mine_button.setText(f"\u2713 {user_match} \u25be" if user_match else "My presets \u25be")
+        self.mine_button.setText(f"My preset: {user_match}" if user_match else "My presets")  # (0.12.2: the chevron is drawn)
         self.compare_button.setChecked(self.engine.chain_compare(self.channel.id))
 
     def _choose(self, axis: str, name: str) -> None:
@@ -623,7 +632,7 @@ class EffectsDialog(QDialog):
         stored = presets.load_user(path)
         stored[name] = presets.snapshot(self.channel.effects)
         if not presets.save_user(path, stored):
-            QMessageBox.warning(self, "Save preset", "The preset could not be saved (is the settings folder writable?).")
+            ui_dialog.warning(self, "Save preset", "The preset could not be saved (is the settings folder writable?).")
         self._user_presets(reload=True)
         self._active_user = name
         self._update_presets_button()
@@ -634,7 +643,7 @@ class EffectsDialog(QDialog):
         name = self._active_user
         if name is None:
             return
-        answer = QMessageBox.question(
+        answer = ui_dialog.question(
             self, "Update preset",
             f"Replace your preset \u201c{name}\u201d with the settings on this channel as they are now?\n\n"
             "The old version of the preset will be gone.",
@@ -645,7 +654,7 @@ class EffectsDialog(QDialog):
         stored = presets.load_user(path)
         stored[name] = presets.snapshot(self.channel.effects)
         if not presets.save_user(path, stored):
-            QMessageBox.warning(self, "Update preset", "The preset could not be saved (is the settings folder writable?).")
+            ui_dialog.warning(self, "Update preset", "The preset could not be saved (is the settings folder writable?).")
             return
         self._user_presets(reload=True)
         self._update_presets_button()
@@ -760,11 +769,37 @@ class EffectsDialog(QDialog):
         self._timer.stop()
         if effect is None or instance is None:
             self.title.setText("No effects yet" if effect is None else effect.name)
-            if effect is None:
-                note = QLabel("Use Add to put a compressor, noise gate, EQ or a VST3 plugin on this channel.")
+            if effect is None:  # 0.12.2: a picture of "nothing changes" and the effects most voices want, one click each
+                from .effects import BUILTIN_NAMES
+                from .ui_live import CurveView
+                row = QHBoxLayout()
+                row.setSpacing(24)
+                flat = CurveView()
+                flat.setFixedSize(128, 128)
+                flat.SIZE = 128
+                flat.set_params(0.0, 1.0, 0.0)  # the straight line: what goes in comes out
+                flat.setAccessibleName("No change: your sound comes out as it goes in")
+                row.addWidget(flat, 0, Qt.AlignmentFlag.AlignTop)
+                side = QVBoxLayout()
+                side.setSpacing(8)
+                lead = QLabel("Your sound passes through unchanged.")
+                lead.setObjectName("bigvalue")
+                lead.setWordWrap(True)
+                side.addWidget(lead)
+                note = QLabel("Add an effect to shape it. For a microphone most people start with these two:")
                 note.setWordWrap(True)
                 note.setObjectName("hint")
-                layout.addWidget(note)
+                side.addWidget(note)
+                for key, why in (("noise_gate", "silences the room between your words"),
+                                 ("compressor", "evens out loud and quiet talking")):
+                    button = QPushButton(f"Add {BUILTIN_NAMES[key]}")
+                    button.setIcon(icons.themed_icon("plus", "text"))
+                    button.setToolTip(f"The {BUILTIN_NAMES[key]} {why}.")
+                    button.clicked.connect(partial(self._add_builtin, key, BUILTIN_NAMES[key]))
+                    side.addWidget(button, 0, Qt.AlignmentFlag.AlignLeft)
+                side.addStretch(1)
+                row.addLayout(side, 1)
+                layout.addLayout(row)
             self.params_area.setWidget(panel)
             return
 
@@ -948,21 +983,27 @@ class EffectsDialog(QDialog):
         vst.addAction("Add a folder of plugins…", self._add_vst3_folder)
         vst.addAction("Where does Sluice look?", self._show_vst3_folders)
 
+    def _say(self, text: str) -> None:
+        """A message in the main window's status line (0.12.2: no window to close for news that needs no answer)."""
+        owner = self.parent()
+        if owner is not None and hasattr(owner, "say"):
+            owner.say(text)
+        else:
+            self.setToolTip(text)
+
     def _add_vst3_folder(self) -> None:
         path = QFileDialog.getExistingDirectory(self, "Choose a folder that contains .vst3 plugins", str(Path.home()))
         if path and path not in self.engine.mixer.vst3_folders:
             self.engine.mixer.vst3_folders.append(path)
             found = scan_vst3(vst3_search_paths(self.engine.mixer.vst3_folders))
-            QMessageBox.information(self, "Plugin folder added",
-                                    f"{logs.short_path(path)} was added. Sluice now finds {len(found)} VST3 plugin(s) in all its folders.\n"
-                                    "Open Add > VST3 plugin to see them.")
+            self._say(f"{logs.short_path(path)} was added. Sluice now finds {len(found)} VST3 plugin(s); see Add > VST3 plugin.")
 
     def _show_vst3_folders(self) -> None:
         lines = []
         for folder in vst3_search_paths(self.engine.mixer.vst3_folders):
             count = len(scan_vst3([folder])) if folder.is_dir() else None
             lines.append(f"{logs.short_path(folder)}   ({'does not exist' if count is None else f'{count} plugin(s)'})")
-        QMessageBox.information(
+        ui_dialog.information(
             self, "Where Sluice looks for VST3 plugins",
             "\n".join(lines) + "\n\nThese are the folders Linux VST3 hosts normally use, so a plugin that REAPER or another "
             "Linux host can see in them is found here too. Add other folders with \u201cAdd a folder of plugins\u201d, or "
@@ -986,7 +1027,7 @@ class EffectsDialog(QDialog):
 
     def _add_vst3(self, path: str) -> None:
         if not path.lower().rstrip("/").endswith(".vst3"):
-            QMessageBox.warning(self, "Not a VST3 plugin", "Please choose a folder or file whose name ends in .vst3.")
+            ui_dialog.warning(self, "Not a VST3 plugin", "Please choose a folder or file whose name ends in .vst3.")
             return
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
@@ -1010,7 +1051,7 @@ class EffectsDialog(QDialog):
             self.engine.remove_effect(self.channel.id, effect.id)
             extra = ("\n\nVST3 plugins need pedalboard: Settings > Setup check has the command that installs it."
                      if "pedalboard" in instance.error.lower() else "")
-            QMessageBox.warning(self, "Could not load plugin", instance.error + extra)
+            ui_dialog.warning(self, "Could not load plugin", instance.error + extra)
             self._reload()
             return
         self._reload(select=len(self.channel.effects) - 1)

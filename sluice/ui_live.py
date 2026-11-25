@@ -314,6 +314,38 @@ class ReductionBar(QWidget):
         p.end()
 
 
+class LevelBar(QWidget):
+    """0.12.2: a sideways level meter for the live panel, -60 to 0 dB, with a mark where the loudest recent moment was."""
+
+    def __init__(self, who: str) -> None:
+        super().__init__()
+        self.who = who
+        self.setFixedHeight(10)
+        self.level, self.peak = FLOOR_DB, FLOOR_DB
+
+    def set_level(self, db: float, peak: float) -> None:
+        self.level, self.peak = db, peak
+        self.update()
+
+    def paintEvent(self, _event) -> None:
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        rect = QRectF(self.rect())
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor(themes.color("meter_bg")))
+        p.drawRoundedRect(rect, 5, 5)
+        color = going_in_color() if self.who == "in" else QColor(themes.color("accent"))
+        p.setBrush(color)
+        width = rect.width() * fraction(self.level)
+        if width > 1:
+            p.drawRoundedRect(QRectF(0, 0, width, rect.height()), 5, 5)
+        if self.peak > FLOOR_DB + 1:
+            x = rect.width() * fraction(self.peak)
+            p.setBrush(QColor(themes.color("strong")))
+            p.drawRect(QRectF(min(rect.width() - 2, x), 1, 2, rect.height() - 2))
+        p.end()
+
+
 def _caption(text: str = "", name: str = "hint") -> QLabel:
     label = QLabel(text)
     label.setObjectName(name)
@@ -359,6 +391,33 @@ class LivePanel(QFrame):
         self.spectrum = LiveSpectrum()
         layout.addWidget(self.wave)
         layout.addWidget(self.spectrum)
+
+        # 0.12.2: levels going in and coming out as numbers and bars, and what the room and your voice measure
+        levels = QWidget()
+        grid = QVBoxLayout(levels)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setSpacing(6)
+        self.level_bars, self.level_texts = {}, {}
+        for who, text in (("in", "Going in"), ("out", "Coming out")):
+            line = QHBoxLayout()
+            line.setSpacing(12)
+            name = _caption(text, "chiptext")
+            name.setWordWrap(False)
+            name.setFixedWidth(96)
+            line.addWidget(name)
+            bar = LevelBar(who)
+            line.addWidget(bar, 1)
+            value = QLabel("–")
+            value.setObjectName("readout")
+            value.setFixedWidth(64)
+            value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            line.addWidget(value)
+            grid.addLayout(line)
+            self.level_bars[who], self.level_texts[who] = bar, value
+        self.room_text = _caption("", "hint")
+        grid.addWidget(self.room_text)
+        layout.addWidget(levels)
+        self._peaks = {"in": deque(maxlen=60), "out": deque(maxlen=60)}  # two seconds, for the peak marks
 
         self.curve_box = QWidget()
         curve = QHBoxLayout(self.curve_box)
@@ -463,6 +522,7 @@ class LivePanel(QFrame):
         in_db = max((to_db(p[0]) for p in peaks), default=FLOOR_DB)
         out_db = max((to_db(p[1]) for p in peaks), default=FLOOR_DB)
         self._recent.append(in_db)
+        self._show_levels(in_db, out_db)
         if in_db > FLOOR_DB + 5:
             self._last_sound = self._ticks
         quiet = self._ticks - self._last_sound > 60  # two seconds without sound going in
@@ -484,6 +544,20 @@ class LivePanel(QFrame):
             self._tick_compressor(in_db, out_db, quiet)
         elif self.kind == "noise_gate":
             self._tick_gate(in_db, quiet)
+
+    def _show_levels(self, in_db: float, out_db: float) -> None:
+        for who, db in (("in", in_db), ("out", out_db)):
+            self._peaks[who].append(db)
+            self.level_bars[who].set_level(db, max(self._peaks[who]))
+            self.level_texts[who].setText("–" if db <= FLOOR_DB + 0.5 else f"{db:.0f} dB")
+        values = [v for v in self._recent if v > -75]
+        if len(values) >= 45 and max(values) - min(values) >= 12:
+            ordered = sorted(values)
+            room, voice = ordered[int(len(ordered) * 0.1)], ordered[int(len(ordered) * 0.95) - 1]
+            self.room_text.setText(f"Room about {room:.0f} dB, your voice peaks near {voice:.0f} dB, "
+                                   f"{-voice:.0f} dB below the top.")
+        else:
+            self.room_text.setText("Talk for a few seconds to measure your room and your voice.")
 
     def _tick_compressor(self, in_db: float, out_db: float, quiet: bool) -> None:
         if quiet:

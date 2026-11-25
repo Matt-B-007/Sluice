@@ -22,7 +22,9 @@ NAMES = ("speaker", "speaker_off", "mic", "mic_off", "link", "sliders", "plus", 
          "refresh", "columns", "rows", "widgets", "eye", "record", "camera", "fullscreen", "tray", "keyboard", "star", "pulse", "bug",
          "palette", "power", "save", "close", "chevron_right", "wave", "folder", "info", "quit",
          # 0.12.0: the setup check
-         "checklist")
+         "checklist",
+         # 0.12.2: drawn instead of typed characters (▾ ◀ ▶ ✓ ×)
+         "chevron_left", "check", "x")
 
 
 class _Grid:
@@ -30,7 +32,7 @@ class _Grid:
 
     def __init__(self, painter: QPainter, k: float, color: QColor) -> None:
         self.p, self.k = painter, k
-        self.w = max(1, round(2 * k))
+        self.w = max(1, round(2.4 * k))  # 0.12.2: a little bolder: 2 px at 16 px, where it was 1
         self.off = 0.5 if self.w % 2 else 0.0   # an odd pen is centred on a pixel's middle, an even one on its edge
         pen = QPen(color, self.w)
         pen.setCapStyle(Qt.PenCapStyle.RoundCap)
@@ -218,6 +220,13 @@ def _draw(name: str, g: _Grid) -> None:
         g.line(18, 6, 6, 18)
     elif name == "chevron_right":
         g.poly([(9, 6), (15, 12), (9, 18)])
+    elif name == "chevron_left":
+        g.poly([(15, 6), (9, 12), (15, 18)])
+    elif name == "check":
+        g.poly([(5, 12.5), (10, 17.5), (19, 7)])
+    elif name == "x":  # a small cross, for removing a chip
+        g.line(8, 8, 16, 16)
+        g.line(16, 8, 8, 16)
     elif name == "wave":
         g.poly([(3, 12), (6, 12), (8, 7), (11, 17), (13, 9), (15, 15), (17, 12), (21, 12)])
     elif name == "folder":
@@ -273,6 +282,44 @@ class _Engine(QIconEngine):
         pixmap = _cached(self.name, self.color, round(side * ratio))  # device pixels: drawn 1:1, never stretched
         painter.drawPixmap(QRectF(rect.x() + (rect.width() - side) / 2.0, rect.y() + (rect.height() - side) / 2.0, side, side),
                            pixmap, QRectF(pixmap.rect()))
+
+
+class _ThemedEngine(_Engine):
+    """0.12.2: an icon that takes its colour from the theme in use each time it is drawn (``token``, such as "text2"), so a button
+    made once still matches after the theme changes."""
+
+    def __init__(self, name: str, token: str) -> None:
+        super().__init__(name, "#000000")
+        self.token = token
+
+    def clone(self):
+        return _ThemedEngine(self.name, self.token)
+
+    def _now(self) -> None:
+        from . import themes
+        self.color = themes.color(self.token)
+
+    def pixmap(self, size: QSize, mode, state) -> QPixmap:
+        self._now()
+        return super().pixmap(size, mode, state)
+
+    def paint(self, painter: QPainter, rect, mode, state) -> None:
+        self._now()
+        super().paint(painter, rect, mode, state)
+
+
+def themed_icon(name: str, token: str = "text2") -> QIcon:
+    """A QIcon of the named drawing in the theme's ``token`` colour, as it is when drawn."""
+    if name not in NAMES:
+        raise ValueError(f"no icon called {name}")
+    return QIcon(_ThemedEngine(name, token))
+
+
+def dropdown(button, size: int = 14) -> None:
+    """0.12.2: a button that opens a menu shows a drawn chevron at its right end, instead of a typed ▾."""
+    button.setIcon(themed_icon("chevron_down"))
+    button.setIconSize(QSize(size, size))
+    button.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
 
 
 @lru_cache(maxsize=512)
@@ -346,6 +393,43 @@ def _source_image(spec: str):
     return None
 
 
+APP_DIRS = ("~/.local/share/applications", "/usr/share/applications", "/usr/local/share/applications",
+            "/var/lib/flatpak/exports/share/applications", "~/.local/share/flatpak/exports/share/applications",
+            "/var/lib/snapd/desktop/applications")
+
+
+@lru_cache(maxsize=256)
+def guess_icon(name: str) -> str:
+    """0.12.2: the icon name for an app Sluice only knows by name (``spotify``, ``Discord``, ``firefox``): the name itself if the icon
+    theme has it, else the Icon= line of a matching desktop entry (com.spotify.Client.desktop and the like), else ""."""
+    import os
+    name = (name or "").strip()
+    if not name or os.path.isabs(name):
+        return ""
+    lower = name.lower()
+    for candidate in dict.fromkeys((name, lower, lower.replace(" ", "-"), lower.replace(" ", ""))):
+        if QIcon.hasThemeIcon(candidate):
+            return candidate
+    for folder in APP_DIRS:
+        folder = os.path.expanduser(folder)
+        try:
+            entries = os.listdir(folder)
+        except OSError:
+            continue
+        for entry in entries:
+            stem = entry[:-8].lower() if entry.endswith(".desktop") else ""
+            if not stem or not (stem == lower or stem.endswith("." + lower) or stem.split(".")[-1] == lower.replace(" ", "")):
+                continue
+            try:
+                with open(os.path.join(folder, entry), encoding="utf-8", errors="replace") as handle:
+                    for line in handle:
+                        if line.startswith("Icon="):
+                            return line[5:].strip()
+            except OSError:
+                continue
+    return ""
+
+
 def app_pixmap(spec: str, label: str, size: int = 20, ratio: float = 1.0, key: str = "") -> QPixmap:
     """A square picture of an app or game, ``size`` points wide, sharp at ``ratio``. When no picture is known: a rounded square
     with the first letter of the name, in a colour chosen from the name so it is always the same one."""
@@ -363,6 +447,12 @@ def app_pixmap(spec: str, label: str, size: int = 20, ratio: float = 1.0, key: s
     clip.addRoundedRect(QRectF(0, 0, size, size), size * 0.24, size * 0.24)
     p.setClipPath(clip)
     image = _source_image(spec)
+    if image is None:  # 0.12.2: no picture given: look the app up by its name, so a chip shows its real icon, not a letter
+        for name in (key.split(":")[-1] if key else "", label):
+            guessed = guess_icon(name)
+            image = _source_image(guessed) if guessed else None
+            if image is not None:
+                break
     if image is not None:
         side = min(image.width(), image.height())
         square = image.copy((image.width() - side) // 2, (image.height() - side) // 2, side, side)

@@ -35,13 +35,14 @@ QT_QPA_PLATFORM=offscreen sluice --demo --screenshot out.png
 | `sluice/depth.py` | depth colours worked out from any theme: keys, glass, shadows, grooves, trays, channel colours on light themes |
 | `sluice/skin_tile.py`, `ui_tile.py`, `ui_tile_paint.py`, `ui_tile_move.py` | the Tile skin: its colours and style rules, the tiles and mix keys, how keys and trays are painted, and moving a tile |
 | `sluice/skin_nexus.py`, `ui_nexus.py` | the Nexus skin: its colours and style rules, and the glass floor that paints shadows and the sound glow |
-| `sluice/skin_original.py`, `ui_skins.py` | the Original skin (0.9.7) and the pictures of the skins |
+| `sluice/skin_calm.py`, `skin_glass.py`, `skin_nexus.py`, `skin_tile.py`, `ui_skins.py` | each skin's own colours and styles (0.12.2), and the pictures of the skins in Settings |
+| `sluice/ui_dialog.py` | Sluice's message window and the panels that drop from a card (0.12.2) |
 | `sluice/ui_widgets.py`, `sluice/desktop_place.py` | the desktop widgets, and where they go (snapping, a place per screen, KDE layer-shell, the KWin rule) |
 | `sluice/ui_mini.py` | the compact list |
 | `sluice/ui_effects.py` | the Effects window |
 | `sluice/apps.py`, `sluice/ui_apps.py` | the installed apps and games list, and its picker |
 | `sluice/control_socket.py` | `sluice ctl` and the control socket |
-| `sluice/midi.py`, `sluice/ui_controllers.py` | MIDI input, bindings, and the Controllers window |
+| `sluice/midi.py`, `sluice/ui_controllers.py` | MIDI input, bindings, and the controllers page (Settings > Controllers) |
 | `sluice/diagnose.py` | `--diagnose` |
 | `sluice/distro.py`, `sluice/jackfix.py` | per-distribution package names and the Debian JACK library fix |
 | `sluice/launcher.py` | the applications-menu launcher, start-at-login entry and icons |
@@ -66,3 +67,19 @@ version that added them. A few to know about:
 
 Run them one Python version at a time on a small machine: the window tests use a fair amount of memory.
 
+
+## Publishing a release
+
+1. Set the version in `pyproject.toml` and `sluice/__init__.py`, and add its notes to `CHANGELOG.md` and its copy
+   `sluice/data/CHANGELOG.md` (the two must be identical; a test checks).
+2. Run `tools/make-release.sh`. It writes `dist/sluice-v<version>.zip` and `dist/sluice-v<version>.zip.sha256` and prints the
+   `gh release create` command to publish them.
+3. The two files must keep exactly those names: `get.sh` and the in-app updater look for `sluice-<tag>.zip` and
+   `sluice-<tag>.zip.sha256` among the release's assets, and stop if the checksum is missing or does not match.
+
+**Stable and Beta.** A version with a pre-release tag (`0.13.0-beta.1`, `0.13.0-rc.1`) is a test version: publish it with
+`--prerelease` (the script adds it for you). Only people on the Beta channel, or who run `get.sh --beta`, are offered it.
+Versions sort as people mean them: `0.13.0-beta.1` < `0.13.0-beta.2` < `0.13.0-rc.1` < `0.13.0`.
+
+`get.sh` can be tried against a local feed: `SLUICE_RELEASES_URL=file:///path/releases.json bash get.sh` (a JSON list in the
+shape of GitHub's releases API; `tests/test_get_and_channels.py` builds one).

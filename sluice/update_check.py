@@ -20,7 +20,7 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Callable, Optional
 
-RELEASE_URL = "https://api.github.com/repos/Matt-B-007/Sluice/releases?per_page=5"
+RELEASE_URL = "https://api.github.com/repos/Matt-B-007/Sluice/releases?per_page=20"  # (enough to find a stable one behind betas)
 MAX_BYTES = 1024 * 1024
 MAX_NOTES = 4000
 
@@ -43,10 +43,49 @@ def parse_version(text: str) -> tuple:
     return tuple(int(part) for part in match.group(1).split(".")) if match else ()
 
 
+_PRE = {"alpha": 0, "a": 0, "beta": 1, "b": 1, "pre": 1, "rc": 2}
+
+
+def is_prerelease(text: str) -> bool:
+    """'0.13.0-beta.1' and '0.13.0rc1' are pre-releases; '0.13.0' is not."""
+    return bool(re.match(r"^\s*v?\d+(?:\.\d+)*\s*[-.]?\s*(alpha|beta|pre|rc|a|b)", str(text), re.IGNORECASE))
+
+
+def version_key(text: str) -> tuple:
+    """A key that sorts versions as people mean them (0.12.2): 0.13.0-beta.1 < 0.13.0-beta.2 < 0.13.0-rc.1 < 0.13.0 < 0.13.1.
+    Before 0.12.2, "-beta" was dropped, so 0.13.0-beta.1 and 0.13.0 counted as the same version."""
+    numbers = parse_version(text)
+    if not numbers:
+        return ()
+    numbers = numbers + (0,) * (4 - len(numbers)) if len(numbers) < 4 else numbers
+    match = re.match(r"^\s*v?\d+(?:\.\d+)*\s*[-.]?\s*(alpha|beta|pre|rc|a|b)\s*[-.]?\s*(\d*)", str(text), re.IGNORECASE)
+    if match is None:
+        return numbers + (9, 0)  # a final release comes after all its pre-releases
+    return numbers + (_PRE[match.group(1).lower()], int(match.group(2) or 0))
+
+
 def is_newer(latest: str, current: str) -> bool:
-    a, b = parse_version(latest), parse_version(current)
-    width = max(len(a), len(b))
-    return bool(a) and a + (0,) * (width - len(a)) > b + (0,) * (width - len(b))
+    a, b = version_key(latest), version_key(current)
+    return bool(a) and a > b
+
+
+CHANNELS = ("stable", "beta")
+
+
+def pick_release(releases: list, channel: str = "stable") -> Optional[dict]:
+    """From GitHub's list of releases: the newest one this channel takes. Stable takes only full releases (not marked
+    pre-release on GitHub, no "-beta" in the tag); Beta takes either, whichever is newest."""
+    best, best_key = None, ()
+    for item in releases:
+        if not isinstance(item, dict) or item.get("draft") or not item.get("tag_name"):
+            continue
+        tag = str(item["tag_name"])
+        if channel != "beta" and (item.get("prerelease") or is_prerelease(tag)):
+            continue
+        key = version_key(tag)
+        if key and key > best_key:
+            best, best_key = item, key
+    return best
 
 
 def find_assets(data: dict) -> tuple:
@@ -77,16 +116,18 @@ def _fetch(url: str, timeout: float):
 
 
 def check(current: str, url: Optional[str] = None, fetch: Optional[Callable[[str, float], dict]] = None,
-          timeout: float = 6.0) -> UpdateResult:
+          timeout: float = 6.0, channel: str = "stable", allow_older: bool = False) -> UpdateResult:
+    """``allow_older``: offer the channel's newest release even when it is older than this one (going from a beta back to
+    the latest stable version)."""
     url = url if url is not None else (os.environ.get("SLUICE_UPDATE_URL") or RELEASE_URL)
     if not url:
         return UpdateResult("not_configured", current)
     try:
         data = (fetch or _fetch)(url, timeout)
-        if isinstance(data, list):  # GitHub's list of releases (newest first); "latest" would skip pre-releases such as betas
-            data = next((item for item in data if isinstance(item, dict) and not item.get("draft") and item.get("tag_name")), None)
+        if isinstance(data, list):  # GitHub's list of releases; the channel decides whether betas count (0.12.2)
+            data = pick_release(data, channel)
             if data is None:
-                raise ValueError("no releases found")
+                raise ValueError("no releases found on the Stable channel" if channel != "beta" else "no releases found")
         latest = str(data.get("tag_name") or data.get("version") or "").strip()
         page = str(data.get("html_url") or data.get("url") or "")
         notes = str(data.get("body") or "").strip()[:MAX_NOTES]
@@ -96,7 +137,8 @@ def check(current: str, url: Optional[str] = None, fetch: Optional[Callable[[str
         return UpdateResult("error", current, message="the answer did not contain a version number")
     if not page.lower().startswith("https://"):
         page = ""
-    status = "available" if is_newer(latest, current) else "up_to_date"
+    newer = is_newer(latest, current) or (allow_older and version_key(latest) != version_key(current))
+    status = "available" if newer else "up_to_date"
     zip_url, checksum_url = find_assets(data) if status == "available" else ("", "")
     return UpdateResult(status, current, latest.lstrip("vV"), page, notes=notes if status == "available" else "",
                         zip_url=zip_url, checksum_url=checksum_url)

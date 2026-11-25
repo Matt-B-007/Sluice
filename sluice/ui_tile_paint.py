@@ -144,17 +144,65 @@ def paint_groove(p: QPainter, shape: QPainterPath, track: QRectF, pc: dict) -> N
                     light_line=QColor(255, 255, 255, 230 if pc["light"] else 14))
 
 
-def paint_handle(p: QPainter, thumb: QRectF, pc: dict, muted: bool, focus: Optional[QColor] = None) -> None:
-    """A raised white handle with a soft shadow and a grip line."""
-    from . import ui_paint
+def paint_handle(p: QPainter, thumb: QRectF, pc: dict, muted: bool, focus: Optional[QColor] = None, line: Optional[str] = None) -> None:
+    """0.12.2: a metal fader cap, like a hardware desk's: brushed metal lit from above with a crease across its middle, on a soft
+    shadow, and a lit line in the channel's colour (``line``) down its centre. Muted: the cap is dull and has no line."""
+    radius = min(3.0, thumb.width() / 3.0)
+    p.save()
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(QColor(0, 0, 0, 70 if pc["light"] else 140))
+    p.drawRoundedRect(thumb.translated(0, 1.5), radius + 0.5, radius + 0.5)
+    metal = QLinearGradient(thumb.topLeft(), thumb.bottomLeft())
     if muted:
-        brush = QColor(pc["handle_muted"])
+        dull = QColor(pc["handle_muted"])
+        metal.setColorAt(0.0, dull.lighter(112))
+        metal.setColorAt(1.0, dull.darker(112))
     else:
-        brush = QLinearGradient(thumb.topLeft(), thumb.bottomLeft())
-        brush.setColorAt(0.0, QColor(pc["handle"]))
-        brush.setColorAt(1.0, QColor(pc["handle_bottom"]))
-    ui_paint.handle(p, thumb, brush, QPen(QColor(0, 0, 0, 30), 1) if pc["light"] else None, 70 if pc["light"] else 130,
-                    grip=QColor(0, 0, 0, 55), focus=focus)
+        for at, color in pc["cap_stops"]:
+            metal.setColorAt(at, QColor(color))
+    p.setBrush(metal)
+    p.setPen(QPen(QColor(0, 0, 0, 120 if not pc["light"] else 90), 1))
+    p.drawRoundedRect(thumb.adjusted(0.5, 0.5, -0.5, -0.5), radius, radius)
+    p.setPen(QPen(QColor(255, 255, 255, 70), 1))  # the lit top edge
+    p.drawLine(QPointF(thumb.left() + radius, thumb.top() + 1.5), QPointF(thumb.right() - radius, thumb.top() + 1.5))
+    centre = thumb.center().x()
+    if line and not muted:
+        glow = QColor(line)
+        glow.setAlpha(90)
+        p.setPen(QPen(glow, 3.5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        p.drawLine(QPointF(centre, thumb.top() + 4), QPointF(centre, thumb.bottom() - 4))
+        p.setPen(QPen(QColor(line), 1.5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        p.drawLine(QPointF(centre, thumb.top() + 4), QPointF(centre, thumb.bottom() - 4))
+    else:
+        p.setPen(QPen(QColor(0, 0, 0, 80), 1.2))
+        p.drawLine(QPointF(centre, thumb.top() + 5), QPointF(centre, thumb.bottom() - 5))
+    if focus is not None:
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.setPen(QPen(focus, 2))
+        p.drawRoundedRect(thumb.adjusted(-2, -2, 2, 2), radius + 2, radius + 2)
+    p.restore()
+
+
+LED = (3.0, 1.5)  # a segment's width and the gap after it (0.12.2's sideways LED meters)
+
+
+def paint_leds(p: QPainter, track: QRectF, upto: float, pc: dict, lit: bool, amber_x: float, red_x: float) -> None:
+    """The segments of a sideways LED meter from the left of ``track`` to x = ``upto``: green, amber from ``amber_x`` (-12 dB) and
+    red from ``red_x`` (-3 dB). Lit, or dim (the unlit ones, drawn once into the lane's cached base)."""
+    width, gap = LED
+    inset = 2.0 if track.height() >= 8 else 1.5
+    top, height = track.top() + inset, track.height() - 2 * inset
+    x = track.left() + 3.0
+    end = min(upto, track.right() - 3.0)
+    colors = {name: QColor(pc[name]) for name in ("led_green", "led_amber", "led_red")}
+    if not lit:
+        for color in colors.values():
+            color.setAlpha(pc["led_off_alpha"])
+    p.setPen(Qt.PenStyle.NoPen)
+    while x + width <= end + 0.01:
+        p.setBrush(colors["led_red"] if x >= red_x else colors["led_amber"] if x >= amber_x else colors["led_green"])
+        p.drawRect(QRectF(x, top, width, height))
+        x += width + gap
 
 
 def paint_slot(p: QPainter, rect: QRectF) -> None:
@@ -401,5 +449,6 @@ class TileTray(QWidget):
 
     def paintEvent(self, _event) -> None:
         p = QPainter(self)
+        p.setRenderHints(QPainter.RenderHint.Antialiasing | QPainter.RenderHint.SmoothPixmapTransform)  # 0.12.2: smooth edges everywhere
         self.tray.draw(self, p, self.content_size())
         p.end()

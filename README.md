@@ -56,18 +56,17 @@ The same mixer in the light theme, in the Rows layout, and the first-run screen:
 ![Rows layout](docs/screenshot-rows.png)
 ![First run](docs/first-run.png)
 
-## What's new in 0.12.1
+## What's new in 0.12.2
 
-Fixes for what testing 0.12.0 found:
+- **Install with one command**, and run it again to update (see *Install* below). The zip also has an *Install Sluice* file to
+  double-click.
+- **Stable or Beta:** *Settings > Updates > Which versions* chooses tested releases only, or test versions too.
+- **Four skins redrawn:** Calm in warm white or graphite, Tile with LCD names, LED meters and metal fader caps (and a silver Light
+  theme), Glass with frosted panes and pearl knobs, Nexus with glowing level rings (dark only).
+- **Sharp at every size:** bolder icons, drawn arrows and ticks, smooth edges, larger text, Sluice's own message window, and fewer
+  separate windows (Controllers and skins live in Settings).
 
-- **Quit from the tray really quits.** Before, it could leave Sluice running invisibly, and every later start said "Sluice could
-  not start". A start that finds a Sluice that does not answer now offers to close it and start fresh.
-- **The audio buffer takes effect:** choosing a new size offers to restart now, the top bar shows a size that is waiting for a
-  restart, and a restart from inside Sluice no longer keeps the old size.
-
-0.12.0, the release before this, fixed the voice effects (the limiter holds its ceiling, a proper high-pass, the same sound with or
-without Rust), added the Setup check, installs Sluice in its own folder so nothing is left in the download, retired the Original
-skin and lined everything up.
+0.12.1, the release before this, fixed Quit from the tray and the audio buffer setting.
 
 The full list, and every earlier version, is in [CHANGELOG.md](CHANGELOG.md) (also under *Help > What's new in this version*).
 
@@ -87,17 +86,31 @@ Sluice needs a Linux desktop that runs **PipeWire** (with its PulseAudio and JAC
 Most current distributions qualify. It does **not** work on systems that still use plain PulseAudio, or on Alpine
 and other musl-based systems (the Python audio packages have no wheels for them).
 
-### The short way
+### The easiest way: one command
 
-Open the [latest release](https://github.com/Matt-B-007/Sluice/releases) and download the zip named **`sluice-vX.Y.Z.zip`** from the *Assets* list (not the green *Code* button, and not the *Source code* links, which unpack into a differently named folder). Or `git clone` the repository. Then:
+Open a terminal and paste this line:
 
 ```bash
-unzip sluice-v0.12.1.zip && cd sluice
+curl -fsSL https://raw.githubusercontent.com/Matt-B-007/Sluice/main/get.sh | bash
+```
+
+It finds the newest release on GitHub, downloads its zip, checks it against the release's `.sha256` file (and stops if
+they do not match), installs it with `install.sh` (below) and deletes the download. It shows the package command for your
+distribution and asks before running it. **Run the same line again at any time to update or repair Sluice**; your settings
+stay. Add `-s -- --beta` after `bash` for the newest test version, or `-s -- --version 0.12.1` for a particular one.
+No `curl`? Use `wget -qO- <the same address> | bash`.
+
+### The two-step way: from the zip
+
+Open the [latest release](https://github.com/Matt-B-007/Sluice/releases) and download the zip named **`sluice-vX.Y.Z.zip`** from the *Assets* list (not the green *Code* button, and not the *Source code* links, which unpack into a differently named folder). Or `git clone` the repository. Unpack it and double-click **Install Sluice** (your file manager may ask whether to trust or run it; it opens a terminal), or:
+
+```bash
+unzip sluice-v0.12.2.zip && cd sluice
 ./install.sh              # shows the package command for your distribution and asks before running it
 ./install.sh --dry-run    # only shows what it would do
 ```
 
-That is the only command to type. `install.sh` never removes packages and never uses root except for the one package
+`install.sh` never removes packages and never uses root except for the one package
 command you approve. It installs Sluice into its own folder, `~/.local/share/sluice/program` (with its own Python
 environment and, if Rust is installed, the faster engine), adds Sluice to your applications menu and writes the `sluice`
 command in `~/.local/bin`. **Nothing it needs stays in the folder you downloaded**: at the end it offers to delete that
@@ -409,7 +422,7 @@ Gain effect. A Compressor whose threshold is above your voice shows "not doing a
 
 The version is in the window title, at the right of the status bar and in **Help > About Sluice**. Please include it
 in bug reports. **Settings > Updates > Check for updates now** runs when you click it: it asks GitHub for the newest release
-(pre-releases included) and tells you whether yours is current. If a newer one exists it shows **what that version
+on your channel and tells you whether yours is current. If a newer one exists it shows **what that version
 changes** (its release notes) with an **Update now** button and a button to open the download page. Nothing is sent
 except that request. For a different release feed, set `SLUICE_UPDATE_URL`.
 
@@ -422,6 +435,11 @@ and nothing changes if that fails. The checksum catches a damaged or cut-off dow
 tampered with on GitHub itself. A copy that is a git checkout (update it with `git pull`) or sits in a folder Sluice
 cannot write to is never changed by the updater, and versions before 0.9.1 cannot update themselves: install 0.9.1 from the
 zip once.
+
+**Stable or Beta** (since 0.12.2): *Settings > Updates > Which versions* chooses what Sluice looks for. **Stable** (the
+default) gets only tested releases. **Beta** also gets test versions (pre-releases such as `0.13.0-beta.1`) before they are
+released. Switching from Beta back to Stable while running a test version asks whether to **go to the latest stable now**
+(an older version number, but tested) or **stay until stable is newer**, when the normal update simply carries on.
 
 **Settings > Updates > Update automatically when a new version is found** is off by default. When it is on, Sluice asks GitHub once,
 20 seconds after it starts, and downloads and checks a newer version in the background; it is installed when you close

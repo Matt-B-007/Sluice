@@ -73,7 +73,7 @@ def test_update_on_yes_replaces_the_preset_and_the_note_goes_away(rig, monkeypat
     monkeypatch.setattr(QMessageBox, "question", staticmethod(lambda *a, **k: QMessageBox.StandardButton.Yes))
     dialog.mine_update_button.click()
     assert saved_ratio(dialog) == 3.5
-    assert dialog.mine_changed_row.isHidden() and dialog.mine_button.text().startswith("✓ Mine")
+    assert dialog.mine_changed_row.isHidden() and dialog.mine_button.text().startswith("My preset: Mine")
 
 
 def test_undo_puts_everything_back_without_touching_the_saved_preset(rig, monkeypatch):
@@ -94,7 +94,7 @@ def test_save_as_new_keeps_the_old_preset_and_the_new_one_becomes_the_one_being_
     monkeypatch.setattr(QInputDialog, "getText", staticmethod(lambda *a, **k: ("Mine two", True)))
     dialog.mine_new_button.click()
     assert saved_ratio(dialog, "Mine") == old and saved_ratio(dialog, "Mine two") == 3.5
-    assert dialog.mine_changed_row.isHidden() and dialog.mine_button.text().startswith("✓ Mine two")
+    assert dialog.mine_changed_row.isHidden() and dialog.mine_button.text().startswith("My preset: Mine two")
 
 
 def test_built_in_choices_get_no_update_note(rig):

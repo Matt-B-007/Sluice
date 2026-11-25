@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QWidget,
 )
 
+from . import ui_dialog
 from . import __version__, efficiency, logs, rawmic, report, update_install, sizing, themes, ui_icons as icons, update_check, whatsnew
 from .engine import Engine
 from .flow import FlowLayout, OverlapLayout
@@ -68,8 +69,8 @@ class FirstRun(QFrame):
              "separately.", "Add apps", False, window.first_run_apps),
             ("3", "Pick Sluice in your streaming app", "In OBS or Discord, choose “Sluice (Broadcast)” as the microphone. "
              "That is the processed sound.", "Show me how", False, window.first_run_streaming),
-            ("4", "Make it look like yours", "Five skins and a choice of colours. Compare them side by side now, or change them later "
-             "in Settings.", "Compare skins", False, window.compare_skins),
+            ("4", "Make it look like yours", "Four skins (Calm, Tile, Glass and Nexus) and a choice of colours. See them side by side "
+             "in Settings, now or later.", "See the skins", False, window.compare_skins),
         )
         for number, name, text, button_text, primary, slot in steps:
             row = QHBoxLayout()
@@ -739,14 +740,14 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
             strip._add_installed()
 
     def first_run_streaming(self) -> None:
-        QMessageBox.information(
+        ui_dialog.information(
             self, "Pick Sluice in your streaming app",
             "In OBS, add an Audio Input Capture and choose \u201cSluice (Broadcast)\u201d. In Discord, open Voice & Video and "
             "choose it as the microphone. That is your mic and your apps together, after the effects you set up.\n\n"
             "To check it yourself, press \u201cHear Broadcast\u201d on the Listen card.")
 
     def first_run_demo(self) -> None:
-        QMessageBox.information(
+        ui_dialog.information(
             self, "Try the demo",
             "The demo shows a full mixer with made-up sound and changes nothing on your computer.\n\n"
             "Close Sluice, then start it again with:  sluice --demo")
@@ -776,7 +777,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         try:
             self.engine.save_config(self.config_file, backups=True)
         except OSError as exc:
-            QMessageBox.warning(self, "Could not save settings", str(exc))
+            ui_dialog.warning(self, "Could not save settings", str(exc))
             return
         self._keep_settings_file = False
         self._saved_snapshot = self._snapshot()
@@ -793,7 +794,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
             try:
                 self.export_settings_to(path)
             except OSError as exc:
-                QMessageBox.warning(self, "Could not export the settings", str(exc))
+                ui_dialog.warning(self, "Could not export the settings", str(exc))
 
     def import_settings_from(self, path) -> None:
         """Check a settings file and make it the saved settings. It takes effect the next time Sluice starts."""
@@ -823,9 +824,9 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         try:
             self.import_settings_from(path)
         except (ValueError, OSError) as exc:
-            QMessageBox.warning(self, "Could not import the settings", str(exc))
+            ui_dialog.warning(self, "Could not import the settings", str(exc))
             return
-        QMessageBox.information(
+        ui_dialog.information(
             self, "Settings imported",
             "The settings are saved. Close Sluice and start it again to use them.\n\n"
             "Until then Sluice keeps what you have now, and it will not overwrite the imported file when you quit. "
@@ -847,7 +848,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
             self.restore_menu.addAction(label, partial(self.restore_backup, path))
 
     def restore_backup(self, path, confirm: bool = True) -> None:
-        if confirm and QMessageBox.question(
+        if confirm and ui_dialog.question(
                 self, "Restore earlier settings",
                 "Go back to these settings? Your current ones are kept as config.before-import.json.\n\n"
                 "The change takes effect the next time Sluice starts.") != QMessageBox.StandardButton.Yes:
@@ -856,7 +857,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         try:
             self.import_settings_from(path)
         except ValueError as exc:
-            QMessageBox.warning(self, "Could not restore", str(exc))
+            ui_dialog.warning(self, "Could not restore", str(exc))
             return
         self.say("Earlier settings restored. Close Sluice and start it again to use them.")
 
@@ -867,7 +868,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         if self.config_file is None:
             self.say("Demo mode: there are no saved settings to reset.")
             return
-        ask = QMessageBox.question(
+        ask = ui_dialog.question(
             self, "Reset all settings",
             "Put every setting back to how a fresh Sluice starts?\n\nThat means the default channels, levels, effects, theme "
             "and options. Your effect presets and controller assignments are kept.\n\nYour current settings are kept as "
@@ -880,7 +881,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
                 shutil.copy2(self.config_file, self.config_file.with_name("config.before-reset.json"))
             Mixer.default().save(self.config_file)
         except OSError as exc:
-            QMessageBox.warning(self, "Could not reset the settings", str(exc))
+            ui_dialog.warning(self, "Could not reset the settings", str(exc))
             return
         self._keep_settings_file = True  # quitting must not write the old settings back over the fresh ones
         self.say("Settings reset. Close Sluice and start it again to use them. Your old settings are in config.before-reset.json.")
@@ -1130,7 +1131,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         warnings = dict(self.engine.raw_mic)
         if not warnings:
             return
-        box = QMessageBox(self)
+        box = ui_dialog.Message(self)
         box.setIcon(QMessageBox.Icon.Warning)
         box.setWindowTitle("Raw microphone")
         box.setText("\n\n".join(warnings.values()))
@@ -1198,7 +1199,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         check = self._update_check
 
         def work() -> None:
-            self._update_bridge.done.emit(check(__version__))
+            self._update_bridge.done.emit(check(__version__, channel=self.engine.mixer.update_channel))
 
         threading.Thread(target=work, name="sluice-update-check", daemon=True).start()
 
@@ -1283,17 +1284,16 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
                 "Open download page" if result.page else "", result.page,
                 action=None if problem else partial(self.start_update, result), action_label="Update now")
         elif result.status == "up_to_date":
-            self.say(f"Sluice {result.current} is the latest version.")
-            QMessageBox.information(self, "Up to date", f"You are running the latest version ({result.current}).")
+            self.say(f"Sluice {result.current} is the latest version.")  # 0.12.2: said in the status line, no window to close
         elif result.status == "not_configured":
             self.say(f"Sluice {result.current}. Update checking is not set up yet.")
-            QMessageBox.information(
+            ui_dialog.information(
                 self, "Check for updates",
                 f"You are running Sluice {result.current}.\n\nThis build has no download address to check yet. "
                 "Until there is one, new versions arrive as a new zip file.")
         else:
             self.say(f"Could not check for updates: {result.message}")
-            QMessageBox.warning(self, "Could not check for updates", result.message or "Unknown error.")
+            ui_dialog.warning(self, "Could not check for updates", result.message or "Unknown error.")
 
     def save_report_to(self, path) -> None:
         written = report.write_report(Path(path))
@@ -1308,7 +1308,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
                 self.save_report_to(path)
             except Exception as exc:  # a file problem, or something unexpected while building the report
                 log.warning("could not save the bug report: %s", exc, exc_info=True)
-                QMessageBox.warning(
+                ui_dialog.warning(
                     self, "Could not save the report",
                     f"The report could not be saved to:\n{path}\n\n{type(exc).__name__}: {exc}\n\n"
                     "Try another folder, or run  sluice --report  in a terminal. Details are in the log "
@@ -1360,7 +1360,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
 
     def _ask_close_choice(self) -> bool:
         """Ask what closing should do. True: carry on closing (the setting is now what they chose, or a quit this once); False: stay."""
-        box = QMessageBox(self)
+        box = ui_dialog.Message(self)
         box.setIcon(QMessageBox.Icon.Question)
         box.setWindowTitle("Close Sluice?")
         box.setText("Quit Sluice, or keep it running in the system tray?")

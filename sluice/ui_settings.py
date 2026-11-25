@@ -275,6 +275,7 @@ class SettingsWindow(QDialog):
         window = self._group(column, "Window")
         self.theme_button = QPushButton()
         self.theme_button.setObjectName("themepicker")
+        icons.dropdown(self.theme_button)  # 0.12.2: a drawn chevron, not a typed ▾
         self.theme_button.setMenu(w.theme_menu)
         self.theme_button.setAccessibleName("Theme")
         self.theme_button.setMinimumWidth(200)
@@ -325,9 +326,15 @@ class SettingsWindow(QDialog):
         self._bind(menu, w.launcher_action)
 
     def _controllers(self, column: QVBoxLayout) -> None:
-        group = self._group(column, "MIDI controllers and Stream Deck")
-        self.controllers_button = self._action_button(group, "Set up…", self._open_controllers, name="Controllers",
-                                                      hint="Turn a knob or press a key to move a fader, mute a channel or your mic.")
+        # 0.12.2: the controllers page itself, here, instead of a button that opened another window
+        self.controllers_box = QVBoxLayout()
+        self.controllers_box.setSpacing(8)
+        heading = QLabel("MIDI controllers and Stream Deck")
+        heading.setObjectName("grouphead")
+        self.controllers_box.addWidget(heading)
+        self.controllers_box.addWidget(_note("Turn a knob or press a key to move a fader, mute a channel or your mic."))
+        column.addLayout(self.controllers_box)
+        self.controllers_panel = None
         self.controllers_missing = _note("Controllers are not available in this copy of Sluice.")
         column.addWidget(self.controllers_missing)
 
@@ -336,6 +343,11 @@ class SettingsWindow(QDialog):
         group = self._group(column, "New versions")
         self._bind(group, w.auto_update_action)
         self._action_button(group, "Check now", w.check_for_updates, name="Check for updates")
+        channel = self._group(column, "Which versions", "Stable gets tested releases. Beta also gets test versions before they "
+                              "are released, to try new features first.")
+        choice = QButtonGroup(self)
+        for action in w.channel_actions.values():
+            self._bind(channel, action, choice)
         self.rollback_button = self._action_button(group, "Go back", w.rollback_action, name="Go back to the previous version")
         if w.runs_from_download():  # 0.12.0: installed the old way, in the folder it was downloaded to
             where = self._group(column, "Where Sluice is installed")
@@ -421,7 +433,7 @@ class SettingsWindow(QDialog):
 
     def _setup_row(self, group: QVBoxLayout, result) -> None:
         if result.ok:
-            text, name = "✓ Installed", "setupok"
+            text, name = "Installed", "setupok"
         elif not result.applies:
             text, name = "Not used here", "setupidle"
         elif result.ok is None:
@@ -433,7 +445,18 @@ class SettingsWindow(QDialog):
         status.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         reason = result.reason[:1].upper() + result.reason[1:].rstrip(".") + "." if result.reason and result.applies else ""
         hint = result.part.purpose + (f"\n{reason}" if reason else "")
-        row, _label = self._row(group, result.part.name, status, hint)
+        shown = status
+        if result.ok:  # 0.12.2: a drawn tick beside "Installed", not a typed ✓
+            shown = QWidget()
+            pair = QHBoxLayout(shown)
+            pair.setContentsMargins(0, 0, 0, 0)
+            pair.setSpacing(6)
+            tick = QLabel()
+            tick.setPixmap(icons.icon("check", themes.color("live_fg"), 16).pixmap(QSize(16, 16), self.devicePixelRatioF()))
+            pair.addStretch(1)
+            pair.addWidget(tick)
+            pair.addWidget(status)
+        row, _label = self._row(group, result.part.name, shown, hint)
         status.setAccessibleName(f"{result.part.name}: {text}")
         if result.missing and result.command:
             # the command on its own line under the row's text (a wrapping label straight in the column, so the row grows with it
@@ -505,11 +528,6 @@ class SettingsWindow(QDialog):
             combo.setCurrentIndex(index if index >= 0 else 0)
             combo.blockSignals(False)
 
-    def _open_controllers(self) -> None:
-        controls = getattr(self.window_, "controls", None)
-        if controls is not None:
-            controls.show_dialog()
-
     def refresh(self) -> None:
         """Show the real state of every setting (the window's own refreshers bring the actions up to date first)."""
         w = self.window_
@@ -524,7 +542,9 @@ class SettingsWindow(QDialog):
             card.setChecked(skin_id == skin)
             card.blockSignals(False)
             card.show_preview(theme)
-        self.theme_button.setText(f"{theme.name}  ▾")
+        dark_only = skin == "nexus" and themes.is_light_theme(theme)  # 0.12.2: Nexus is dark only, and the picker says so
+        self.theme_button.setText(f"{theme.name} (Nexus stays dark)" if dark_only else theme.name)
+        self.theme_button.setToolTip(themes.NEXUS_DARK_ONLY if dark_only else "")
         self._fill_widget_choices()
         for item in self.bound:
             item.refresh()
@@ -532,8 +552,12 @@ class SettingsWindow(QDialog):
         rollback = w.rollback_action
         self.rollback_button.setEnabled(rollback.isEnabled())
         self.rollback_button.setToolTip(plain(rollback.text()))
-        has_controls = getattr(w, "controls", None) is not None
-        self.controllers_button.parentWidget().setVisible(has_controls)
+        controls = getattr(w, "controls", None)
+        has_controls = controls is not None and hasattr(controls, "hub")
+        if has_controls and self.controllers_panel is None:
+            from .ui_controllers import ControllersPanel
+            self.controllers_panel = ControllersPanel(controls, self)
+            self.controllers_box.addWidget(self.controllers_panel)
         self.controllers_missing.setVisible(not has_controls)
         for index in range(self.sections.count()):
             item = self.sections.item(index)
