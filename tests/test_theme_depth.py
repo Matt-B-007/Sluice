@@ -116,11 +116,10 @@ def test_look_colours_replace_only_dark_and_light(skin):
 def test_the_look_colours_setting_is_one_switch_and_old_settings_carry_over():
     assert Mixer.demo().skin_colors is True
     data = Mixer.demo().to_dict()
-    assert data["look_colors"] is True and "nexus_colors" not in data and "tile_colors" not in data
+    assert data["skin_colors"] is True and "look_colors" not in data and "nexus_colors" not in data and "tile_colors" not in data
     for old, expected in (({"nexus_colors": False, "tile_colors": False}, False), ({"nexus_colors": False}, True),
                           ({"tile_colors": False}, True), ({}, True), ({"look_colors": False, "nexus_colors": True}, False)):
         data = Mixer.demo().to_dict()
-        data.pop("look_colors")
         data.pop("skin_colors")
         data.update(old)
         assert Mixer.from_dict(data).skin_colors is expected, old

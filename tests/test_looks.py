@@ -27,15 +27,16 @@ def test_the_look_is_saved_and_read_back_and_a_bad_value_is_ignored():
     assert mixer.skin == "calm"
     mixer.skin = "tile"
     data = json.loads(json.dumps(mixer.to_dict()))
-    assert data["skin"] == "tile" and data["look"] == "tile"  # 0.12.0: "skin", and the old key for going back to 0.11
+    assert data["skin"] == "tile" and "look" not in data and "widget_look" not in data  # 0.12.3: the old keys are gone
     assert Mixer.from_dict(data).skin == "tile"
     old = {k: v for k, v in data.items() if k not in ("skin", "widget_skin", "skin_colors")}
+    old["look"] = "tile"
     assert Mixer.from_dict(old).skin == "tile"  # settings written by 0.11 still load
     old["look"], old["widget_look"] = "original", "original"  # 0.12.0: the Original skin is retired: such settings show Calm
     assert Mixer.from_dict(old).skin == "calm" and Mixer.from_dict(old).widget_skin == "calm"
     data["skin"] = "sparkly"
     assert Mixer.from_dict(data).skin == "calm"
-    del data["skin"], data["look"]
+    del data["skin"]
     assert Mixer.from_dict(data).skin == "calm"
 
 

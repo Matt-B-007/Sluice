@@ -55,7 +55,7 @@ def test_a_list_of_releases_uses_the_newest_that_is_not_a_draft():
     again = check("0.7.0-beta.1", url="https://x.example/releases", fetch=lambda url, timeout: releases, channel="beta")
     assert again.status == "up_to_date"
     empty = check("0.6.10", url="https://x.example/releases", fetch=lambda url, timeout: [])
-    assert empty.status == "error" and "no releases" in empty.message
+    assert empty.status == "error" and "no release" in empty.message
 
 
 def test_the_shipped_update_address_is_https_and_points_at_the_release_list():

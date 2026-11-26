@@ -31,6 +31,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
+LEVEL_UNITS = ("both", "db", "percent")  # 0.12.3: how levels are shown
+
 MIN_DB = -60.0
 MAX_DB = 12.0
 CONFIG_VERSION = 2
@@ -253,6 +255,7 @@ class Mixer:
         self.hints_seen: list = []  # one-time tips already shown (they are only ever shown once)
         self.buffer_frames = DEFAULT_BUFFER  # used the next time Sluice starts
         self.update_channel = "stable"  # 0.12.2: "stable" (full releases) or "beta" (pre-releases too)
+        self.level_units = "both"  # 0.12.3: levels shown in "db", "percent" or "both"
         self.auto_update = False  # download new releases in the background and install them when Sluice closes (off by default)
         self.layout = "columns"  # how the channels are laid out: "columns" (a card each) or "rows" (a line each); a saved "free" (gone in 0.11.5) loads as columns
         self.widget_skin = ""   # 0.11.6: the desktop widgets' own skin; "" is the same as the window
@@ -419,15 +422,14 @@ class Mixer:
             "close_action": self.close_action,
             "auto_update": self.auto_update,
             "update_channel": self.update_channel,
+            "level_units": self.level_units,
             "theme": self.theme,
             "skin": self.skin,
             "layout": self.layout,
             "skin_colors": self.skin_colors,
             "widget_skin": self.widget_skin,
-            # 0.12.0 renamed "look" to "skin"; the old keys are written too, so going back to 0.11 (Updates > Go back) keeps them
-            "look": self.skin,
-            "look_colors": self.skin_colors,
-            "widget_look": self.widget_skin,
+            # (0.12.3: the old "look", "look_colors" and "widget_look" are no longer written: "Go back" now goes to a 0.12
+            # version, which reads "skin". Settings that still have them load as before.)
             "widget_theme": self.widget_theme,
             "reduce_effects": self.reduce_effects,
             "see_through": self.see_through,
@@ -482,6 +484,8 @@ class Mixer:
         mixer.auto_update = data.get("auto_update") is True
         if data.get("update_channel") in ("stable", "beta"):
             mixer.update_channel = data["update_channel"]
+        if data.get("level_units") in LEVEL_UNITS:
+            mixer.level_units = data["level_units"]
         theme = data.get("theme")
         if isinstance(theme, str) and 0 < len(theme) <= 80:
             mixer.theme = theme  # an id that no longer exists simply shows the default theme

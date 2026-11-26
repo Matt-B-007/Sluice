@@ -289,6 +289,7 @@ class SettingsWindow(QDialog):
         group = QButtonGroup(self)
         for action in w.layout_actions.values():
             self._bind(layout, action, group)
+        self._levels(column)
         widgets = self._group(column, "Desktop widgets", "The widgets you keep on the desktop can have a skin and a theme of their "
                               "own, for example Glass widgets over your wallpaper with the window in Calm.")
         self.widget_skin = QComboBox()
@@ -300,6 +301,14 @@ class SettingsWindow(QDialog):
         for label, combo in (("Skin", self.widget_skin), ("Theme", self.widget_theme)):
             combo.setMinimumWidth(200)
             self._row(widgets, label, combo)
+
+    def _levels(self, column: QVBoxLayout) -> None:
+        """0.12.3: dB, percent or both."""
+        group = self._group(column, "Show levels as", "Percent is the scale your desktop's volume slider uses: 100% is 0 dB "
+                            "and 50% is about -18 dB. You can type either into a level's number box (for example -12 or 50%).")
+        choice = QButtonGroup(self)
+        for action in self.window_.units_actions.values():
+            self._bind(group, action, choice)
 
     def _audio(self, column: QVBoxLayout) -> None:
         w = self.window_

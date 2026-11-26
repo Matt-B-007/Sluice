@@ -1036,14 +1036,19 @@ class Engine:
         return self.last_levels
 
     def levels(self) -> dict:
-        """Peak levels since the last call. 'ch:<id>:<mix>' is after effects and fader; 'mix:<id>' is the output."""
+        """Peak levels since the last call. 'ch:<id>:<mix>' is after the fader (and after the effects, except for a channel with
+        a microphone, which is measured before them); 'mix:<id>' is the output."""
         peaks = self.graph.take_peaks() if self.graph else {}
         result: dict = {}
         mic_level = 0.0
         for channel in self.mixer.channels:
             raw = peaks.get(f"ch:{channel.id}", 0.0)
             if channel.devices:
-                mic_level = max(mic_level, raw)
+                # 0.12.3: a microphone's meters show it before the effects, as you speak: the noise and echo reducers each hold
+                # back about 16 ms of sound to work on, which made the meter trail the voice. (The Effects window still shows
+                # what comes out of the chain.)
+                mic_level = max(mic_level, raw)  # (the tray's "talking" mark keeps the cleaned sound: no room noise)
+                raw = peaks.get(f"in:{channel.id}", raw)
             for mix in self.mixer.mixes:
                 result[f"ch:{channel.id}:{mix.id}"] = min(1.0, raw * self.mixer.route_gain(channel, mix))
         for mix in self.mixer.mixes:

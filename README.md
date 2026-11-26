@@ -56,29 +56,31 @@ The same mixer in the light theme, in the Rows layout, and the first-run screen:
 ![Rows layout](docs/screenshot-rows.png)
 ![First run](docs/first-run.png)
 
-## What's new in 0.12.2
+## What's new in 0.12.3
 
-- **Install with one command**, and run it again to update (see *Install* below). The zip also has an *Install Sluice* file to
-  double-click.
-- **Stable or Beta:** *Settings > Updates > Which versions* chooses tested releases only, or test versions too.
-- **Four skins redrawn:** Calm in warm white or graphite, Tile with LCD names, LED meters and metal fader caps (and a silver Light
-  theme), Glass with frosted panes and pearl knobs, Nexus with glowing level rings (dark only).
-- **Sharp at every size:** bolder icons, drawn arrows and ticks, smooth edges, larger text, Sluice's own message window, and fewer
-  separate windows (Controllers and skins live in Settings).
+- **Quicker voice meters:** a microphone's meter shows your voice before the effects (no more lag from the noise and echo
+  reducers), every meter redraws 60 times a second, and the bars fall back faster.
+- **Levels in percent too:** "-18 dB · 50%", on the same scale as your desktop's volume slider. Type either into a level's
+  box. *Window > Show levels as* chooses dB, percent or both.
+- **Updates only offer releases that can be installed**, and a release is published only once its zip is attached.
+- **Releases cannot be numbered so that no one gets them.** A test version such as `0.1.1-beta.1` after 0.1.1 is out (a beta comes
+  before its own final version, so it is older) is refused with the number to use instead, such as `0.1.2-beta.1`.
 
-0.12.1, the release before this, fixed Quit from the tray and the audio buffer setting.
+0.12.2, the release before this, made installing one command, added the Stable and Beta channels, redrew the four skins
+and made the interface sharp at every size.
 
 The full list, and every earlier version, is in [CHANGELOG.md](CHANGELOG.md) (also under *Help > What's new in this version*).
 
 ## Status: please read
 
-Version 0.9.4, a beta. The mixing engine, effects, routing, PulseAudio control and UI are covered by more than 600 automated
-tests, and the interface has been run and screenshotted. On CachyOS (PipeWire, Elgato Wave XLR Pro) these have been
-confirmed by hand: the microphone, **Sluice (Mic)** and **Sluice (Broadcast)** in OBS, Hear Broadcast, the faders,
-Steam game detection and routing (Counter-Strike 2 through Proton), starting from the applications menu, installing from
-a release zip and the update check. Not yet confirmed on real hardware: controller support, VST3 plugins, recording
-devices for channels other than Mic, and every distribution other than Arch. If something does not work, use
-**Help > Save bug report** (or `sluice --report`) and send the file: see *Logs and bug reports* below.
+Sluice is in beta: every 0.x version is. The mixing engine, effects, routing, PulseAudio control and the interface are
+covered by more than 1,100 automated tests, run on Python 3.10 to 3.14, and the interface is screenshotted in every skin and
+theme. On CachyOS (PipeWire, Elgato Wave XLR Pro) these have been confirmed by hand: the microphone, **Sluice (Mic)** and
+**Sluice (Broadcast)** in OBS, Hear Broadcast, the faders, Steam game detection and routing (Counter-Strike 2 through
+Proton), the Rust audio engine, starting from the applications menu, installing from a release zip and updating from inside
+Sluice. Not yet confirmed on real hardware: controller support, VST3 plugins, recording devices for channels other than
+Mic, and every distribution other than Arch. If something does not work, use **Help > Save bug report** (or
+`sluice --report`) and send the file: see *Logs and bug reports* below.
 
 ## Install
 

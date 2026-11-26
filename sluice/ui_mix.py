@@ -16,7 +16,7 @@ from . import themes, ui_icons as icons
 from .engine import Engine
 from .model import MAX_DB, MIN_DB, Mix, MONITOR, RECORDING, STREAM
 from .ui_base import (
-    _icon_button, _is_nexus, _is_tile, _label, format_db, MIX_ICONS, MIX_MUTE_TIPS,
+    _icon_button, _is_nexus, _is_tile, _label, MIX_ICONS, MIX_MUTE_TIPS,
     MIX_WIDTH, NONE_DATA, ReadoutEdit, short_device_name,
 )
 from .ui_meters import Fader, LevelMeter, NexusRing
@@ -175,6 +175,7 @@ class MixStrip(QFrame):
         self.readout.wheel_steps = True
         self.readout.wheeled.connect(self._wheel_gain)
         self.readout.entered.connect(self._typed_gain)
+        self.readout.levels = True  # 0.12.3: "50%" works as well as "-18"
         if on_remove is not None:  # the optional third mix can be taken away again from its own card
             menu_button = _icon_button("more", "Options for this mix", 32, compact=True)
             menu_button.setObjectName("plain")
@@ -390,7 +391,7 @@ class MixStrip(QFrame):
             self.hear.blockSignals(False)
         for widget in (self.fader, self.mute, self.limiter):
             widget.blockSignals(False)
-        self.readout.setText(format_db(self.mix.gain_db))
+        self.readout.show_level(self.mix.gain_db, narrow=_is_tile())
         self._show_toggles()
         node = getattr(self, "node", None)
         if node is not None:
@@ -425,7 +426,7 @@ class MixStrip(QFrame):
 
     def _on_gain(self, value: int) -> None:
         db = value / 10.0
-        self.readout.setText(format_db(db))
+        self.readout.show_level(db, narrow=_is_tile())
         self.engine.set_master(self.mix.id, db)
 
     def _on_device(self, _index: int) -> None:

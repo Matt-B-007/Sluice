@@ -50,7 +50,7 @@ def test_the_cards_sit_on_a_glass_floor_and_the_glow_follows_the_sound(qapp, tmp
         game = _loud(win, qapp, "game", 0.9)
         quiet = next(s for s in win.strips if s.channel.id == "browser")
         assert floor.glow_of(game) > 0.5 and floor.glow_of(quiet) == 0.0
-        for _ in range(60):
+        for _ in range(120):  # two seconds of silence at 60 meter updates a second (0.12.3)
             game.ring.push(0.0)
         floor._catch_up()
         assert floor.glow_of(game) < 0.1  # it fades with the sound

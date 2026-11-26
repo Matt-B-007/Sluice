@@ -24,13 +24,40 @@ def meter_colors() -> tuple:
     return "#2bd48a", "#f5c542", "#ff5c6c"
 
 
+METER_FPS = 60  # 0.12.3: the meters are redrawn 60 times a second (30 before): half the wait between a sound and the bar moving
+FALL_PER_S = 25.0 / 60.0  # 0.12.3: a bar falls 25 dB a second (20 before) on its 60 dB scale, like OBS's "Fast" meters
+PEAK_HOLD_S = 1.5  # the peak line stays put this long
+PEAK_FALL_PER_S = 0.18  # then falls about 11 dB a second
+
+
+FRAME_S = 1.0 / METER_FPS  # the time between two meter updates; the window sets it when it changes its meter rate
+
+
+def elapsed(_meter=None) -> float:
+    """The time one meter update stands for, so the bars fall at the same speed in seconds at any refresh rate: 60 a second, or
+    30 for a Nexus window that is not in use. (Counted per update rather than read from the clock, so a busy moment that
+    delays a frame does not make the bar jump.)"""
+    return FRAME_S
+
+
+def fall(meter, frac: float) -> None:
+    """The shared ballistics of a level meter: the bar jumps up to a louder level at once and falls at FALL_PER_S; the peak line
+    holds for PEAK_HOLD_S, then falls. Uses and updates ``meter._level``, ``meter._peak`` and ``meter._peak_age`` (seconds)."""
+    dt = elapsed(meter)
+    meter._level = max(frac, meter._level - FALL_PER_S * dt)
+    if frac >= meter._peak:
+        meter._peak, meter._peak_age = frac, 0.0
+    else:
+        meter._peak_age += dt
+        if meter._peak_age > PEAK_HOLD_S:
+            meter._peak = max(meter._level, meter._peak - PEAK_FALL_PER_S * dt)
+
+
 class LevelMeter(QWidget):
     """Peak meter: the bar jumps up with the sound and falls back slowly (about 20 dB a second), and a thin line holds the
     highest recent peak, so you can see how loud something really was. Vertical (a channel's column) or horizontal (a row)."""
 
-    FALL = 0.011        # bar fall per frame at 30 frames a second, on a 60 dB scale (about 20 dB a second)
-    HOLD_FRAMES = 45    # the peak line stays put for 1.5 seconds
-    PEAK_FALL = 0.006
+    # (0.12.3: how the bar falls is in fall() above, in seconds, shared with the Tile skin's lanes)
 
     def __init__(self, parent: Optional[QWidget] = None, horizontal: bool = False, thickness: int = 8) -> None:
         super().__init__(parent)
@@ -133,15 +160,19 @@ class LevelMeter(QWidget):
             self._lit = pixmap
         return self._lit
 
+    def event(self, event) -> bool:
+        """0.12.3: hovering over a meter says its level both ways (the scale beside it is in dB)."""
+        from PySide6.QtCore import QEvent
+        if event.type() == QEvent.Type.ToolTip:
+            from PySide6.QtWidgets import QToolTip
+            from .ui_base import level_tip
+            db = MIN_DB + self._level * -MIN_DB
+            QToolTip.showText(event.globalPos(), "Silent" if self._level <= 0.001 else f"Now {level_tip(db)}", self)
+            return True
+        return super().event(event)
+
     def push(self, linear: float) -> None:
-        frac = level_fraction(linear)
-        self._level = max(frac, self._level - self.FALL)
-        if frac >= self._peak:
-            self._peak, self._peak_age = frac, 0
-        else:
-            self._peak_age += 1
-            if self._peak_age > self.HOLD_FRAMES:
-                self._peak = max(self._level, self._peak - self.PEAK_FALL)
+        fall(self, level_fraction(linear))
         if self._shown() != self._painted:  # a silent, settled meter costs nothing
             self.update()
 
@@ -595,24 +626,25 @@ class NexusRing(QWidget):
             self.update()
 
     def push(self, linear: float, slow: float = 1.0) -> None:
-        """Take the newest level. The ring is repainted at half the meter rate (15 times a second): the eye cannot tell, and drawing is the
-        cost. ``slow`` is 2 when the meters run at half rate, so the bars fall back at the same speed in seconds."""
+        """Take the newest level. The ring is repainted at most 20 times a second: the eye cannot tell, and drawing is the cost.
+        (``slow`` is kept for callers; the fall is timed in seconds since 0.12.3.)"""
         if self.muted:
             linear = 0.0
         frac = level_fraction(linear)
-        self._level = max(frac, self._level - 0.03 * slow)
+        self._level = max(frac, self._level - 0.9 * elapsed(self))  # a ring falls faster than a bar: about 54 dB a second
         step = int(self._level * self.STEPS + 0.5) if self._level > 0.03 else 0
         if step != self._step:
             self._step = step
             self._dirty = True
             self._glow_due = True
-        if step and not themes.reduce_effects():
-            self._tick += 1
-            if self._tick % 3 == 0:
-                self._phase += 1
-                self._dirty = True
-        self._gate ^= 1
-        if self._dirty and self._gate and self.isVisible() and not self.visibleRegion().isEmpty():  # out of sight: nothing redrawn
+        self._clock = getattr(self, "_clock", 0.0) + FRAME_S  # (time in meter updates, as for the bars)
+        if step and not themes.reduce_effects() and self._clock - getattr(self, "_phase_at", -1.0) >= 0.1:  # shimmer: 10 a second
+            self._phase_at = self._clock
+            self._phase += 1
+            self._dirty = True
+        due = self._clock - getattr(self, "_drawn_at", -1.0) >= 0.049  # repainted at most 20 times a second
+        if self._dirty and due and self.isVisible() and not self.visibleRegion().isEmpty():  # out of sight: nothing redrawn
+            self._drawn_at = self._clock
             self._dirty = False
             self.update()
             if self._glow_due and self.on_glow is not None:  # the card's glow on the Nexus floor moves with the ring

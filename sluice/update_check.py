@@ -75,10 +75,15 @@ CHANNELS = ("stable", "beta")
 def pick_release(releases: list, channel: str = "stable") -> Optional[dict]:
     """From GitHub's list of releases: the newest one this channel takes. Stable takes only full versions (no "-beta" or "-rc"
     in the tag); Beta takes either, whichever is newest. The version name decides, not GitHub's pre-release tick: releases before
-    0.12.2 were all ticked as pre-releases, and the Release workflow now ticks exactly the test versions."""
+    0.12.2 were all ticked as pre-releases, and the Release workflow now ticks exactly the test versions.
+
+    0.12.3: a release without its zip and checksum is skipped (a release made by hand, or one whose build failed), so it is never
+    offered as an update that cannot be installed. (A list without asset details at all, as in older tests, is taken as is.)"""
     best, best_key = None, ()
     for item in releases:
         if not isinstance(item, dict) or item.get("draft") or not item.get("tag_name"):
+            continue
+        if "assets" in item and find_assets(item) == ("", ""):
             continue
         tag = str(item["tag_name"])
         if channel != "beta" and is_prerelease(tag):
@@ -128,7 +133,7 @@ def check(current: str, url: Optional[str] = None, fetch: Optional[Callable[[str
         if isinstance(data, list):  # GitHub's list of releases; the channel decides whether betas count (0.12.2)
             data = pick_release(data, channel)
             if data is None:
-                raise ValueError("no releases found on the Stable channel" if channel != "beta" else "no releases found")
+                raise ValueError("no release with its download found on the Stable channel" if channel != "beta" else "no release with its download found")
         latest = str(data.get("tag_name") or data.get("version") or "").strip()
         page = str(data.get("html_url") or data.get("url") or "")
         notes = str(data.get("body") or "").strip()[:MAX_NOTES]

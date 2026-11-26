@@ -19,7 +19,7 @@ from .engine import Engine
 from .model import Channel, MAX_DB, MIN_DB, Mix
 from .ui_base import (
     _icon_button, _is_nexus, _is_tile, _label, channel_width, COLUMN_WIDTH, elide, ElidedLabel,
-    EMPTY_HINTS, format_db, MIX_NAMES, MIX_TAGS, mute_tip, ReadoutEdit, ROW_CELL_MIN, ROW_NAME_WIDTH,
+    EMPTY_HINTS, LEVEL_HELP, MIX_NAMES, MIX_TAGS, mute_tip, ReadoutEdit, ROW_CELL_MIN, ROW_NAME_WIDTH,
     ROW_TOOLS_WIDTH, SOURCES_HEIGHT, SOURCES_MIN, short_device_name,
 )
 from .ui_effects import EffectsDialog
@@ -471,9 +471,10 @@ class ChannelStrip(QWidget):
         meter.setAccessibleName(f"{self.channel.label}, {mix.label} meter")
         readout = ReadoutEdit(None)
         readout.setProperty("compact", self.compact)
-        readout.setAccessibleName(f"{self.channel.label}, {mix.label} level in decibels")
-        readout.setToolTip("Scroll over the number to change the level (hold Shift for fine steps), or click and type a level in dB (for example -12) and press Enter")
+        readout.setAccessibleName(f"{self.channel.label}, {mix.label} level")
+        readout.setToolTip(LEVEL_HELP.strip())
         readout.wheel_steps = True
+        readout.levels = True
         readout.wheeled.connect(partial(self._wheel_level, mix.id))
         readout.entered.connect(partial(self._typed_level, mix.id))
         mute = QPushButton("")
@@ -768,7 +769,7 @@ class ChannelStrip(QWidget):
         for mix_id, fader in self.faders.items():
             db = channel.levels.get(mix_id, 0.0)
             fader.setGain(round(db * 10))
-            self.readouts[mix_id].setText(format_db(db))
+            self.readouts[mix_id].show_level(db, narrow=_is_tile())
             self.mutes[mix_id].setChecked(bool(channel.mutes.get(mix_id)))
         for widget in widgets:
             widget.blockSignals(False)

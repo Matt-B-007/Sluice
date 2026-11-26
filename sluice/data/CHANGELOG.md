@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.12.3
+Quicker voice meters, levels in percent as well as dB, and releases that cannot go wrong.
+- **Quicker voice meters.** A microphone's meter now shows your voice before the effects: the Noise Reducer and Echo Reducer
+  each hold back about 16 ms of sound to work on, which made the meter trail behind you. (The Effects window still shows what
+  comes out of the chain, and the tray's "talking" mark still uses the cleaned sound.) Every meter is redrawn 60 times a
+  second instead of 30, and a bar falls back 25 dB a second instead of 20, like OBS's "Fast" meters.
+- **Levels in percent too.** Faders show their level in dB and in percent, on the same scale as KDE's volume slider: 100% is
+  0 dB, 50% about -18 dB, and above 0 dB goes past 100%. Type either into a level's number box (`-12` or `50%`). *Window >
+  Show levels as* (also in *Settings > Themes and skins*) chooses dB and percent, dB only or percent only. A box too narrow
+  for both takes a shorter form, and Tile's small keys show one of the two; hovering over a number or a meter always shows both.
+- **A release without its zip is never offered.** The updater and the one-line installer skip a release that has no zip and
+  checksum, such as one made by hand or one whose build failed, so no one is offered an update that cannot be installed.
+- **The release workflow publishes a release only once its files are attached.** It makes the release as a draft, attaches the
+  zip and checksum, checks they are there, then publishes it. This also works with GitHub's "immutable releases" setting,
+  where files cannot be added to a published release.
+- **A release must be newer than every version already out.** The release workflow and `tools/release.sh` now refuse a version
+  that no one would ever be offered, and say what to use instead. The usual slip is a test version numbered after the stable one
+  it leads to: `0.1.1-beta.1` once 0.1.1 is out. A beta comes before its own final version, so that is older than 0.1.1; it is
+  refused with "number it after, for example 0.1.2-beta.1". Re-releasing a version that exists, or going lower than the newest
+  release (beta or stable), is refused too.
+- Settings files no longer carry the old `look`, `look_colors` and `widget_look` entries from before 0.12.0's rename to "skin"
+  (older settings that have them still load).
+- The README's "Status" section no longer names an old version.
+- The version check (run on every push, by the release workflow and by `tools/release.sh`) also checks README.md's "What's new
+  in" section names this version, and `tools/release.sh --set` renames that section for you.
+
 ## 0.12.2
 Easier to install and keep up to date, four skins redrawn, and the interface made sharp at every size.
 - **Install with one command.** `curl -fsSL https://raw.githubusercontent.com/Matt-B-007/Sluice/main/get.sh | bash` finds the

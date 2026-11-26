@@ -370,7 +370,7 @@ def test_every_menu_item_has_its_own_alt_key_letter(qapp, tmp_path):
             found = re.search(r"&(.)", action.text())
             name = action.text().replace("&", "")
             if not found:
-                if not path.endswith(("Running in the background", "Audio buffer", "Which versions")):  # lists of choices: reached by arrow keys
+                if not path.endswith(("Running in the background", "Audio buffer", "Which versions", "Show levels as")):  # lists of choices: reached by arrow keys
                     problems.append(f"{path} > {name}: no Alt-key letter")
             else:
                 letters.setdefault(found.group(1).lower(), []).append(name)
@@ -502,7 +502,7 @@ def test_wheel_over_a_channel_level_number_moves_that_level(window):
     assert fader.gain() == start - 10
     from sluice.ui import format_db
 
-    assert readout.text() == format_db((start - 10) / 10)  # the number shows the new level
+    assert readout.toolTip().startswith(format_db((start - 10) / 10))  # the number shows the new level
     assert window.engine.mixer.channel(strip.channel.id).levels[mix_id] == pytest.approx((start - 10) / 10, abs=0.11)  # and the audio follows
 
 

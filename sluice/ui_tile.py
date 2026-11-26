@@ -30,7 +30,7 @@ from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QMenu, 
 from . import skin_tile, themes, ui_icons as icons
 from .flow import FlowLayout
 from .model import MIN_DB
-from .ui_base import db_to_fader_position, ElidedLabel, EMPTY_HINTS, format_db, level_fraction, mute_tip, ReadoutEdit
+from .ui_base import db_to_fader_position, ElidedLabel, EMPTY_HINTS, LEVEL_HELP, level_fraction, mute_tip, ReadoutEdit
 from .ui_channel import ChannelStrip
 from .ui_meters import Fader, SourcePicture
 from .ui_tile_paint import (
@@ -49,9 +49,7 @@ class TileLane(Fader):
     the peak. Muted: striped, with a grey handle. Clipping: a red tick and a red outline. Keyboard, wheel and double-click work as
     on every Sluice fader. Repaints only when what it shows changes."""
 
-    FALL = 0.011        # as LevelMeter: about 20 dB a second at 30 frames a second
-    HOLD_FRAMES = 45
-    PEAK_FALL = 0.006
+    # (0.12.3: the bar's fall is ui_meters.fall, in seconds, as LevelMeter's)
 
     def __init__(self, color: str, on_clip=None) -> None:
         super().__init__(horizontal=True, thumb=(14, 20))
@@ -101,13 +99,8 @@ class TileLane(Fader):
             if self.on_clip is not None:
                 self.on_clip()
         frac = level_fraction(linear)
-        self._level = max(frac, self._level - self.FALL)
-        if frac >= self._peak:
-            self._peak, self._peak_age = frac, 0
-        else:
-            self._peak_age += 1
-            if self._peak_age > self.HOLD_FRAMES:
-                self._peak = max(self._level, self._peak - self.PEAK_FALL)
+        from .ui_meters import fall
+        fall(self, frac)
         if self._shown() != self._painted:  # a silent, settled track costs nothing
             self.update()
 
@@ -322,8 +315,9 @@ class AppMeter(QWidget):
         self._painted = -1
 
     def push(self, linear: float) -> None:
+        from .ui_meters import FALL_PER_S, elapsed
         frac = level_fraction(linear)
-        self._level = max(frac, self._level - 0.011)
+        self._level = max(frac, self._level - FALL_PER_S * elapsed(self))
         shown = int(self._level * self.width())
         if shown != self._painted:
             self.update()
@@ -600,10 +594,10 @@ class TileStrip(ChannelStrip):
         readout.setObjectName("tilevalue")
         readout.setFixedSize(66, 28)
         readout.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        readout.setAccessibleName(f"{self.channel.label}, {mix.label} level in decibels")
-        readout.setToolTip("Scroll over the number to change the level (hold Shift for fine steps), or click and type a level in dB "
-                           "(for example -12) and press Enter")
+        readout.setAccessibleName(f"{self.channel.label}, {mix.label} level")
+        readout.setToolTip(LEVEL_HELP.strip())
         readout.wheel_steps = True
+        readout.levels = True
         readout.wheeled.connect(partial(self._wheel_level, mix.id))
         readout.entered.connect(partial(self._typed_level, mix.id))
         mute = QPushButton("")
@@ -908,7 +902,12 @@ class TileStrip(ChannelStrip):
             lane.set_muted(muted)
         readout = self.readouts.get(mix.id)
         if readout is not None and not readout.hasFocus():
-            readout.setText("Muted" if muted else format_db(self.channel.levels.get(mix.id, 0.0)))
+            db = self.channel.levels.get(mix.id, 0.0)
+            if muted:
+                readout.setText("Muted")
+                readout._level_shown = None
+            else:
+                readout.show_level(db, narrow=True)
             if bool(readout.property("muted")) != muted:
                 readout.setProperty("muted", muted)
                 readout.style().unpolish(readout)
@@ -1112,9 +1111,8 @@ def build_mix_key(strip, mix, on_remove=None, on_add_recording=None) -> None:
     strip.readout.setObjectName("tilevalue")
     strip.readout.setFixedSize(58, 28)
     strip.readout.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-    strip.readout.setAccessibleName(f"{mix.label} level in decibels")
-    strip.readout.setToolTip("Scroll over the number to change the level (hold Shift for fine steps), or click and type a level in dB "
-                             "(for example -6) and press Enter")
+    strip.readout.setAccessibleName(f"{mix.label} level")
+    strip.readout.setToolTip(LEVEL_HELP.strip())
     strip.readout.wheel_steps = True
     lane_row.addWidget(strip.mute)
     lane_row.addWidget(lane, 1)

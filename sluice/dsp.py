@@ -129,6 +129,8 @@ class ChannelDsp:
         self.peak = 0.0
         self.recent = 0.0  # the peak after the effects, falling slowly (about 2 dB a second): "is anything loud enough?"
         self.input_recent = 0.0  # the peak before the effects, falling slowly: how loud the microphone itself is
+        self.input_peak = 0.0  # 0.12.3: the peak before the effects since the meters last looked (a mic's meter, without the
+        # reducers' delay)
         self.asleep = False  # the chain was skipped for silence; it is woken when sound returns
         self.quiet_frames = 0  # how long the input has been digital silence (an idle app sends exact zeros)
         self.capture: Optional[Capture] = None  # set while "Measure my room" is listening
@@ -301,10 +303,11 @@ class Graph:
         self.submit(apply)
 
     def take_peaks(self) -> dict:
-        """Peak levels (linear) since the last call, keyed 'ch:<id>' and 'mix:<id>'."""
+        """Peak levels (linear) since the last call, keyed 'ch:<id>' (after the effects), 'in:<id>' (before them) and 'mix:<id>'."""
         peaks = {}
         for cid, channel in list(self.channels.items()):
             peaks[f"ch:{cid}"], channel.peak = channel.peak, 0.0
+            peaks[f"in:{cid}"], channel.input_peak = channel.input_peak, 0.0
         for mid, mix in self.mixes.items():
             peaks[f"mix:{mid}"], mix.peak = mix.peak, 0.0
         return peaks
@@ -363,7 +366,9 @@ class Graph:
             if audio is None:
                 audio = np.zeros((2, frames), dtype=np.float32)
             if frames:
-                channel.input_recent = max(float(np.max(np.abs(audio))), channel.input_recent * RECENT_DECAY)
+                before = float(np.max(np.abs(audio)))
+                channel.input_recent = max(before, channel.input_recent * RECENT_DECAY)
+                channel.input_peak = max(channel.input_peak, before)
             if channel.board is not None:
                 if channel.asleep:
                     channel.asleep = False

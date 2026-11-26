@@ -24,6 +24,12 @@ for path, pattern, line in (("sluice/__init__.py", r'^__version__ = ".*"$', f'__
                             ("pyproject.toml", r'^version = ".*"$', f'version = "{new}"')):
     p = Path(path)
     p.write_text(re.sub(pattern, line, p.read_text(), count=1, flags=re.M))
+readme = Path("README.md")
+if readme.is_file():  # the one "What's new in ..." section near the top takes the new version, with a line to replace
+    text = readme.read_text()
+    if f"## What's new in {new}" not in text:
+        text = re.sub(r"^## What's new in \S+\n", f"## What's new in {new}\n\n- (say what changed)\n", text, count=1, flags=re.M)
+        readme.write_text(text)
 for path in ("CHANGELOG.md", "sluice/data/CHANGELOG.md"):
     p = Path(path)
     text = p.read_text()
@@ -36,17 +42,17 @@ EOF
     exit 0
 fi
 
-python3 tools/check-version.py
 version="$(python3 tools/check-version.py --print)"
 tag="v$version"
-if grep -q "(say what changed)" CHANGELOG.md; then
-    echo "Problem: CHANGELOG.md still has the '(say what changed)' placeholder. Write what changed first." >&2; exit 1
+git fetch --quiet origin --tags
+python3 tools/check-version.py --tag "$tag" --new  # (0.12.3: also newer than everything already released)
+if grep -q "(say what changed)" CHANGELOG.md README.md; then
+    echo "Problem: CHANGELOG.md or README.md still has the '(say what changed)' placeholder. Write what changed first." >&2; exit 1
 fi
 if [ -n "$(git status --porcelain)" ]; then
     echo "Problem: there are changes that are not committed. Commit them (or set them aside) first:" >&2
     git status --short >&2; exit 1
 fi
-git fetch --quiet origin --tags
 if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
     echo "Problem: $tag already exists. To make a new release, set a new version: tools/release.sh --set <next version>" >&2; exit 1
 fi

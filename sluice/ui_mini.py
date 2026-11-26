@@ -16,7 +16,9 @@ from .ui_meters import Fader
 
 
 def _db_text(db: float) -> str:
-    return "off" if db <= -60 else f"{db:.1f} dB"
+    """0.12.3: in dB, percent or both, as Settings says (narrow: the compact list has little room)."""
+    from .ui_base import format_level
+    return "off" if db <= -60 else format_level(db, narrow=True)
 
 
 class MiniStrip(QWidget):

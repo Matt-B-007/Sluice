@@ -146,6 +146,16 @@ class MenusMixin:
             action = self._action(view_menu, text, partial(self.set_layout, key), keys, checkable=True)
             action.setActionGroup(layout_group)
             self.layout_actions[key] = action
+        # 0.12.3: levels in dB, percent (as KDE's volume slider) or both
+        units_menu = view_menu.addMenu("Show le&vels as")
+        self.units_actions = {}
+        units_group = QActionGroup(self)
+        for key, text in (("both", "dB and percent (-18 dB · 50%)"), ("db", "dB only (-18 dB)"),
+                          ("percent", "Percent only (50%, as your desktop's volume)")):
+            action = self._action(units_menu, text, partial(self.set_level_units, key), checkable=True)
+            action.setActionGroup(units_group)
+            self.units_actions[key] = action
+        units_menu.aboutToShow.connect(self._refresh_view_menu)
         heading(view_menu, "Themes and skins")
         self.skin_menu = view_menu.addMenu("S&kin")
         self.skin_menu.aboutToShow.connect(self._fill_skin_menu)
@@ -291,6 +301,8 @@ class MenusMixin:
 
     def _refresh_view_menu(self) -> None:
         self.fullscreen_action.setChecked(self.isFullScreen())
+        for key, action in getattr(self, "units_actions", {}).items():
+            action.setChecked(self.engine.mixer.level_units == key)
         self.see_through_action.setChecked(self.engine.mixer.see_through)
         from . import desktop_place
         self.see_through_action.setVisible(desktop_place.kde() and themes.valid_skin(self.engine.mixer.skin) == "glass")
@@ -412,6 +424,22 @@ class MenusMixin:
         self._refresh_update_menu()
 
     # ------------------------------------------------------------------ what the menu items do
+    def set_level_units(self, units: str) -> None:
+        """0.12.3: show levels in dB, percent or both, everywhere at once."""
+        from . import ui_base
+        from .model import LEVEL_UNITS
+        if units not in LEVEL_UNITS:
+            return
+        self.engine.mixer.level_units = units
+        ui_base.UNITS = units
+        for strip in list(self.strips) + list(self.mix_strips):
+            strip.sync_from_model()
+        for action_key, action in getattr(self, "units_actions", {}).items():
+            action.setChecked(action_key == units)
+        self.save_settings()
+        self.say({"both": "Levels are shown in dB and percent.", "db": "Levels are shown in dB.",
+                  "percent": "Levels are shown in percent, as your desktop's volume slider shows them."}[units])
+
     def toggle_recording_mix(self) -> None:
         mixer = self.engine.mixer
         turn_on = not mixer.has_recording_mix

@@ -28,7 +28,7 @@ jobs:
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "TAG=$tag" >> "$GITHUB_ENV"
       - name: Check the version files, the changelogs and the tag agree
-        run: python tools/check-version.py --tag "$TAG"
+        run: python tools/check-version.py --tag "$TAG" --new  # --new: newer than every release so far (0.12.3)
       - name: Make the tag (run by hand only)
         if: github.event_name == 'workflow_dispatch'
         run: |
@@ -67,14 +67,29 @@ jobs:
             *)   echo "title=Sluice $v"; echo "prerelease=false" ;;
           esac >> "$GITHUB_OUTPUT"
         id: notes
+      # 0.12.3: the release is made as a draft with every file attached, then published in a separate step. With GitHub's
+      # "immutable releases" setting on, files can no longer be attached once a release is published, and either way no one
+      # can see (or be offered) a release before its zip and checksum are there.
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: ${{ steps.notes.outputs.title }}
           body_path: notes.md
+          draft: true
           prerelease: ${{ steps.notes.outputs.prerelease }}
-          make_latest: ${{ steps.notes.outputs.prerelease != 'true' }}
           files: |
             dist/*
             out/*.zip
             out/*.sha256
+      - name: Check the draft has its zip and checksum, then publish it
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          assets=$(gh release view "$TAG" --json assets --jq '.assets[].name')
+          for need in "sluice-${TAG}.zip" "sluice-${TAG}.zip.sha256"; do
+            echo "$assets" | grep -qx "$need" || { echo "::error::The release is missing $need, so it was left as a draft."; exit 1; }
+          done
+          latest=true
+          [ "${{ steps.notes.outputs.prerelease }}" = "true" ] && latest=false
+          gh release edit "$TAG" --draft=false --latest="$latest"
+          echo "Published Sluice ${TAG#v}: https://github.com/${GITHUB_REPOSITORY}/releases/tag/$TAG"

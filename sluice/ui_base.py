@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import re
 from typing import Optional
 
@@ -118,6 +119,86 @@ def format_db(db: float) -> str:
     return "0.0 dB" if abs(db) < 0.05 else f"{db:+.1f} dB"
 
 
+# ----------------------------------------------------------------------------- 0.12.3: levels as percentages too
+UNITS = "both"  # "both", "db" or "percent" (Settings > Mixer > Show levels as); the window sets it from the settings
+
+
+def db_to_percent(db: float) -> float:
+    """A level in dB as the percent KDE's volume slider and PulseAudio show: 0 dB is 100%, -18 dB is about 50%, -60 dB (the
+    bottom of a fader) about 10% and off is 0%. Above 0 dB it goes past 100%, as KDE's slider does (+12 dB is about 158%).
+    (PulseAudio's percent is the cube root of the amplitude, so percent = 100 x 10^(dB/60).)"""
+    if db <= MIN_DB:
+        return 0.0
+    return 100.0 * 10.0 ** (db / 60.0)
+
+
+def percent_to_db(percent: float) -> float:
+    """The other way: 50% is about -18 dB; 0% or less is off."""
+    if percent <= 0:
+        return float("-inf")
+    return max(MIN_DB, min(MAX_DB, 60.0 * math.log10(percent / 100.0)))
+
+
+def format_percent(db: float) -> str:
+    return f"{db_to_percent(db):.0f}%"
+
+
+def format_level(db: float, narrow: bool = False) -> str:
+    """A level as the settings say: "-18.0 dB · 50%", "-18.0 dB" or "50%". ``narrow`` (Tile's small number boxes): one of the
+    two only, dB when both are wanted (the box's tooltip gives the other)."""
+    if UNITS == "percent":
+        return format_percent(db)
+    if UNITS == "db" or narrow:
+        return format_db(db)
+    if db <= MIN_DB:
+        return "-inf dB · 0%"
+    number = "0.0" if abs(db) < 0.05 else f"{db:+.1f}"
+    return f"{number} dB · {format_percent(db)}"
+
+
+LEVEL_HELP = ("\nScroll over the number to change the level (hold Shift for fine steps), or click and type a level, in dB "
+              "(for example -12) or in percent (for example 50%), and press Enter.")
+
+
+def short_level(db: float) -> str:
+    """A level in the fewest characters, for the desktop widgets' small dials and rows: "-12", "+3.5" or "50%"."""
+    if db <= MIN_DB:
+        return "off"
+    if UNITS == "percent":
+        return format_percent(db)
+    return f"{db:+.0f}" if abs(db) >= 10 else f"{db:+.1f}"
+
+
+def level_forms(db: float, narrow: bool = False) -> list:
+    """The ways to show a level, longest first, for a box to take the first that fits: "-18.0 dB · 50%", "-18 dB · 50%",
+    "-18 · 50%" (whole dB, the unit in the tooltip), then the dB alone (or the percent alone when levels are shown in percent
+    only)."""
+    full = format_level(db, narrow)
+    if UNITS != "both" or narrow:
+        return [full]
+    if db <= MIN_DB:
+        return [full, "off · 0%", format_db(db)]
+    number = f"{db:+.0f}" if round(db) else "0"
+    pct = format_percent(db)
+    return [full, f"{number} dB · {pct}", f"{number} · {pct}", f"{number}\u2009·\u2009{pct}", format_db(db)]
+
+
+def level_tip(db: float) -> str:
+    """Both ways of saying a level, for a tooltip."""
+    return f"{format_db(db)} = {format_percent(db)}"
+
+
+def parse_level(text: str) -> Optional[float]:
+    """A level typed into a number box, in dB: "-18", "-18 dB" and "50%" (or "50 %") all work. A bare number counts as dB, or as
+    a percent when levels are shown in percent only."""
+    number = parse_number(text)
+    if number is None or number != number or number == float("-inf"):
+        return number
+    if "%" in text or UNITS == "percent" and "db" not in text.lower():
+        return percent_to_db(number)
+    return number
+
+
 class ElidedLabel(QLabel):
     """A one-line label that ends in an ellipsis when its text does not fit, instead of being cut off (and that never makes its
     layout wider than the room there is)."""
@@ -225,6 +306,7 @@ class ReadoutEdit(QLineEdit):
     text again from the real value, so a bad entry just snaps back."""
 
     entered = Signal(object)
+    levels = False  # 0.12.3: a level box: "50%" is understood as well as "-18" (dB)
     wheeled = Signal(float)  # notches turned over the box (up is positive); emitted only when ``wheel_steps`` is on
     wheel_steps = False
 
@@ -251,9 +333,27 @@ class ReadoutEdit(QLineEdit):
             self.wheeled.emit(notches)
         event.accept()
 
+    def show_level(self, db: float, narrow: bool = False) -> None:
+        """0.12.3: show a level in the longest form that fits the box (see ``level_forms``), and say it both ways in the
+        tooltip. Shown again in the right form when the box changes size."""
+        self._level_shown = (db, narrow)
+        forms = level_forms(db, narrow)
+        room = self.width() - 8  # (the 2 px border and the line edit's own 2 px margin each side)
+        metrics = self.fontMetrics()
+        text = next((f for f in forms if metrics.horizontalAdvance(f) <= room), forms[-1]) if self.width() > 30 else forms[0]
+        if not self.hasFocus() and text != self.text():
+            self.setText(text)
+        self.setToolTip(level_tip(db) + LEVEL_HELP)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        shown = getattr(self, "_level_shown", None)
+        if shown is not None and not self.hasFocus():
+            self.show_level(*shown)
+
     def _finished(self) -> None:
         if self.isModified() or self.hasFocus():
-            self.entered.emit(parse_number(self.text()))
+            self.entered.emit(parse_level(self.text()) if self.levels else parse_number(self.text()))
         self.setModified(False)
 
 

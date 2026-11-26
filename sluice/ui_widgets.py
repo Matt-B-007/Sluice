@@ -20,6 +20,11 @@ from . import desktop_place, themes
 from .model import MAX_DESKTOP_WIDGETS as MAX_WIDGETS, clean_widget_spec as clean_spec  # noqa: E402  (the model keeps them: it has no Qt)
 
 TICK_MS = 100
+
+
+def _short(db: float) -> str:
+    from .ui_base import short_level
+    return short_level(db)
 DIAL_SIZE = 104
 MIC_SIZE = 84
 
@@ -508,7 +513,7 @@ class DialWidget(_Round, DesktopWidget):
         font.setBold(True)
         p.setFont(font)
         p.setPen(text)
-        p.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "off" if (muted or db <= -60) else f"{db:+.0f}" if abs(db) >= 10 else f"{db:+.1f}")
+        p.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "off" if muted else _short(db))
         p.end()
 
 
@@ -552,7 +557,7 @@ class DialWidget(_Round, DesktopWidget):
         p.setFont(font)
         p.setPen(QColor(pc["red"] if muted else pc["text"]))
         p.drawText(knob.adjusted(0, 8, 0, 8), Qt.AlignmentFlag.AlignCenter,
-                   "off" if (muted or db <= -60) else f"{db:+.0f}" if abs(db) >= 10 else f"{db:+.1f}")
+                   "off" if muted else _short(db))
         p.end()
 
 
@@ -914,7 +919,7 @@ class LaneWidget(DesktopWidget):
         pass
 
     def paintEvent(self, _event) -> None:
-        from .ui_base import db_to_fader_position, format_db
+        from .ui_base import db_to_fader_position, format_level
 
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -930,7 +935,7 @@ class LaneWidget(DesktopWidget):
             p.setFont(font)
             p.setPen(QColor(themes.color("mute_fg") if muted else themes.color("text")))
             p.drawText(QRectF(groove.right() + 6, row.top(), 58, row.height()), Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-                       "Muted" if muted else format_db(db))
+                       "Muted" if muted else format_level(db, narrow=True))
         p.end()
 
 

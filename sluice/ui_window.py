@@ -112,6 +112,8 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
     def __init__(self, engine: Engine, config_file: Optional[Path] = None, notice: str = "") -> None:
         super().__init__()
         self.engine = engine
+        from . import ui_base
+        ui_base.UNITS = engine.mixer.level_units  # 0.12.3: levels in dB, percent or both
         self.config_file = config_file
         self._closed = False
         self.on_shut_down = None  # set by the program (__main__): called once the window has shut down
@@ -234,7 +236,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         report.set_window_source(self._report_info)
         self.meter_timer = QTimer(self)
         self.meter_timer.timeout.connect(self._update_meters)
-        self.meter_timer.start(33)
+        self.meter_timer.start(16)  # 0.12.3: 60 a second
         self._meter_slow = 1.0
         self.engine_timer = QTimer(self)
         self.engine_timer.timeout.connect(self._tick_engine)
@@ -1423,10 +1425,13 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         self._window_state_changed()
 
     def _meter_interval(self) -> int:
-        """33 ms normally; 66 ms in Nexus while this window is not the one in use (it is still live, for a second screen beside a game)."""
+        """16 ms (60 a second, since 0.12.3) normally; 33 ms in Nexus while this window is not the one in use (it is still live, for a
+        second screen beside a game). The bars fall at the same speed in seconds either way."""
         slow = themes.current_skin() == "nexus" and self.isVisible() and not self.isActiveWindow()
         self._meter_slow = 2.0 if slow else 1.0
-        return 66 if slow else 33
+        from . import ui_meters
+        ui_meters.FRAME_S = (2.0 if slow else 1.0) / ui_meters.METER_FPS
+        return 33 if slow else 16
 
     def _tune_meter_rate(self) -> None:
         if self.meter_timer.isActive():

@@ -59,8 +59,8 @@ def test_buttons_and_faders_reflect_the_model(ui):
     assert not mic.link.isChecked()
     assert strip_for(win, "game").link.isChecked()
     music = strip_for(win, "music")
-    assert music.readouts[MONITOR].text() == "-8.0 dB"
-    assert music.readouts[STREAM].text() == "-18.0 dB"
+    assert music.readouts[MONITOR].toolTip().startswith("-8.0 dB")  # (0.12.3: followed by the percent)
+    assert music.readouts[STREAM].toolTip().startswith("-18.0 dB")  # (0.12.3: followed by the percent)
 
 
 def test_mute_button_changes_the_mix(ui):
@@ -78,7 +78,7 @@ def test_linked_faders_move_together_and_unlinked_ones_do_not(ui):
     game.faders[MONITOR].setGain(-120)
     assert game.faders[STREAM].gain() == -120
     assert engine.mixer.channel("game").levels == {MONITOR: -12.0, STREAM: -12.0}
-    assert game.readouts[STREAM].text() == "-12.0 dB"
+    assert game.readouts[STREAM].toolTip().startswith("-12.0 dB")  # (0.12.3: followed by the percent)
 
     music = strip_for(win, "music")
     music.faders[MONITOR].setGain(-30)
@@ -100,7 +100,7 @@ def test_mix_strip_controls(ui):
     stream = win.mix_strips[1]
     stream.fader.setGain(-60)
     assert engine.mixer.mix(STREAM).gain_db == pytest.approx(-6.0)
-    assert stream.readout.text() == "-6.0 dB"
+    assert stream.readout.toolTip().startswith("-6.0 dB")  # (0.12.3: followed by the percent)
     stream.mute.click()
     stream.limiter.click()
     assert engine.mixer.mix(STREAM).mute is True
@@ -501,7 +501,7 @@ def test_menu_bar_has_the_usual_menus_in_the_usual_order(ui):
         "Startup and background", "Running in the background", "Add Sluice to the applications menu",
         "Audio", "Audio buffer", "Controllers", "MIDI controllers and Stream Deck…",
         "Updates", "Update automatically when a new version is found", "Check for updates…", "Go back to the previous version…", "Which versions"]
-    assert _texts(_menu(win, "Window")) == ["Layout", "Columns (a card for each channel)", "Rows (a line for each channel)",
+    assert _texts(_menu(win, "Window")) == ["Layout", "Columns (a card for each channel)", "Rows (a line for each channel)", "Show levels as",
                                           "Themes and skins", "Skin", "Theme", "Skin's own colours on Dark and Light",
                                           "Reduce effects", "See-through window (Glass on KDE Plasma)", "Desktop", "Desktop widgets",
                                           "Show or hide my widgets", "Window", "Full screen", "Reset window size", "Hide to tray"]
@@ -625,9 +625,9 @@ def test_meter_falls_slowly_and_holds_its_peak():
     meter = LevelMeter()
     meter.push(1.0)
     assert meter._level == 1.0
-    for _ in range(30):  # one second at 30 frames a second
+    for _ in range(60):  # one second at 60 updates a second (0.12.3)
         meter.push(0.0)
-    assert 0.6 < meter._level < 0.75  # about 20 dB down after a second, not nearly empty
+    assert 0.55 < meter._level < 0.62  # about 25 dB down after a second, not nearly empty
     assert meter._peak == 1.0  # the peak line is still held
     for _ in range(60):
         meter.push(0.0)
@@ -715,15 +715,15 @@ def test_fader_readouts_can_be_typed_into(ui):
     music = strip_for(win, "music")
     music.readouts["monitor"].entered.emit(-12.5)
     assert engine.mixer.channel("music").levels["monitor"] == -12.5
-    assert music.readouts["monitor"].text() == "-12.5 dB"
+    assert music.readouts["monitor"].toolTip().startswith("-12.5 dB")  # (0.12.3: followed by the percent)
     music.readouts["monitor"].entered.emit(None)  # nonsense: the real value comes back
-    assert music.readouts["monitor"].text() == "-12.5 dB"
+    assert music.readouts["monitor"].toolTip().startswith("-12.5 dB")  # (0.12.3: followed by the percent)
     music.readouts["monitor"].entered.emit(500.0)  # clamped to +12
     assert engine.mixer.channel("music").levels["monitor"] == 12.0
     music.readouts["monitor"].entered.emit(float("-inf"))
-    assert engine.mixer.channel("music").levels["monitor"] == -60.0 and music.readouts["monitor"].text() == "-inf dB"
+    assert engine.mixer.channel("music").levels["monitor"] == -60.0 and music.readouts["monitor"].toolTip().startswith("-inf dB")
     win.mix_strips[1].readout.entered.emit(-6.0)
-    assert engine.mixer.mix(STREAM).gain_db == -6.0 and win.mix_strips[1].readout.text() == "-6.0 dB"
+    assert engine.mixer.mix(STREAM).gain_db == -6.0 and win.mix_strips[1].readout.toolTip().startswith("-6.0 dB")  # (0.12.3: followed by the percent)
 
 
 def test_meters_stop_while_the_window_is_hidden(ui):
