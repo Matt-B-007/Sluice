@@ -22,7 +22,6 @@ PACKAGES = {
         "venv": "",
         # 0.12.0: the optional parts of the setup check (setup_check.py)
         "layershell": "layer-shell-qt",
-        "kwindowsystem": "kwindowsystem",
         "kconfig": "kconfig",
         "rust": "rust",
         "tray": "gnome-shell-extension-appindicator",
@@ -41,7 +40,6 @@ PACKAGES = {
         "venv": "python3-venv",
         # 0.12.0: the optional parts of the setup check (setup_check.py)
         "layershell": "liblayershellqtinterface6",
-        "kwindowsystem": "libkf6windowsystem6",
         "kconfig": "libkf6config-bin",
         "rust": "cargo",
         "tray": "gnome-shell-extension-appindicator",
@@ -60,7 +58,6 @@ PACKAGES = {
         "venv": "",
         # 0.12.0: the optional parts of the setup check (setup_check.py)
         "layershell": "layer-shell-qt",
-        "kwindowsystem": "kf6-kwindowsystem",
         "kconfig": "kf6-kconfig",
         "rust": "cargo",
         "tray": "gnome-shell-extension-appindicator",
@@ -79,7 +76,6 @@ PACKAGES = {
         "venv": "",
         # 0.12.0: the optional parts of the setup check (setup_check.py)
         "layershell": "libLayerShellQtInterface6",
-        "kwindowsystem": "libKF6WindowSystem6",
         "kconfig": "kf6-kconfig",
         "rust": "cargo",
         "tray": "gnome-shell-extension-appindicator",
@@ -98,7 +94,6 @@ PACKAGES = {
         "venv": "",
         # 0.12.0: the optional parts of the setup check (setup_check.py)
         "layershell": "layer-shell-qt",
-        "kwindowsystem": "kf6-kwindowsystem",
         "kconfig": "kf6-kconfig",
         "rust": "cargo",
         "tray": "",

@@ -49,7 +49,6 @@ from .flow import FlowLayout, OverlapLayout
 from .model import Channel, list_backups, Mixer, RECORDING, STREAM
 from .ui_base import (
     _icon_button,
-    _is_nexus,
     _is_tile,
     _label,
     AUTO_UPDATE_DELAY_MS,
@@ -134,8 +133,7 @@ class FirstRun(QFrame):
             (
                 "4",
                 "Make it look like yours",
-                "Four skins (Calm, Tile, Glass and Nexus) and a choice of colours. See them side by side "
-                "in Settings, now or later.",
+                "Two skins (Calm and Tile) and seven themes. See them side by side in Settings, now or later.",
                 "See the skins",
                 False,
                 window.compare_skins,
@@ -634,8 +632,8 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         for strip in self.mix_strips:
             if strip.combo:
                 strip.combo.about_to_show.connect(self._on_popup)
-        # Nexus and Calm: the floor paints each card's shadow (soft in Calm), and in Nexus the glow that follows its sound.
-        floored = (_is_nexus(rows) or themes.current_skin() == "calm") and not rows  # the cards sit on a CardFloor
+        # Calm: the floor paints each card's soft shadow.
+        floored = themes.current_skin() == "calm" and not rows  # the cards sit on a CardFloor
         if tray:  # the Tile look's keys sit in a tray
             from .ui_tile_paint import TileTray
 
@@ -643,7 +641,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         elif floored:
             from .ui_nexus import CardFloor
 
-            self.channels_widget = CardFloor(soft=not _is_nexus(rows))
+            self.channels_widget = CardFloor(soft=True)
         else:
             self.channels_widget = QWidget()
             self.channels_widget.setObjectName("channels")
@@ -716,7 +714,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
             if floored:
                 from .ui_nexus import CardFloor
 
-                holder = CardFloor("masters", soft=not _is_nexus(rows))
+                holder = CardFloor("masters", soft=True)
                 masters.setContentsMargins(14, 14, 14, 26)
             else:
                 holder = QWidget()
@@ -771,15 +769,13 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         return f"{count} open, shown as {desktop_place.status()}{own}. Each: {', '.join(each)}"
 
     def _floor_mixes(self, holder) -> None:
-        """The Nexus look: Listen and Broadcast glow on their floor with their sound, as the channel cards do."""
+        """Calm: Listen and Broadcast sit on their floor, which paints their shadows."""
         from .ui_nexus import CardFloor
 
         if not isinstance(holder, CardFloor):
             return
         for strip in self.mix_strips:
-            holder.add(strip, strip.ring.color if strip.ring is not None else themes.color("accent"))
-            if strip.ring is not None:
-                strip.ring.on_glow = partial(holder.set_glow, strip)
+            holder.add(strip, themes.color("accent"))
 
     def _floor_channels(self) -> None:
         from .ui_nexus import CardFloor
@@ -789,8 +785,6 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
             return
         for strip in self.strips:
             floor.add(strip, strip.tint)
-            if strip.ring is not None:
-                strip.ring.on_glow = partial(floor.set_glow, strip)
 
     def _row_headings(self) -> QWidget:
         """The Rows layout's column headings: CHANNEL, LISTEN · you hear, BROADCAST · audience hears."""
@@ -1217,21 +1211,12 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
                 level = levels.get(f"ch:{strip.channel.id}:{mix_id}", 0.0)
                 meter.push(level)
                 loudest = max(loudest, level)
-                fader = strip.faders[mix_id]
-                if fader._reveal:  # the waveform is only fed while someone is looking at it
-                    fader.feed(level)
-            if strip.ring is not None:
-                strip.ring.push(loudest, self._meter_slow)
             after = getattr(strip, "after_meters", None)
             if after is not None:  # a tile: its clip note and the app meters of a folded-out tile
                 after(loudest)
         for strip in self.mix_strips:
             level = levels.get(f"mix:{strip.mix.id}", 0.0)
             strip.meter.push(level)
-            if strip.fader._reveal:
-                strip.fader.feed(level)
-            if strip.ring is not None:
-                strip.ring.push(level, self._meter_slow)
         if getattr(self, "mini", None) is not None and self.mini.tile:
             self.mini.push_levels(levels)
         self.tracker.meter_tick()
@@ -1338,7 +1323,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         self.status_label.setText(text)
 
     def hint_missing_part(self, key: str) -> bool:
-        """0.12.0: the moment an optional part would be used (Glass blur, KDE widgets, VST3) and it is missing, say so once, with
+        """0.12.0: the moment an optional part would be used (KDE widgets, VST3) and it is missing, say so once, with
         where to find the command that installs it. Returns whether the hint was shown."""
         from . import setup_check
 
@@ -1479,11 +1464,21 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         threading.Thread(target=work, name="sluice-engine-rebuild", daemon=True).start()
 
     def _engine_rebuilt(self, problem: str) -> None:
-        self.say(
-            f"The audio engine could not be rebuilt: {problem}."
-            if problem
-            else "The audio engine was rebuilt. Restart Sluice to use it (File > Quit, then open it again)."
-        )
+        if problem:
+            self.say(f"The audio engine could not be rebuilt: {problem}.")
+            return
+        self.say("The audio engine was rebuilt. It is used once Sluice restarts.")
+        # 0.13.1-beta.2: the status line alone was easy to miss (a beta report showed the old engine still running)
+        box = ui_dialog.Message(self)
+        box.setWindowTitle("Audio engine rebuilt")
+        box.setText("The audio engine was rebuilt. Sluice uses it once it restarts.")
+        box.setInformativeText("Restart now? The sound stops for a moment, then everything comes back as it was.")
+        self._rebuilt_restart = box.addButton("Restart now", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton("Later", QMessageBox.ButtonRole.RejectRole)
+        self._rebuilt_box = box
+        box.exec()
+        if box.clickedButton() is self._rebuilt_restart:
+            self.restart_for_buffer()  # (the same restart: settings saved, the window comes back)
 
     def _daily_check(self) -> None:
         """0.13.1 (House Standard): once a day, quietly, unless turned off; it never downloads: it shows the update pill."""

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""The Glass skin, KDE's blur behind Glass widgets, and the desktop widgets' own skin and theme (0.11.6)."""
+"""The desktop widgets' own skin and theme (0.11.6; the Glass skin and its KDE blur were retired in 0.13.1)."""
 
 import os
 
@@ -9,7 +9,7 @@ import pytest  # noqa: E402
 
 pytest.importorskip("PySide6")
 
-from sluice import desktop_place, themes  # noqa: E402
+from sluice import themes  # noqa: E402
 from sluice.audio_io import NullIO  # noqa: E402
 from sluice.backend import MockSystem  # noqa: E402
 from sluice.engine import Engine  # noqa: E402
@@ -98,63 +98,9 @@ def test_the_settings_window_offers_the_widgets_skin_and_theme(qapp, tmp_path):
         win.shutdown()
 
 
-class FakeBlurLibrary:
-    def __init__(self):
-        self.calls = []
-
-        def function(window, on, region):
-            self.calls.append((window.value, on, region.value))
-
-        setattr(self, desktop_place.BLUR_SYMBOL, function)
-
-
-KDE = {"XDG_CURRENT_DESKTOP": "KDE"}
-SYSTEM = ("6.12.0", "/usr/lib/qt6/plugins")
-
-
-def test_blur_behind_uses_kwindoweffects_on_kde_only():
-    lib = FakeBlurLibrary()
-    paths = []
-    blur = desktop_place.Blur(loader=lambda: lib, env=KDE, qt_version="6.12.0", system=SYSTEM, add_path=paths.append)
-    assert blur.available
-    assert blur.set(object(), True, pointers=(0x1000, 0x2000))
-    assert lib.calls == [(0x1000, True, 0x2000)]
-    assert paths == ["/usr/lib/qt6/plugins"]  # told where KDE keeps its plugins, before the first call
-    assert not desktop_place.Blur(loader=lambda: lib, env={"XDG_CURRENT_DESKTOP": "GNOME"}).available
-    missing = desktop_place.Blur(loader=lambda: None, env=KDE, qt_version="6.12.0", system=SYSTEM, add_path=paths.append)
-    assert not missing.available and "KWindowSystem" in missing.reason
-    assert not missing.set(object(), True)
-
-
-def test_the_blur_function_name_is_the_one_kwindowsystem_exports():
-    # void KWindowEffects::enableBlurBehind(QWindow *, bool, const QRegion &), as nm -D lists it in libKF6WindowSystem.so.6
-    assert desktop_place.BLUR_SYMBOL == "_ZN14KWindowEffects16enableBlurBehindEP7QWindowbRK7QRegion"
-    assert len("KWindowEffects") == 14 and len("enableBlurBehind") == 16
-
-
 def test_every_skin_draws_a_preview(qapp):
     from sluice.ui_skins import BLURBS, draw_preview
 
     for skin in themes.SKINS:
         assert skin in BLURBS
         assert not draw_preview(skin, themes.skin_colors(themes.BUILT_IN["dark"], skin)).isNull()
-
-
-def test_blur_is_not_tried_when_the_system_qt_is_another_version_or_has_no_plugins(tmp_path):
-    """0.11.6: Sluice's own Qt (PySide6) looked for KDE's window-system plugin in its own folder, found none ("Could not find any
-    platform plugin") and blurred nothing. Now the system's plugin folder is added, and only when the versions match."""
-    lib = FakeBlurLibrary()
-    other = desktop_place.Blur(
-        loader=lambda: lib, env=KDE, qt_version="6.12.0", system=("6.9.2", "/usr/lib/qt6/plugins"), add_path=lambda p: None
-    )
-    assert not other.available and "6.9.2" in other.reason and "6.12.0" in other.reason
-    none = desktop_place.Blur(loader=lambda: lib, env=KDE, qt_version="6.12.0", system=("", None), add_path=lambda p: None)
-    assert not none.available and "plugins" in none.reason
-    lib_dir = tmp_path / "lib"
-    (lib_dir / "qt6" / "plugins" / "kf6" / "kwindowsystem").mkdir(parents=True)
-    (lib_dir / "libQt6Core.so.6.12.1").write_text("")
-    assert desktop_place.system_qt((str(tmp_path / "nothing"), str(lib_dir))) == ("6.12.1", lib_dir / "qt6" / "plugins")
-    assert desktop_place.same_minor("6.12.1", "6.12.0") and not desktop_place.same_minor("6.11.0", "6.12.0")
-
-
-# ---------------------------------------------------------------- real Glass (0.11.7)

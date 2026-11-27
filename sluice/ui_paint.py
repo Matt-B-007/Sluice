@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The drawing every skin shares (0.12.0): the groove a fader runs in, the pill-shaped handle on it, and soft shadows.
 
-Before 0.12.0 each place drew its own: the window's fader (Calm, Nexus and Glass), the Tile keys, the Tile lane and the desktop
+Before 0.12.0 each place drew its own: the window's fader (Calm), the Tile keys, the Tile lane and the desktop
 widgets each had a copy of the same shadow, groove and handle code. They now all call these two functions with their own
 colours, so a fix or a change to how a fader is drawn is made once.
 """
@@ -84,31 +84,6 @@ def handle(
         p.setBrush(Qt.BrushStyle.NoBrush)
         p.setPen(QPen(focus, 2))
         p.drawRoundedRect(rect.adjusted(-2, -2, 2, 2), radius + 2, radius + 2)
-    p.restore()
-
-
-def pearl(p: QPainter, rect: QRectF, focus: Optional[QColor] = None, hover: bool = False) -> None:
-    """0.12.2, Glass: a round pearl knob, lit from the top left, on a soft shadow."""
-    from PySide6.QtGui import QRadialGradient
-
-    size = min(rect.width(), rect.height())
-    disc = QRectF(rect.center().x() - size / 2.0, rect.center().y() - size / 2.0, size, size)
-    p.save()
-    p.setPen(Qt.PenStyle.NoPen)
-    for grow, alpha in ((2.5, 28), (1.2, 55)):
-        p.setBrush(QColor(0, 0, 0, alpha))
-        p.drawEllipse(disc.adjusted(-grow, -grow + 2.5, grow, grow + 2.5))
-    shine = QRadialGradient(disc.left() + size * 0.36, disc.top() + size * 0.3, size * 0.75)
-    shine.setColorAt(0.0, QColor(255, 255, 255))
-    shine.setColorAt(0.45, QColor(242, 245, 250) if not hover else QColor(250, 251, 253))
-    shine.setColorAt(1.0, QColor(196, 204, 216))
-    p.setBrush(shine)
-    p.setPen(QPen(QColor(255, 255, 255, 200), 1))
-    p.drawEllipse(disc.adjusted(0.5, 0.5, -0.5, -0.5))
-    if focus is not None:
-        p.setBrush(Qt.BrushStyle.NoBrush)
-        p.setPen(QPen(focus, 2))
-        p.drawEllipse(disc.adjusted(-3, -3, 3, 3))
     p.restore()
 
 

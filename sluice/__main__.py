@@ -434,6 +434,12 @@ def _run_gui(args, log_file: Optional[Path]) -> int:
         icon = QIcon(str(bundled_png(256)))
     app.setWindowIcon(icon)
     logs.install_qt_handler()
+    if not is_demo:  # 0.13.1-beta.2: a new logo reaches the taskbar and the menu after an update (in the background)
+        import threading
+
+        from .launcher import refresh_icons
+
+        threading.Thread(target=refresh_icons, name="sluice-icons", daemon=True).start()
     efficiency.startup_mark("Qt ready")
 
     config_file = None if is_demo else config_path()

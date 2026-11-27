@@ -56,9 +56,17 @@ The same mixer in the light theme, in the Rows layout, and the first-run screen:
 ![Rows layout](docs/screenshot-rows.png)
 ![First run](docs/first-run.png)
 
-## What's new in 0.13.1-beta.1
+## What's new in 0.13.1-beta.2
 
 A test version (the Beta channel only). There is no 0.13.0; the normal release will be 0.13.1.
+
+- **The "Play to" devices are hidden** from OBS and apps' sound menus, so OBS cannot record from before your faders by
+  mistake (Settings › Audio can show them again). Devices are listed in alphabetical order.
+- **The logo's arcs are green** around the blue S again, and the taskbar gets the new icon after an update.
+- **Updates must be signed.** Plus: a Restart button after rebuilding the audio engine, Reduce effects in every skin, and one
+  Updates box in Settings.
+
+0.13.1-beta.1:
 
 - **The audio is mixed in Rust, without Python,** whenever every effect is one of Sluice's own: no more slow blocks waiting
   for the window. Python takes over only while a VST3 plugin, the Effects window's live view or Measure my room needs it.
@@ -207,22 +215,26 @@ only, `sluice --diagnose` says which sound-card profile to switch (`pactl set-ca
 ## What the devices are called
 
 Every virtual device Sluice makes has the channel's name in brackets, so you can tell what you are picking in OBS,
-Discord, a browser or a game's settings:
+Discord or a game's settings. They are listed in alphabetical order.
 
 | Where you see it | Name | What it is |
 |---|---|---|
-| An app's *output* list (Discord, browser, game) | **Play to Sluice (Game)**, **Play to Sluice (Browser)**, ... | send that app's sound to the channel (Sluice puts apps there itself) |
 | OBS *Audio Output Capture* | **Sluice (Game) for OBS**, **Sluice (Broadcast) for OBS**, ... | one channel, or the whole stream mix, after your Broadcast faders and mutes |
 | OBS *Audio Input Capture*, Discord *input*, any *microphone* list | **Sluice (Broadcast)** | the stream mix: what your audience hears |
 | The same lists | **Sluice (Mic)** | your microphone after its effects: gate, EQ, compressor, limiter |
 | The same lists | **Sluice (Game)**, **Sluice (Music)**, ... | just that one channel, for its own track (every channel has one from the start) |
+| Nowhere (hidden) | **Play to Sluice (Game)**, ... | where a channel's apps play in; Sluice puts each app there itself |
 
-In OBS, pick a name **with "for OBS"** (Audio Output Capture) or the plain **Sluice (Game)** (Audio Input Capture). Never
-pick **Play to Sluice (…)**: that is where apps play in, from before every fader, so your Broadcast faders and mutes would
-not reach OBS. (Sluice cannot steer OBS itself: OBS keeps each source on the device it was given, so the names do the
-steering, and Sluice warns if a source is on the wrong one.) Until 0.13.1 the names were *Sluice (Game) output*,
-*Sluice (Game) recording feed* and *Sluice (Broadcast) feed*; OBS sources set up with those keep working, because OBS
-remembers the device itself, not its name. Renaming a channel renames its devices.
+In OBS, pick a name **with "for OBS"** (Audio Output Capture) or the plain **Sluice (Game)** (Audio Input Capture).
+
+**The "Play to" devices are hidden** (0.13.1-beta.2): OBS, apps' own sound menus and the desktop's sound settings do not list
+them, because they carry the sound from before every fader: recorded in OBS, your Broadcast faders and mutes would not
+reach it. Sluice moves each app onto its channel with PipeWire's own routing, and when Sluice quits the apps go back to your
+normal output. To pick one by hand inside an app (Discord's output menu, say), turn on *Settings › Audio › Show the "Play
+to" devices in apps' own sound settings*. (Sluice cannot steer OBS itself: OBS keeps each source on the device it was
+given, so the names do the steering, and Sluice warns if a source records from before your faders.) Until 0.13.1 the names
+were *Sluice (Game) output*, *Sluice (Game) recording feed* and *Sluice (Broadcast) feed*; OBS sources set up with those
+keep working, because OBS remembers the device itself, not its name. Renaming a channel renames its devices.
 
 ## Starting Sluice from the desktop
 

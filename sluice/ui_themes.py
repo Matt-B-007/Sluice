@@ -142,16 +142,11 @@ class ThemesMixin:
         self.say("Skins show their own colours on Dark and Light." if on else "Every theme shows its own colours in every skin.")
 
     def set_reduce_effects(self, on: bool) -> None:
-        """Nexus: no shimmer on the rings and no waveform on the faders."""
+        """No faint grid behind the window and no glow on the focused control (0.13.1, the House Standard's effects)."""
         self.engine.mixer.reduce_effects = bool(on)
         themes.set_reduce_effects(on)
-        root = self.centralWidget()
-        if root is not None:
-            root.update()  # Glass: the backdrop goes or comes back
-        for strip in self.strips:
-            for fader in strip.faders.values():
-                fader._update_reveal()
-        self.say("Effects reduced: the rings stop shimmering and the faders show no waveform." if on else "Effects back on.")
+        self.apply_theme()  # the grid is part of the style sheet
+        self.say("Effects reduced: no background grid and no glow." if on else "Effects back on.")
 
     def _on_system_scheme_changed(self, *_args) -> None:
         if self.engine.mixer.theme == themes.SYSTEM and not self._closed:
@@ -163,12 +158,7 @@ class ThemesMixin:
         group = QActionGroup(menu)
         chosen = themes.canonical_id(self.engine.mixer.theme, self._themes_folder())
 
-        nexus = themes.valid_skin(self.engine.mixer.skin) == "nexus"
-
         def add(theme_id: str, text: str, tip: str = "", theme=None) -> None:
-            if nexus and theme is not None and themes.is_light_theme(theme):  # 0.12.2: the picker says Nexus stays dark
-                text += " (Nexus stays dark)"
-                tip = themes.NEXUS_DARK_ONLY
             action = menu.addAction(text)
             action.setCheckable(True)
             action.setActionGroup(group)
@@ -235,15 +225,10 @@ class ThemesMixin:
 
     def choose_theme(self, theme_id: str) -> None:
         theme = self.apply_theme(theme_id)
-        dark_only = (
-            " " + themes.NEXUS_DARK_ONLY
-            if themes.valid_skin(self.engine.mixer.skin) == "nexus" and themes.is_light_theme(theme)
-            else ""
-        )
         if theme_id == themes.SYSTEM:
-            self.say(f"Theme: following your system (right now {theme.name}).{dark_only}")
+            self.say(f"Theme: following your system (right now {theme.name}).")
         else:
-            self.say(f"Theme: {theme.name}.{dark_only}")
+            self.say(f"Theme: {theme.name}.")
 
     def import_theme_from(self, path) -> "themes.Theme":
         """Check a theme file, keep a copy in the themes folder and switch to it. Raises ThemeError."""

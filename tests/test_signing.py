@@ -2,39 +2,16 @@
 """0.13.1 (House Standard): signed updates. The checksum file of every release is signed with minisign; Sluice carries both
 public keys and takes a signature from either. These tests write real minisign-format files with keys made for the test."""
 
-import base64
-import hashlib
-
 import pytest
 
 pytest.importorskip("cryptography")
 
-from cryptography.hazmat.primitives import serialization  # noqa: E402
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey  # noqa: E402
 
 from sluice import signing, update_check, update_install  # noqa: E402
-from test_update_install import FakeNet, SUM_URL, ZIP_URL, make_root, stage_it  # noqa: E402
+from minisign_helper import make_key, minisign  # noqa: E402
+from test_update_install import FakeNet, SUM_URL, ZIP_URL, make_root, result, stage_it  # noqa: E402
 
 SIG_URL = SUM_URL + ".minisig"
-
-
-def make_key(key_id=b"\x01\x02\x03\x04\x05\x06\x07\x08"):
-    private = Ed25519PrivateKey.generate()
-    raw = private.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
-    public = base64.b64encode(b"Ed" + key_id + raw).decode()
-    return private, key_id, public
-
-
-def minisign(private, key_id, data: bytes, comment="Sluice v1.1.0", prehash=True) -> str:
-    """What `minisign -S` writes (prehashed with BLAKE2b-512 by default, as minisign 0.10 and newer do)."""
-    message = hashlib.blake2b(data, digest_size=64).digest() if prehash else data
-    signature = private.sign(message)
-    global_sig = private.sign(signature + comment.encode())
-    return (
-        f"untrusted comment: signature from minisign secret key\n"
-        f"{base64.b64encode((b'ED' if prehash else b'Ed') + key_id + signature).decode()}\n"
-        f"trusted comment: {comment}\n{base64.b64encode(global_sig).decode()}\n"
-    )
 
 
 def test_both_keys_are_carried_with_the_ids_minisign_shows():
@@ -97,15 +74,16 @@ def test_the_updater_refuses_a_bad_signature_before_downloading_the_zip(tmp_path
     assert ZIP_URL not in net.fetched
 
 
-def test_an_unsigned_release_is_accepted_now_and_refused_once_signatures_are_required(tmp_path, monkeypatch):
-    """0.13.1-beta.1 publishes signatures; the release after it requires them."""
-    assert signing.REQUIRE_SIGNATURE is False
-    assert stage_it(make_root(tmp_path), FakeNet(tmp_path)) == "1.1.0"
-    monkeypatch.setattr(signing, "REQUIRE_SIGNATURE", True)
+def test_an_unsigned_release_is_refused_and_only_the_switch_would_take_it(tmp_path, monkeypatch):
+    """0.13.1-beta.1 published signatures and still took unsigned releases; from beta.2 a signature is required."""
+    assert signing.REQUIRE_SIGNATURE is True
+    unsigned = result(signature_url="")
+    with pytest.raises(update_install.UpdateError, match="not signed"):
+        stage_it(make_root(tmp_path), FakeNet(tmp_path), unsigned)
+    monkeypatch.setattr(signing, "REQUIRE_SIGNATURE", False)  # (beta.1's behaviour, kept switchable for a test build)
     other = tmp_path / "second"
     other.mkdir()
-    with pytest.raises(update_install.UpdateError, match="not signed"):
-        stage_it(make_root(other), FakeNet(other))
+    assert stage_it(make_root(other), FakeNet(other), unsigned) == "1.1.0"
 
 
 def test_the_check_finds_the_signature_and_a_missing_one_means_not_available_yet(monkeypatch):
@@ -114,9 +92,6 @@ def test_the_check_finds_the_signature_and_a_missing_one_means_not_available_yet
         {"name": "sluice-v1.1.0.zip.sha256", "browser_download_url": SUM_URL},
     ]
     release = {"tag_name": "v1.1.0", "html_url": "https://example.com/r", "assets": assets}
-    found = update_check.check("1.0.0", url="https://example.com/api", fetch=lambda *a: release)
-    assert found.status == "available" and found.signature_url == ""
-    monkeypatch.setattr(signing, "REQUIRE_SIGNATURE", True)
     waiting = update_check.check("1.0.0", url="https://example.com/api", fetch=lambda *a: release)
     assert waiting.status == "up_to_date" and "not signed yet" in waiting.message
     assets.append({"name": "sluice-v1.1.0.zip.sha256.minisig", "browser_download_url": SIG_URL})

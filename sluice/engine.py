@@ -160,19 +160,25 @@ class Engine:
             self.io.blocksize,
         )
         self._settling(SETTLE_SECONDS)
+        # 0.13.1-beta.2: every device is made in alphabetical order of its name. OBS and other apps list devices in the order they
+        # were made, so "Sluice (Broadcast) for OBS", "Sluice (Browser) for OBS", "Sluice (Chat) for OBS"... come in that order.
+        # (A device made later, such as a recording device turned on while Sluice runs, comes last until Sluice restarts.)
+        makers = []
         for mix in self.mixer.mixes:
             if mix.sink_name:
-                self._guard(self.system.ensure_null_sink, mix.sink_name, mix.description, True, mix.source_description)
-        for channel in self.mixer.channels:
-            self._guard(self.system.ensure_null_sink, channel.sink_name, channel.description)
-            if channel.separate:
-                self._guard(
-                    self.system.ensure_null_sink,
-                    channel.solo_sink_name,
-                    channel.solo_sink_description,
-                    True,
-                    channel.solo_description,
+                makers.append(
+                    (
+                        mix.description,
+                        partial(self.system.ensure_null_sink, mix.sink_name, mix.description, True, mix.source_description),
+                    )
                 )
+        for channel in self.mixer.channels:
+            makers.append((channel.description, partial(self._make_channel_sink, channel)))
+            if channel.separate:
+                makers.append((channel.solo_sink_description, partial(self._make_solo_sink, channel)))
+        for _name, make in sorted(makers, key=lambda item: item[0].casefold()):
+            self._guard(make)
+        for channel in self.mixer.channels:
             self._load_effects(channel)
         self._sync_graph()
         self._push_gains(force=True)
@@ -1137,15 +1143,9 @@ class Engine:
     def add_channel(self, label: str) -> Channel:
         channel = self.mixer.add_channel(label)
         log.info("channel '%s' added", channel.id)
-        self._guard(self.system.ensure_null_sink, channel.sink_name, channel.description)
+        self._guard(self._make_channel_sink, channel)
         if channel.separate:  # 0.12.6: new channels come with their own recording device
-            self._guard(
-                self.system.ensure_null_sink,
-                channel.solo_sink_name,
-                channel.solo_sink_description,
-                True,
-                channel.solo_description,
-            )
+            self._guard(self._make_solo_sink, channel)
         self._sync_graph()
         self._push_gains()
         self.apply_links()
@@ -1178,17 +1178,34 @@ class Engine:
         # The device name apps see comes from the virtual sink, so re-create it with the new name.
         self.apply_rules(time.monotonic())
         self._guard(self.system.remove_null_sink, channel.sink_name)
-        self._guard(self.system.ensure_null_sink, channel.sink_name, channel.description)
+        self._guard(self._make_channel_sink, channel)
         if channel.separate:  # its recording device carries the name too
             self._guard(self.system.remove_null_sink, channel.solo_sink_name)
-            self._guard(
-                self.system.ensure_null_sink,
-                channel.solo_sink_name,
-                channel.solo_sink_description,
-                True,
-                channel.solo_description,
-            )
+            self._guard(self._make_solo_sink, channel)
         self.apply_links()
+
+    def _make_channel_sink(self, channel) -> None:
+        """The device apps assigned to the channel play into ("Play to Sluice (Game)"). 0.13.1-beta.2: hidden from OBS, apps' own
+        sound menus and the desktop's settings unless show_play_to_devices is on; Sluice moves the apps onto it itself."""
+        self.system.ensure_null_sink(channel.sink_name, channel.description, hidden=not self.mixer.show_play_to_devices)
+
+    def _make_solo_sink(self, channel) -> None:
+        """The channel's recording device: "Sluice (Game) for OBS", and "Sluice (Game)" as a microphone-style input."""
+        self.system.ensure_null_sink(channel.solo_sink_name, channel.solo_sink_description, True, channel.solo_description)
+
+    def set_show_play_to_devices(self, on: bool) -> None:
+        """0.13.1-beta.2: list the "Play to" devices as output devices again (on), or hide them (off). Each is made again: its
+        apps go to the normal output for a moment and Sluice moves them back straight away."""
+        on = bool(on)
+        if on == self.mixer.show_play_to_devices:
+            return
+        self.mixer.show_play_to_devices = on
+        log.info("the \u201cPlay to\u201d devices are now %s", "listed as output devices" if on else "hidden")
+        for channel in self.mixer.channels:
+            self._guard(self.system.remove_null_sink, channel.sink_name)
+            self._guard(self._make_channel_sink, channel)
+        self.apply_links()
+        self.apply_rules(time.monotonic())
 
     def set_devices_follow_broadcast(self, on: bool) -> None:
         """0.12.4: whether app channels' recording devices follow the Broadcast faders and mutes."""
@@ -1210,13 +1227,7 @@ class Engine:
             return
         channel.separate = on
         if on:
-            self._guard(
-                self.system.ensure_null_sink,
-                channel.solo_sink_name,
-                channel.solo_sink_description,
-                True,
-                channel.solo_description,
-            )
+            self._guard(self._make_solo_sink, channel)
             log.info("channel '%s' now has its own recording device: %s", channel_id, channel.solo_description)
         else:
             self._guard(self.system.remove_null_sink, channel.solo_sink_name)

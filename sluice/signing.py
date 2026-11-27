@@ -16,9 +16,9 @@ import binascii
 import hashlib
 from dataclasses import dataclass
 
-# 0.13.1: the in-app updater refuses an unsigned release only from the release after this one, so that people on 0.13.1-beta.1
-# can still update to a release made before the signing step had ever run. A signature that is there but WRONG is always refused.
-REQUIRE_SIGNATURE = False
+# 0.13.1-beta.1 published signatures but still took an unsigned release; from 0.13.1-beta.2 an update must carry a good
+# signature from one of the two keys: one without is "not available yet", and one with a wrong signature is refused.
+REQUIRE_SIGNATURE = True
 
 PUBLIC_KEYS = {
     "primary": "RWQcs3jtP2jTiAMafwQX8UwciSjOH4o9tQcCVvYl2NkdnOeVupKPlhvC",  # key ID 88D3683FED78B31C

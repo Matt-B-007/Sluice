@@ -8,6 +8,7 @@ The launcher starts the same Python that is running now, so it keeps working fro
 
 from __future__ import annotations
 
+import logging
 import os
 import shlex
 import shutil
@@ -15,6 +16,8 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import Optional
+
+log = logging.getLogger("sluice.launcher")
 
 APP_ID = "sluice"
 
@@ -213,13 +216,55 @@ def install(python: Optional[str] = None) -> Path:
     launcher.write_text(launcher_text(python, script), encoding="utf-8")
     launcher.chmod(0o755)
     _refresh_menu_cache(launcher.parent)
-    tool = shutil.which("gtk-update-icon-cache")
-    if tool:
-        try:
-            subprocess.run([tool, "-q", "-t", str(data_home() / "icons" / "hicolor")], capture_output=True, timeout=10)
-        except (OSError, subprocess.SubprocessError):
-            pass
+    _refresh_icon_caches()
     return launcher
+
+
+def _icon_pairs() -> list:
+    """(the icon Sluice ships, where the launcher's copy of it lives) for every size."""
+    pairs = [(bundled_icon(), icon_path())]
+    pairs += [(bundled_png(size), target) for size, target in zip(PNG_SIZES, png_icon_paths())]
+    return pairs
+
+
+def refresh_icons() -> bool:
+    """0.13.1-beta.2: the taskbar and the applications menu show the icon copied into the icon folder when the launcher was
+    installed; an update never copied it again, so a new logo did not show there. At start, when the launcher is installed and
+    a copy differs from the icon Sluice ships, copy the new ones and tell the desktop to look again. Returns whether it did.
+    (Plasma can keep showing a cached icon until the next login.)"""
+    if not is_installed():
+        return False
+    stale = []
+    for source, target in _icon_pairs():
+        try:
+            if source.is_file() and (not target.is_file() or source.read_bytes() != target.read_bytes()):
+                stale.append((source, target))
+        except OSError:
+            continue
+    if not stale:
+        return False
+    for source, target in stale:
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, target)
+        except OSError as exc:
+            log.info("could not update the icon %s: %s", target, exc)
+    _refresh_icon_caches()
+    log.info("updated the launcher's icon (%d files)", len(stale))
+    return True
+
+
+def _refresh_icon_caches() -> None:
+    for command in (
+        ["gtk-update-icon-cache", "-q", "-t", str(data_home() / "icons" / "hicolor")],
+        ["kbuildsycoca6", "--noincremental"],  # KDE Plasma's menu and icon cache
+    ):
+        tool = shutil.which(command[0])
+        if tool:
+            try:
+                subprocess.run([tool, *command[1:]], capture_output=True, timeout=20)
+            except (OSError, subprocess.SubprocessError):
+                pass
 
 
 def uninstall() -> bool:

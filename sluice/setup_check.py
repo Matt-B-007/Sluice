@@ -98,24 +98,6 @@ def _layer_shell() -> tuple:
     return (True, "the desktop widgets place themselves and stay on top") if shell.available else (False, shell.reason)
 
 
-def _blur() -> tuple:
-    from .desktop_place import blur
-
-    glass = blur()
-    return (True, "KWin blurs what is behind the Glass skin") if glass.available else (False, glass.reason)
-
-
-def _blur_command(result: Result) -> str:
-    """The system's Qt and Sluice's differ: KWindowSystem is installed but cannot load, so the fix is PySide6 of the same version."""
-    from .desktop_place import system_qt
-
-    version, plugins = system_qt()
-    if plugins is not None and version and "same version" in result.reason:
-        minor = ".".join(version.split(".")[:2])
-        return f"{_pip()} install 'PySide6~={minor}.0'"
-    return ""
-
-
 def _kconfig() -> tuple:
     found = shutil.which("kwriteconfig6") or shutil.which("kwriteconfig5")
     return (True, f"{os.path.basename(found)} is installed") if found else (False, "not found")

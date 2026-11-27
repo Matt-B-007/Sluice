@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import re
+import subprocess
 import time
 from abc import ABC, abstractmethod
 from collections import deque
@@ -65,6 +66,7 @@ def _channels(item) -> int:
 
 
 NBSP = "\u00a0"
+HIDDEN_CLASS = "Audio/Sink/Internal"  # 0.13.1: a sink that is not offered as an output device (the "Play to" devices)
 
 
 def _same_text(a: str, b: str) -> bool:
@@ -107,10 +109,16 @@ class AudioSystem(ABC):
 
     @abstractmethod
     def ensure_null_sink(
-        self, name: str, description: str, as_source: bool = False, source_description: Optional[str] = None
+        self,
+        name: str,
+        description: str,
+        as_source: bool = False,
+        source_description: Optional[str] = None,
+        hidden: bool = False,
     ) -> None:
         """Create (or adopt) a virtual sink. With ``as_source`` also expose its monitor
-        as a microphone-style source named ``<name>_mic``."""
+        as a microphone-style source named ``<name>_mic``. 0.13.1: with ``hidden`` the sink is not listed as an output device
+        (OBS, apps' own sound menus and the desktop's settings do not show it); apps are still moved onto it by Sluice."""
 
     @abstractmethod
     def remove_null_sink(self, name: str) -> None: ...
@@ -149,6 +157,8 @@ class MockSystem(AudioSystem):
         self.move_error: Optional[Exception] = None
         self.moves: list = []
         self.cleaned_up = False
+        self.hidden_sinks: set = set()  # 0.13.1: the sinks made hidden (the "Play to" devices)
+        self.created: list = []  # every sink made, in order (0.13.1: alphabetical at start)
 
     def add_demo_streams(self) -> None:
         sink = self.sinks[0].name
@@ -173,12 +183,23 @@ class MockSystem(AudioSystem):
         return self.default_snk
 
     def ensure_null_sink(
-        self, name: str, description: str, as_source: bool = False, source_description: Optional[str] = None
+        self,
+        name: str,
+        description: str,
+        as_source: bool = False,
+        source_description: Optional[str] = None,
+        hidden: bool = False,
     ) -> None:
         self.null_sinks[name] = (description, as_source)
+        if hidden:
+            self.hidden_sinks.add(name)
+        else:
+            self.hidden_sinks.discard(name)
+        self.created.append(name)
 
     def remove_null_sink(self, name: str) -> None:
         self.null_sinks.pop(name, None)
+        self.hidden_sinks.discard(name)
 
     def list_streams(self) -> list:
         return [Stream(s.index, s.key, s.name, s.sink) for s in self.streams]
@@ -329,13 +350,25 @@ class PulseSystem(AudioSystem):
         return index
 
     def ensure_null_sink(
-        self, name: str, description: str, as_source: bool = False, source_description: Optional[str] = None
+        self,
+        name: str,
+        description: str,
+        as_source: bool = False,
+        source_description: Optional[str] = None,
+        hidden: bool = False,
     ) -> None:
         description = _safe_description(description)
         source_description = _safe_description(source_description) if source_description else f"{description} (Mic)"
         existing = {s.name: s for s in self._pulse.sink_list()}
+        leftover = None if name in existing else self._module_for_sink(name)  # a hidden one is not in the sink list
         if name in existing:
             self._remember(name, existing[name].owner_module)  # left over from a crash: take it over
+        elif leftover is not None:
+            self._remember(name, leftover)
+            if HIDDEN_CLASS in (self._module_argument(leftover) or ""):
+                self._hidden.add(name)
+        elif hidden and self._load_hidden(name, description):
+            pass
         else:
             self._remember(
                 name, self._load_described("module-null-sink", f"sink_name={name}", "sink_properties", description, name, "sink")
@@ -355,6 +388,53 @@ class PulseSystem(AudioSystem):
                     ),
                 )
 
+    @property
+    def _hidden(self) -> set:
+        """0.13.1: the virtual sinks that are hidden (not listed as output devices)."""
+        return self.__dict__.setdefault("_hidden_sinks", set())
+
+    @property
+    def _routes(self) -> dict:
+        """0.13.1: stream index -> (hidden sink, PipeWire object id), for the apps Sluice moved onto a hidden sink."""
+        return self.__dict__.setdefault("_hidden_routes", {})
+
+    def _module_for_sink(self, name: str) -> Optional[int]:
+        for module in self._pulse.module_list():
+            if module.name == "module-null-sink" and re.search(
+                rf"(?:^|\s)sink_name={re.escape(name)}(?:\s|$)", module.argument or ""
+            ):
+                return module.index
+        return None
+
+    def _module_argument(self, index: int) -> Optional[str]:
+        return next((m.argument for m in self._pulse.module_list() if m.index == index), None)
+
+    def _load_hidden(self, name: str, description: str) -> bool:
+        """0.13.1: a sink that is not listed as an output device (media.class Audio/Sink/Internal): OBS and apps' own sound menus
+        do not offer it. Tested on PipeWire 1.6: it keeps its ports, and PipeWire moves apps onto it (see move_stream). Returns
+        False (and leaves nothing behind) when it could not be made hidden, so a plain one is made instead."""
+        args = (
+            f"sink_name={name} sink_properties='device.description={description.replace(' ', NBSP)} media.class={HIDDEN_CLASS}'"
+        )
+        try:
+            index = self._pulse.module_load("module-null-sink", args)
+        except Exception as exc:
+            log.warning("could not create %s hidden (%s); creating it as a normal device", name, exc)
+            return False
+        if any(s.name == name for s in self._pulse.sink_list()):  # the server ignored the class: it is a normal device
+            log.warning("%s could not be hidden on this system; it stays a normal device", name)
+            try:
+                self._pulse.module_unload(index)
+            except Exception as exc:
+                log.debug("could not unload %s: %s", index, exc)
+            return False
+        self._remember(name, index)
+        self._hidden.add(name)
+        return True
+
+    def is_hidden(self, name: str) -> bool:
+        return name in self._hidden
+
     def begin_shutdown(self) -> None:
         """0.12.4: Sluice is quitting. A broken connection is not replaced any more (at logout the audio server is shutting
         down too: reconnecting waited two seconds for nothing), and once the server is found gone there is nothing left to
@@ -362,6 +442,10 @@ class PulseSystem(AudioSystem):
         self.__dict__["_quitting"] = True
 
     def remove_null_sink(self, name: str) -> None:
+        self._hidden.discard(name)
+        for index, (sink, _oid) in list(self._routes.items()):
+            if sink == name:
+                del self._routes[index]
         if self.__dict__.get("_server_gone"):
             self._modules.pop(name, None)
             return
@@ -443,10 +527,16 @@ class PulseSystem(AudioSystem):
         # (PipeWire can reuse an id after a device is removed, so the list also expires after a few seconds.)
         sinks = self.__dict__.setdefault("_sink_names", {})
         now = time.monotonic()
-        if any(item.sink not in sinks for item in items) or now - self.__dict__.get("_sink_names_at", 0.0) > 4.0:
+        routes = self._routes
+        if (
+            any(item.sink not in sinks and item.index not in routes for item in items)
+            or now - self.__dict__.get("_sink_names_at", 0.0) > 4.0
+        ):
             sinks.clear()
             sinks.update({s.index: s.name for s in self._pulse.sink_list()})
             self.__dict__["_sink_names_at"] = now
+        for index in [i for i in routes if i not in {item.index for item in items}]:
+            del routes[index]  # the app stopped playing
         streams = []
         for item in items:
             if item.owner_module not in (None, INVALID_INDEX):
@@ -456,6 +546,10 @@ class PulseSystem(AudioSystem):
             app_name = (props.get("application.name") or "").strip()
             key = (binary or app_name).lower()
             sink = sinks.get(item.sink)
+            if sink is None and item.index in routes:  # 0.13.1: on a hidden sink, which the sink list does not show
+                sink = routes[item.index][0]
+            elif sink is not None and item.index in routes:  # moved elsewhere since (by the person, or by Sluice the usual way)
+                del routes[item.index]
             if not key or sink is None:
                 continue
             aliases = {
@@ -498,14 +592,42 @@ class PulseSystem(AudioSystem):
         return cache[pid]
 
     def move_stream(self, index: int, sink_name: str) -> None:
+        if sink_name in self._hidden:
+            self._route_hidden(index, sink_name)
+            return
         for sink in self._pulse.sink_list():
             if sink.name == sink_name:
-                self._pulse.sink_input_move(index, sink.index)
+                self._pulse.sink_input_move(index, sink.index)  # (PipeWire also replaces any target set by _route_hidden)
+                self._routes.pop(index, None)
                 return
         raise LookupError(f"sink '{sink_name}' does not exist")
 
+    def _route_hidden(self, index: int, sink_name: str) -> None:
+        """0.13.1: the old way to move an app ("move this stream to that sink") cannot see a hidden sink, so PipeWire's own way is
+        used: the stream's target in the "default" metadata, which the session manager (WirePlumber) follows at once."""
+        item = next((i for i in self._pulse.sink_input_list() if i.index == index), None)
+        object_id = str((item.proplist or {}).get("object.id", "")) if item is not None else ""
+        if not object_id.isdigit():
+            raise LookupError(f"stream {index} has no PipeWire id")
+        result = subprocess.run(["pw-metadata", object_id, "target.object", sink_name], capture_output=True, text=True, timeout=5)
+        if result.returncode != 0:
+            raise RuntimeError(f"pw-metadata failed: {(result.stderr or result.stdout).strip()}")
+        self._routes[index] = (sink_name, object_id)
+
+    def _forget_routes(self) -> None:
+        """Take back every target Sluice set, so no app points at a device that is about to go (they return to the normal
+        output). Done when Sluice quits; the apps were normally moved back already, this is the safety net."""
+        for _index, (_sink, object_id) in list(self._routes.items()):
+            try:
+                subprocess.run(["pw-metadata", "-d", object_id, "target.object"], capture_output=True, timeout=5)
+            except (OSError, subprocess.SubprocessError) as exc:
+                log.debug("could not clear the target of %s: %s", object_id, exc)
+        self._routes.clear()
+
     # ----------------------------------------------------------------- cleanup
     def cleanup(self) -> None:
+        if not self.__dict__.get("_server_gone"):
+            self._forget_routes()
         for name in list(self._modules):
             self.remove_null_sink(name)
         try:

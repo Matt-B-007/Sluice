@@ -425,8 +425,6 @@ QPushButton#segment:checked { color: $text; border-radius: 8px; """
     + _KEY
     + """; }
 QFrame#statuschip { border: 1px solid $key_edge; border-radius: 10px; }
-QFrame#nexusnode { background: $panel; border: 1px solid $key_edge; border-radius: 12px; }
-QFrame#nexusnode:focus, QFrame#nexusnode[open="true"] { border-color: $focus; }
 QLabel#nodechips { font-family: $tile_value_font; font-size: 11px; color: $text2; background: transparent; }
 QPushButton { border-radius: 9px; }
 QFrame#sourcechip, QFrame#chip { border-radius: 8px; }

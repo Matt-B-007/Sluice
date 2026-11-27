@@ -628,8 +628,11 @@ def _logo_svg(ring: Optional[str] = None) -> Optional[bytes]:
     return (text.replace(f'stroke="{RING_COLOUR}"', f'stroke="{ring}"') if ring else text).encode("utf-8")  # (the ring only)
 
 
-RING_COLOUR = "#3b82f6"  # 0.13.1: the logo's blue (the whole symbol is this colour now; it was a teal ring and a coral S)
-TALKING_DARK, TALKING_LIGHT = "#60a5fa", "#1d4ed8"  # the talking light: Sluice's blue for a dark panel, and for a light one
+RING_COLOUR = "#3ddc84"  # 0.13.1-beta.2: the logo's arcs are green (the level meters' green); the S is Sluice's blue
+S_COLOUR = "#3b82f6"
+# the tray's arcs: a dimmer green while idle, full bright green while you talk; each for a dark panel and for a light one
+IDLE_DARK, IDLE_LIGHT = "#2c9e5f", "#3d8f60"
+TALKING_DARK, TALKING_LIGHT = "#4ade80", "#15803d"
 MUTED_RED = "#ef4444"
 DISCONNECTED_GREY = "#8a94a3"
 
@@ -641,7 +644,8 @@ def tray_pixmap(state: str, px: int, dot: Optional[str] = None, dark_panel: bool
     """The logo for the system tray, on a transparent background like the logo itself (Sluice's tray is the House Standard's
     reference):
 
-    - idle: plain; talking: the ring closes and lights up in Sluice's blue (the dark or light variant, to suit the panel);
+    - idle: the blue S with dimmer green arcs; talking: the ring closes and lights up in full bright green (the dark or light
+      variant, to suit the panel);
     - muted (on purpose): the whole logo fades, the ring turns red, and a red badge sits in the bottom-right corner;
     - disconnected (0.13.1): the whole logo in grey, faded (the microphone cannot be read, so it never shows talking);
     - ``dot`` (0.13.1): "warning" (amber) or "problem" (red), a small dot in the bottom-right corner, or the top-right while
@@ -660,10 +664,10 @@ def tray_pixmap(state: str, px: int, dot: Optional[str] = None, dark_panel: bool
     painter.scale(k, k)
     painter.translate(-origin, -origin)  # from here on everything is drawn in the logo's own 128-unit picture
     talking = TALKING_DARK if dark_panel else TALKING_LIGHT
-    ring = {"muted": MUTED_RED, "talking": talking}.get(state)
+    ring = {"muted": MUTED_RED, "talking": talking, "idle": IDLE_DARK if dark_panel else IDLE_LIGHT}.get(state)
     svg = _logo_svg(ring) or b""
-    if state == "disconnected":
-        svg = svg.replace(RING_COLOUR.encode(), DISCONNECTED_GREY.encode())
+    if state == "disconnected":  # all grey: the arcs and the S
+        svg = svg.replace(RING_COLOUR.encode(), DISCONNECTED_GREY.encode()).replace(S_COLOUR.encode(), DISCONNECTED_GREY.encode())
     renderer = QSvgRenderer(svg)
     if state == "talking":
         painter.setBrush(Qt.BrushStyle.NoBrush)

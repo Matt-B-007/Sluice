@@ -11,7 +11,7 @@ from __future__ import annotations
 import math
 
 from PySide6.QtCore import QEvent, QPoint, QPointF, QRectF, Qt, QTimer
-from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPen, QRadialGradient
+from PySide6.QtGui import QColor, QFont, QPainter, QPen, QRadialGradient
 from PySide6.QtWidgets import QApplication, QMenu, QVBoxLayout, QWidget
 
 from . import ui_dialog
@@ -100,7 +100,6 @@ class DesktopWidget(QWidget):
     def showEvent(self, event) -> None:
         super().showEvent(event)
         self._ready = True
-        self.update_blur()
         self.tick()
         if not self.timer.isActive():
             self.timer.start(TICK_MS)
@@ -289,48 +288,13 @@ class DesktopWidget(QWidget):
         panel = QColor(themes.color("panel"))
         return panel, QColor(themes.color("text")), QColor(themes.color("accent"))
 
-    # -- the Glass skin's blur behind (KDE Plasma)
-    def glass_shape(self):
-        """The widget's pane, as a path in its own coordinates: what KWin blurs behind in the Glass skin."""
-        from PySide6.QtGui import QPainterPath
-
-        path = QPainterPath()
-        path.addRoundedRect(QRectF(self.rect()).adjusted(6, 4, -6, -10), 16, 16)
-        return path
-
-    def glass_edge(self, p: QPainter, rect: QRectF) -> None:
-        """(The Glass skin's hairline: retired with Glass in 0.13.1.)"""
-
-    def update_blur(self) -> None:
-        """Blur behind the pane in the Glass skin (KDE only); stop when the skin changes away from Glass. Runs dressed."""
-        wanted = False  # 0.13.1: no blur behind widgets (Glass was retired; the House Standard has no blur)
-        if wanted == getattr(self, "_blurred", False) and getattr(self, "_blur_size", None) == self.size():
-            return
-        glass = desktop_place.blur()
-        if not glass.available or self.windowHandle() is None:
-            return
-        from PySide6.QtGui import QRegion
-
-        region = QRegion(self.glass_shape().toFillPolygon().toPolygon()) if wanted else QRegion()
-        if glass.set(self.windowHandle(), wanted, region):
-            self._blurred, self._blur_size = wanted, self.size()
-
 
 def _mix_label(engine, mix_id) -> str:
     mix = next((m for m in engine.mixer.mixes if m.id == mix_id), None)
     return mix.label if mix is not None else "Listen"
 
 
-class _Round:
-    def glass_shape(self):
-        from PySide6.QtGui import QPainterPath
-
-        path = QPainterPath()
-        path.addEllipse(QRectF(self.rect()).adjusted(3, 3, -3, -3))
-        return path
-
-
-class MicWidget(_Round, DesktopWidget):
+class MicWidget(DesktopWidget):
     """A round mute button for the microphone, glowing with the level while it is live."""
 
     def __init__(self, manager, spec) -> None:
@@ -366,7 +330,6 @@ class MicWidget(_Round, DesktopWidget):
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(panel)
         p.drawEllipse(rect)
-        self.glass_edge(p, rect)
         ring = QColor(red)
         ring.setAlpha(110 + min(145, glow * 12))
         p.setPen(QPen(ring, 4))
@@ -418,7 +381,7 @@ class MicWidget(_Round, DesktopWidget):
         p.end()
 
 
-class DialWidget(_Round, DesktopWidget):
+class DialWidget(DesktopWidget):
     """A volume dial for a mix's main level (or one channel in that mix): the wheel turns it, a click mutes it."""
 
     def __init__(self, manager, spec) -> None:
@@ -495,7 +458,6 @@ class DialWidget(_Round, DesktopWidget):
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(panel)
         p.drawEllipse(QRectF(2, 2, self.width() - 4, self.height() - 4))
-        self.glass_edge(p, QRectF(2, 2, self.width() - 4, self.height() - 4))
         arc = QRectF(12, 12, self.width() - 24, self.height() - 24)
         track = QColor(text)
         track.setAlpha(50)
@@ -665,21 +627,14 @@ class StripWidget(DesktopWidget):
         p.drawRoundedRect(QRectF(0.5, 0.5, self.width() - 1, self.height() - 1), 12, 12)
         p.end()
 
-    def glass_shape(self):
-        from PySide6.QtGui import QPainterPath
-
-        path = QPainterPath()
-        path.addRoundedRect(QRectF(self.rect()), 16, 16)
-        return path
-
 
 # ----------------------------------------------------------------------------- one channel, one mix (0.11.5)
 LANE_H = 30
 
 
 def paint_card(widget: QWidget, p: QPainter, tint: str) -> QRectF:
-    """The widget's card in the look in use, and the area inside it: a raised key (Tile), glass with an edge in the card's colour
-    (Nexus) or a soft card (Calm, Original). Every colour comes from the theme, with its depth worked out (``depth``)."""
+    """The widget's card in the look in use, and the area inside it: a raised key (Tile) or a soft card (Calm). Every colour
+    comes from the theme, with its depth worked out (``depth``)."""
     from . import depth
 
     skin = themes.current_skin()
@@ -700,24 +655,10 @@ def paint_card(widget: QWidget, p: QPainter, tint: str) -> QRectF:
             card.width() - 8, card.height() - 4, 6, d["shadow_alpha"] * 1.2, d["shadow"], widget.devicePixelRatioF(), 16
         )
         p.drawPixmap(QPointF(card.x() + 4 - pad, card.y() + 2 - pad + 5), pixmap)
-    if skin == "nexus":
-        gradient = QLinearGradient(card.topLeft(), card.bottomLeft())
-        gradient.setColorAt(0.0, QColor(depth.shade(colors["panel"], 0.6 if d["light"] else 0.06)))
-        gradient.setColorAt(0.4, QColor(colors["panel"]))
-        gradient.setColorAt(1.0, QColor(depth.shade(colors["panel"], -0.03 if d["light"] else -0.3)))
-        p.setBrush(gradient)
-        p.setPen(QPen(QColor(d["outline"]), 1))
-    else:
-        p.setBrush(QColor(colors["panel"]))
-        p.setPen(QPen(QColor(colors["border"]), 1))
+    p.setBrush(QColor(colors["panel"]))
+    p.setPen(QPen(QColor(colors["border"]), 1))
     radius = 16
     p.drawRoundedRect(card.adjusted(0.5, 0.5, -0.5, -0.5), radius, radius)
-    if skin == "nexus":  # the top edge in the card's colour: a lit line on dark themes, a 3 px band on light ones
-        p.setPen(QPen(QColor(tint), 3 if d["light"] else 1))
-        p.drawLine(
-            QPointF(card.left() + radius, card.top() + (1.5 if d["light"] else 0.5)),
-            QPointF(card.right() - radius, card.top() + (1.5 if d["light"] else 0.5)),
-        )
     return card.adjusted(12, 10, -12, -10)
 
 
@@ -1004,8 +945,6 @@ class ChannelWidget(LaneWidget):
             p.drawText(well, Qt.AlignmentFlag.AlignCenter, "?")
         p.setPen(QColor(themes.color("text")))
         name = channel.label if channel is not None else "This channel was removed"
-        if themes.current_skin() == "nexus":
-            name = name.upper()
         p.drawText(QRectF(well.right() + 10, inner.top(), inner.width() - 34, 24), Qt.AlignmentFlag.AlignVCenter, name)
 
 
@@ -1089,7 +1028,7 @@ class MixWidget(LaneWidget):
         p.drawText(
             QRectF(inner.left() + 30, inner.top(), inner.width() - 100, 24),
             Qt.AlignmentFlag.AlignVCenter,
-            label.upper() if themes.current_skin() == "nexus" else label,
+            label,
         )
         on = bool(mix.limiter) if mix else False
         rect = self._limiter_rect()
@@ -1219,7 +1158,6 @@ class DesktopWidgetManager:
             with themes.dressed_as(skin, colors):
                 if restyle is not None:
                     restyle()
-                widget.update_blur()
             widget.update()
 
     def close_spec(self, spec: dict) -> None:

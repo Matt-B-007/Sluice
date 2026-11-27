@@ -24,8 +24,8 @@ STEPS = (
     (
         "Sluice in OBS",
         "In OBS, record “Sluice (Broadcast) for OBS” for the whole mix, or one channel at a time "
-        "(“Sluice (Game) for OBS”); use “Sluice (Mic)” as your microphone. Never pick "
-        "“Play to Sluice (…)”: that is from before the faders.",
+        "(“Sluice (Game) for OBS”); use “Sluice (Mic)” as your microphone. The devices apps play into are "
+        "hidden there, so they cannot be picked by mistake.",
         None,
     ),
     (

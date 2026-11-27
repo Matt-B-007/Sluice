@@ -20,7 +20,7 @@ CHANNELS = (("mic", 0.62), ("game", 0.48), ("chat", 0.7))  # what the pictures s
 def draw_preview(skin: str, colors: dict, ratio: float = 1.0) -> QPixmap:
     """0.12.2: one skin as a small picture drawn from its real design (the shapes the window draws, in these colours): a top bar,
     three channel cards and the Listen card. Calm: white cards with tinted icon tiles; Tile: raised keys with LCD names and LED
-    meters on a tray; Glass: frosted panes on a mix of light with pearl knobs; Nexus: glowing level rings and beams on a grid."""
+    meters on a tray. (0.13.1: Glass and Nexus were retired.)"""
     from .skin_tile import CHANNEL_TINTS
 
     pm = QPixmap(int(W * ratio), int(H * ratio))
@@ -29,14 +29,6 @@ def draw_preview(skin: str, colors: dict, ratio: float = 1.0) -> QPixmap:
     p = QPainter(pm)
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
     mixc = themes.mix_colors(colors, skin)
-    if skin == "nexus":  # (retired in 0.13.1: never asked for any more)
-        grid = QColor(colors["accent"])
-        grid.setAlphaF(0.07)
-        p.setPen(QPen(grid, 1))
-        for x in range(0, W, 16):
-            p.drawLine(x, 18, x, H)
-        for y in range(18, H, 16):
-            p.drawLine(0, y, W, y)
     _top_bar(p, skin, colors)
     if skin == "tile":
         _draw_tiles(p, colors)
@@ -51,10 +43,7 @@ def draw_preview(skin: str, colors: dict, ratio: float = 1.0) -> QPixmap:
 def _top_bar(p: QPainter, skin: str, colors: dict) -> None:
     p.setPen(Qt.PenStyle.NoPen)
     for i in range(2):  # the menu and Settings buttons
-        button = QColor(colors["surface2"] if skin != "glass" else "#ffffff")
-        if skin == "glass":
-            button.setAlpha(50)
-        p.setBrush(button)
+        p.setBrush(QColor(colors["surface2"]))
         p.drawRoundedRect(QRectF(8 + i * 14, 5, 11, 10), 3, 3)
     p.setBrush(QColor(colors["title"]))
     p.drawRoundedRect(QRectF(38, 8, 26, 4), 2, 2)
@@ -70,67 +59,28 @@ def _pane(p: QPainter, card: QRectF, skin: str, colors: dict, tint: str = "", ra
     from . import depth
 
     light = depth.luminance(colors["panel"]) >= depth.LIGHT_PANEL
-    if skin == "calm":
-        from .ui_paint import soft_shape
+    from .ui_paint import soft_shape
 
-        pixmap, pad = soft_shape(
-            card.width() - 4, card.height(), 5, 0.5 if light else 1.0, "#000000", p.device().devicePixelRatioF(), radius
-        )
-        p.drawPixmap(QPointF(card.left() + 2 - pad, card.top() + 3 - pad), pixmap)
-        p.setBrush(QColor(colors["panel"]))
-        p.setPen(QPen(QColor(colors["border"]), 1))
-        p.drawRoundedRect(card, radius, radius)
-    elif skin == "glass":
-        pane = QColor(themes.mix(colors["panel"], tint, 0.25) if tint else colors["panel"])
-        pane.setAlphaF(0.62 if light else 0.42)
-        p.setBrush(pane)
-        p.setPen(QPen(QColor(255, 255, 255, 170 if light else 40), 1))
-        p.drawRoundedRect(card, radius + 3, radius + 3)
-        p.setPen(QPen(QColor(255, 255, 255, 240 if light else 95), 1))
-        p.drawLine(QPointF(card.left() + radius, card.top() + 0.5), QPointF(card.right() - radius, card.top() + 0.5))
-    else:  # nexus: a lit card with an outline in the channel's colour, glowing on dark
-        if tint:
-            halo = QColor(tint)
-            for grow, alpha in ((4, 0.06), (2, 0.12)):
-                halo.setAlphaF(alpha)
-                p.setPen(QPen(halo, 2))
-                p.setBrush(Qt.BrushStyle.NoBrush)
-                p.drawRoundedRect(card.adjusted(-grow, -grow, grow, grow), radius + grow, radius + grow)
-        gradient = QLinearGradient(card.topLeft(), card.bottomLeft())
-        gradient.setColorAt(0.0, QColor(depth.shade(colors["panel"], 0.08)))
-        gradient.setColorAt(1.0, QColor(depth.shade(colors["panel"], -0.35)))
-        p.setBrush(gradient)
-        p.setPen(QPen(QColor(themes.mix(colors["panel"], tint or colors["accent"], 0.7)), 1))
-        p.drawRoundedRect(card, radius, radius)
+    pixmap, pad = soft_shape(
+        card.width() - 4, card.height(), 5, 0.5 if light else 1.0, "#000000", p.device().devicePixelRatioF(), radius
+    )
+    p.drawPixmap(QPointF(card.left() + 2 - pad, card.top() + 3 - pad), pixmap)
+    p.setBrush(QColor(colors["panel"]))
+    p.setPen(QPen(QColor(colors["border"]), 1))
+    p.drawRoundedRect(card, radius, radius)
 
 
 def _fader(p: QPainter, x: float, top: float, bottom: float, at: float, skin: str, colors: dict, tint: str) -> None:
-    """An upright fader: Calm's pill, Glass's pearl or Nexus's beam with a ring of light."""
+    """An upright fader: Calm's pill."""
     from . import ui_paint
 
     y = bottom - (bottom - top) * at
     p.setPen(Qt.PenStyle.NoPen)
-    if skin == "nexus":
-        p.setBrush(QColor(colors["border2"]))
-        p.drawRoundedRect(QRectF(x - 1, top, 2, bottom - top), 1, 1)
-        glow = QColor(tint)
-        glow.setAlphaF(0.25)
-        p.setBrush(glow)
-        p.drawRoundedRect(QRectF(x - 2.5, y, 5, bottom - y), 2.5, 2.5)
-        p.setBrush(QColor(tint))
-        p.drawRoundedRect(QRectF(x - 1, y, 2, bottom - y), 1, 1)
-        p.setBrush(QColor(colors["bg"]))
-        p.setPen(QPen(QColor(tint), 1.6))
-        p.drawEllipse(QPointF(x, y), 3.6, 3.6)
-        return
-    p.setBrush(QColor(colors["track"]) if skin != "glass" else QColor(0, 0, 0, 60))
+    p.setBrush(QColor(colors["track"]))
     p.drawRoundedRect(QRectF(x - 1.5, top, 3, bottom - top), 1.5, 1.5)
     p.setBrush(QColor(tint))
     p.drawRoundedRect(QRectF(x - 1.5, y, 3, bottom - y), 1.5, 1.5)
-    if skin == "glass":
-        ui_paint.pearl(p, QRectF(x - 4.5, y - 4.5, 9, 9))
-    else:
-        ui_paint.handle(p, QRectF(x - 6, y - 3, 12, 6), colors["handle"], colors["handle_edge"], 50)
+    ui_paint.handle(p, QRectF(x - 6, y - 3, 12, 6), colors["handle"], colors["handle_edge"], 50)
 
 
 def _meter(p: QPainter, x: float, top: float, bottom: float, level: float, colors: dict, tint: str) -> None:
@@ -147,52 +97,29 @@ def _meter(p: QPainter, x: float, top: float, bottom: float, level: float, color
     p.drawRoundedRect(QRectF(x - 1.5, y, 3, bottom - y), 1.5, 1.5)
 
 
-def _ring(p: QPainter, centre: QPointF, radius: float, level: float, colors: dict, tint: str) -> None:
-    """Nexus's level ring: a dim track and a glowing arc."""
-    box = QRectF(centre.x() - radius, centre.y() - radius, 2 * radius, 2 * radius)
-    p.setBrush(Qt.BrushStyle.NoBrush)
-    p.setPen(QPen(QColor(colors["border2"]), 2.6))
-    p.drawEllipse(box)
-    glow = QColor(tint)
-    glow.setAlphaF(0.3)
-    p.setPen(QPen(glow, 5.5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-    p.drawArc(box, 90 * 16, -round(360 * 16 * level))
-    p.setPen(QPen(QColor(tint), 2.6, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-    p.drawArc(box, 90 * 16, -round(360 * 16 * level))
-
-
 def _channel_card(p: QPainter, card: QRectF, skin: str, colors: dict, color: str, level: float) -> None:
     from . import depth
 
     tint = depth.channel_tint(color, colors)
-    _pane(p, card, skin, colors, tint if skin == "nexus" else "")
+    _pane(p, card, skin, colors)
     p.setPen(Qt.PenStyle.NoPen)
     x = card.left()
-    if skin == "nexus":
-        _ring(p, QPointF(card.center().x(), card.top() + 20), 11, level, colors, tint)
-        p.setBrush(QColor(colors["title"]))
-        p.drawRoundedRect(QRectF(card.center().x() - 10, card.top() + 38, 20, 3.5), 1.5, 1.5)
-        top = card.top() + 50
-    else:
-        p.setBrush(QColor(themes.mix(colors["panel"], tint, 0.18)))  # the tinted icon tile
-        p.drawRoundedRect(QRectF(x + 6, card.top() + 7, 11, 11), 3, 3)
-        p.setBrush(QColor(tint))
-        p.drawEllipse(QRectF(x + 9.5, card.top() + 10.5, 4, 4))
-        p.setBrush(QColor(colors["title"]))
-        p.drawRoundedRect(QRectF(x + 20, card.top() + 9, 18, 3.5), 1.5, 1.5)
-        p.setBrush(QColor(colors["text_dim"]))
-        p.drawRoundedRect(QRectF(x + 20, card.top() + 15, 12, 2.5), 1.2, 1.2)
-        top = card.top() + 30
+    p.setBrush(QColor(themes.mix(colors["panel"], tint, 0.18)))  # the tinted icon tile
+    p.drawRoundedRect(QRectF(x + 6, card.top() + 7, 11, 11), 3, 3)
+    p.setBrush(QColor(tint))
+    p.drawEllipse(QRectF(x + 9.5, card.top() + 10.5, 4, 4))
+    p.setBrush(QColor(colors["title"]))
+    p.drawRoundedRect(QRectF(x + 20, card.top() + 9, 18, 3.5), 1.5, 1.5)
+    p.setBrush(QColor(colors["text_dim"]))
+    p.drawRoundedRect(QRectF(x + 20, card.top() + 15, 12, 2.5), 1.2, 1.2)
+    top = card.top() + 30
     bottom = card.bottom() - 22
     for lane, (fx, at) in enumerate(((x + 12, 0.7), (x + 30, 0.62))):
         _fader(p, fx, top, bottom, at, skin, colors, tint)
         _meter(p, fx + 7, top, bottom, level * (1.0 if lane == 0 else 0.85), colors, tint)
     p.setPen(Qt.PenStyle.NoPen)
     for lane in range(2):  # the mute keys
-        key = QColor(colors["surface2"] if skin != "glass" else "#ffffff")
-        if skin == "glass":
-            key.setAlpha(50)
-        p.setBrush(key)
+        p.setBrush(QColor(colors["surface2"]))
         p.drawRoundedRect(QRectF(x + 5 + lane * 19, card.bottom() - 14, 16, 8), 3, 3)
 
 
@@ -205,13 +132,9 @@ def _listen_card(p: QPainter, card: QRectF, skin: str, colors: dict, tint: str) 
     p.setBrush(QColor(colors["title"]))
     p.drawRoundedRect(QRectF(x + 7, card.top() + 13, 26, 4), 2, 2)
     top, bottom = card.top() + 28, card.bottom() - 26
-    if skin == "nexus":
-        _ring(p, QPointF(card.center().x(), card.top() + 46), 13, 0.66, colors, tint)
-        top = card.top() + 66
-    else:  # the level scale beside the fader (0.12.2)
-        p.setBrush(QColor(colors["text_off"]))
-        for i in range(5):
-            p.drawRect(QRectF(x + 12, top + i * (bottom - top) / 4.0, 4, 1))
+    p.setBrush(QColor(colors["text_off"]))  # the level scale beside the fader (0.12.2)
+    for i in range(5):
+        p.drawRect(QRectF(x + 12, top + i * (bottom - top) / 4.0, 4, 1))
     _fader(p, x + 28, top, bottom, 0.72, skin, colors, tint)
     _meter(p, x + 40, top, bottom, 0.66, colors, tint)
     _meter(p, x + 46, top, bottom, 0.6, colors, tint)

@@ -7,7 +7,7 @@ import logging
 from typing import Optional
 
 from PySide6.QtCore import QSize, Qt, Signal
-from PySide6.QtGui import QFontMetrics, QGuiApplication, QPainter, QPixmap
+from PySide6.QtGui import QFontMetrics, QGuiApplication, QPainter
 from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
@@ -28,7 +28,6 @@ from .model import MAX_DB, MIN_DB, Mix, MONITOR, RECORDING, STREAM
 from .ui_base import (
     ElidedButton,
     _icon_button,
-    _is_nexus,
     _is_tile,
     _label,
     MIX_ICONS,
@@ -38,7 +37,7 @@ from .ui_base import (
     ReadoutEdit,
     short_device_name,
 )
-from .ui_meters import Fader, LevelMeter, NexusRing
+from .ui_meters import Fader, LevelMeter
 
 log = logging.getLogger("sluice.ui")
 
@@ -164,23 +163,12 @@ class MixStrip(QFrame):
 
             self.key = KeyBackground((6, 2, 6, 10), radius=16)
             layout.setContentsMargins(6 + 16, 2 + 14, 6 + 16, 10 + SKIRT + 14)
-        if _is_nexus(rows):  # a ring with the mix's letter in it, in the mix's colour
-            mixc = themes.mix_colors(themes._current)
-            color = mixc.get({MONITOR: "listen", STREAM: "broadcast"}.get(mix.id, ""), themes.color("accent"))
-            if mix.id == RECORDING:
-                color = themes.color("mute")
-            self.ring = NexusRing(color, lambda ratio, mix=mix: self._ring_icon(ratio))
-            layout.addWidget(self.ring, 0, Qt.AlignmentFlag.AlignHCenter)
-            from .ui_nexus import card_edge_sheet
-
-            self.setStyleSheet(card_edge_sheet("mix", color))
 
         head = QHBoxLayout()
         head.setSpacing(8)
         names = QVBoxLayout()
         names.setSpacing(4)
-        nexus = _is_nexus(rows)  # 0.12.0: Nexus centres the eyebrow and the name under the ring
-        eyebrow = _label(MIX_EYEBROWS.get(mix.id, "MIX"), "tag", center=nexus)
+        eyebrow = _label(MIX_EYEBROWS.get(mix.id, "MIX"), "tag", center=False)
         eyebrow.setProperty("mix", mix.id)
         eyebrow.setProperty(
             "narrow", True
@@ -189,12 +177,6 @@ class MixStrip(QFrame):
         self.setProperty("mix", mix.id)
         title = QLabel(mix.label)
         title.setObjectName("title")
-        if nexus:  # 0.12.2: in capitals, like the channel names
-            from .skin_tile import lcd_caps
-
-            lcd_caps(title)
-        if nexus:
-            title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         names.addWidget(title)
         head.addLayout(names, 1)
         self.readout = ReadoutEdit(None)
@@ -250,27 +232,17 @@ class MixStrip(QFrame):
         self.meter.setAccessibleName(f"{mix.label} meter")
         if rows:
             layout.addStretch(1)
-            if themes.current_skin() == "nexus":  # 0.11.6: the ring at 48 px, in the room between the device and the slider
-                mixc = themes.mix_colors(themes._current)
-                color = mixc.get({MONITOR: "listen", STREAM: "broadcast"}.get(mix.id, ""), themes.color("accent"))
-                self.ring = NexusRing(
-                    themes.color("mute") if mix.id == RECORDING else color, lambda ratio: self._ring_icon(ratio), NexusRing.SMALL
-                )
-                layout.addWidget(self.ring, 0, Qt.AlignmentFlag.AlignHCenter)
-                layout.addStretch(1)
             layout.addWidget(self.meter)
             layout.addWidget(self.fader)
         else:
             row = QHBoxLayout()
             row.setSpacing(16)  # 0.12.0: the fader and its meter as one pair (40 px apart they read as two things)
             row.addStretch(1)
-            self.scale = None
-            if themes.current_skin() != "nexus":  # 0.12.2: dB marks beside the fader fill the empty column
-                from .ui_meters import DbScale
+            from .ui_meters import DbScale  # 0.12.2: dB marks beside the fader fill the empty column
 
-                self.scale = DbScale(self.fader)
-                row.addWidget(self.scale)
-                row.addSpacing(-8)
+            self.scale = DbScale(self.fader)
+            row.addWidget(self.scale)
+            row.addSpacing(-8)
             row.addWidget(self.fader)
             row.addWidget(self.meter)
             if self.scale is not None:  # as wide again on the other side, so the fader and meter stay centred over the level
@@ -350,38 +322,7 @@ class MixStrip(QFrame):
             return
         super().paintEvent(event)
 
-    def _ring_icon(self, ratio: float):
-        """The Nexus ring's picture for a mix: its icon (headphones, broadcast waves) in the mix's colour."""
-        pixmap = icons.render(
-            MIX_ICONS.get(self.mix.id, "speaker"),
-            self.ring.color if self.ring is not None else themes.color("accent"),
-            round(30 * ratio),
-        )
-        pixmap.setDevicePixelRatio(ratio)
-        canvas = QPixmap(round(36 * ratio), round(36 * ratio))
-        canvas.setDevicePixelRatio(ratio)
-        canvas.fill(Qt.GlobalColor.transparent)
-        p = QPainter(canvas)
-        p.setRenderHints(
-            QPainter.RenderHint.Antialiasing | QPainter.RenderHint.SmoothPixmapTransform
-        )  # 0.12.2: smooth edges everywhere
-        p.drawPixmap(3, 3, pixmap)
-        p.end()
-        return canvas
-
     def refresh_theme(self) -> None:
-        if self.ring is not None:  # Nexus: the mix's colour follows the theme (Listen cyan, Broadcast coral or the theme's own)
-            mixc = themes.mix_colors(themes._current)
-            color = mixc.get({MONITOR: "listen", STREAM: "broadcast"}.get(self.mix.id, ""), themes.color("mute"))
-            if color != self.ring.color:
-                self.ring.set_color(color)
-                self.ring.refresh_source()
-                from .ui_nexus import floor_of, card_edge_sheet
-
-                self.setStyleSheet(card_edge_sheet("mix", color))
-                floor = floor_of(self)
-                if floor is not None:
-                    floor.set_color(self, color)
         if self.tile_key:
             from .ui_tile import mix_key_color
 
@@ -396,8 +337,8 @@ class MixStrip(QFrame):
             self._show_toggles()
             return
         own = self._own_color()
-        self.fader.set_fill(self.ring.color if self.ring is not None else own)
-        self.meter.set_tint(own if themes.current_skin() in ("calm", "glass", "nexus") else None)
+        self.fader.set_fill(own)
+        self.meter.set_tint(own if themes.current_skin() == "calm" else None)
         if getattr(self, "scale", None) is not None:
             self.scale.update()
         if self.menu_button is not None:

@@ -107,11 +107,6 @@ def channel_width(mix_count: int) -> int:
     return CHANNEL_WIDTH if mix_count <= 2 else CHANNEL_WIDTH_THREE
 
 
-def _is_nexus(rows: bool = False) -> bool:
-    """True in the Nexus look (the Columns layout; the Rows layout keeps its own shape until Nexus has one)."""
-    return False  # 0.13.1: Nexus was retired (a saved choice shows Tile); its code paths no longer run
-
-
 def _is_tile() -> bool:
     """True in the Tile look (raised keys)."""
     return themes.current_skin() == "tile"

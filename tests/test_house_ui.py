@@ -198,3 +198,29 @@ def test_the_broadcast_device_name_ends_in_an_ellipsis_on_a_narrow_card_and_is_c
         assert QGuiApplication.clipboard().text() == strip.mix.source_description  # the whole name, never the shortened one
     finally:
         window.shutdown()
+
+
+def test_a_rebuilt_engine_offers_a_restart(win, monkeypatch):
+    """0.13.1-beta.2: "restart to use it" in the status line was missed; now a window offers to restart."""
+    from sluice import ui_dialog
+
+    restarted = []
+    monkeypatch.setattr(win, "restart_for_buffer", lambda: restarted.append(1))
+    monkeypatch.setattr(ui_dialog.Message, "exec", lambda box: None)
+    monkeypatch.setattr(ui_dialog.Message, "clickedButton", lambda box: win._rebuilt_restart)
+    win._engine_rebuilt("")
+    assert restarted == [1] and "Restart now" in win._rebuilt_restart.text()
+    win._engine_rebuilt("cargo is missing")  # a failure says why, and offers nothing
+    assert restarted == [1] and "cargo is missing" in win.status_label.text()
+
+
+def test_start_up_times_count_from_a_restart_in_place(monkeypatch):
+    """0.13.1-beta.2: after an update Sluice restarts in the same process, so the report said "Python and imports 5633 s"."""
+    import time
+
+    from sluice import efficiency
+
+    monkeypatch.setattr(efficiency, "_RESTARTED_AT", repr(time.time() - 1.5))
+    assert 1.4 < efficiency.process_age() < 3.0
+    monkeypatch.setattr(efficiency, "_RESTARTED_AT", None)
+    assert efficiency.process_age() is not None

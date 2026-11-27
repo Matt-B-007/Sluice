@@ -8,7 +8,7 @@ from functools import partial
 from typing import TYPE_CHECKING, Optional
 
 from PySide6.QtCore import QRectF, QSize, Qt
-from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPixmap
+from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -33,7 +33,6 @@ from .engine import Engine
 from .model import Channel, MAX_DB, MIN_DB, Mix
 from .ui_base import (
     _icon_button,
-    _is_nexus,
     _is_tile,
     _label,
     channel_width,
@@ -54,7 +53,7 @@ from .ui_base import (
     short_device_name,
 )
 from .ui_effects import EffectsDialog
-from .ui_meters import Fader, LevelMeter, NexusRing, SourcePicture
+from .ui_meters import Fader, LevelMeter, SourcePicture
 
 if TYPE_CHECKING:  # only for type hints: the window imports this module
     from .ui_window import MainWindow
@@ -114,7 +113,12 @@ class OwnDevicesDialog(QDialog):
             "Each ticked channel can be recorded on its own, so OBS can have one source per channel (your mic on one, the "
             "game on another). Each carries only that channel, after its effects.\n\n"
             "In OBS, choose \u201cSluice (Game) for OBS\u201d (Audio Output Capture) or \u201cSluice (Game)\u201d (Audio "
-            "Input Capture). Not \u201cPlay to Sluice (Game)\u201d: that is where apps play in, before the faders."
+            "Input Capture)."
+            + (
+                " Not \u201cPlay to Sluice (Game)\u201d: that is where apps play in, before the faders."
+                if engine.mixer.show_play_to_devices
+                else ""  # 0.13.1-beta.2: hidden, so it cannot be picked by mistake
+            )
         )
         intro.setWordWrap(True)
         layout.addWidget(intro)
@@ -238,8 +242,7 @@ class ChannelStrip(QWidget):
         super().__init__()
         self.setObjectName("channelstrip")
         self.rows = rows
-        self.nexus = _is_nexus(rows)  # the Nexus look: a ring meter with the app's picture above the name
-        self.ring = None
+        self.ring = None  # (the Nexus look's ring meter, retired in 0.13.1)
         mixes = len(engine.mixer.mixes)
         self.channel, self.engine, self.window = channel, engine, window
         if (
@@ -254,10 +257,6 @@ class ChannelStrip(QWidget):
         self._empty = False
 
         self.frame = self._make_frame(rows)
-        if self.nexus:  # glass: a top edge in the channel's colour
-            from .ui_nexus import card_edge_sheet
-
-            self.frame.setStyleSheet(card_edge_sheet("strip", self.tint))
         if not rows:
             self.setFixedWidth(channel_width(mixes))
         outer = QVBoxLayout(self)
@@ -359,46 +358,20 @@ class ChannelStrip(QWidget):
         head = QHBoxLayout()
         head.setSpacing(8)
         self.link_badge = None
-        if (
-            self.nexus
-        ):  # 0.12.0: the name centred under the ring, one 32 px thing each side: the mic (or the link badge), the menu
-            self.title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            from .skin_tile import lcd_caps
+        # 0.12.2: a tinted icon tile with the channel's drawing, instead of a coloured dot
+        from . import skin_tile
+        from .ui_tile_paint import IconWell
 
-            lcd_caps(self.title)  # 0.12.2: Nexus's names in capitals, like a heads-up display
-            head.setSpacing(2)  # every pixel to the name: "Browser" fits at Nexus's title size
-            self.head_left = QWidget()
-            self.head_left.setFixedWidth(32)
-            left = QHBoxLayout(self.head_left)
-            left.setContentsMargins(0, 0, 0, 0)
-            self.link_badge = QLabel()
-            self.link_badge.setObjectName("linkbadge")
-            self.link_badge.setFixedSize(32, 32)
-            self.link_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.link_badge.setToolTip("Levels linked: moving one fader moves the other")
-            self.link_badge.hide()
-            left.addWidget(self.link_badge)
-            left.addWidget(self.mic_button)
-            head.addWidget(self.head_left)
-            head.addWidget(self.title, 1)
-        else:  # 0.12.2: a tinted icon tile with the channel's drawing, instead of a coloured dot
-            from . import skin_tile
-            from .ui_tile_paint import IconWell
-
-            self.well = IconWell(self.tint, skin_tile.channel_icon(self.channel), self.channel.label, 32)
-            self.dot.hide()
-            head.addWidget(self.well)
-            head.addWidget(self.title, 1)
-            head.addWidget(self.mic_button)
+        self.well = IconWell(self.tint, skin_tile.channel_icon(self.channel), self.channel.label, 32)
+        self.dot.hide()
+        head.addWidget(self.well)
+        head.addWidget(self.title, 1)
+        head.addWidget(self.mic_button)
         head.addWidget(self.menu_button)
         self.head = QWidget()
         self.head.setFixedHeight(32)
         head.setContentsMargins(0, 0, 0, 0)
         self.head.setLayout(head)
-        if self.nexus:
-            self.ring = NexusRing(self.tint, self._ring_picture)
-            self.dot.hide()
-            layout.addWidget(self.ring, 0, Qt.AlignmentFlag.AlignHCenter)
         layout.addWidget(self.head)
         self.empty_hint = _label(EMPTY_HINTS.get(self.channel.id, "Add the apps for this channel."), "hint", center=False)
         self.empty_hint.setWordWrap(True)
@@ -505,9 +478,6 @@ class ChannelStrip(QWidget):
         layout = self.layout_root
         layout.setContentsMargins(24, 8, 24, 16 if _is_tile() else 8)
         layout.addSpacing(0)
-        if themes.current_skin() == "nexus":  # 0.11.6: the ring meter at 48 px, at the start of the row
-            self.ring = NexusRing(self.tint, self._ring_picture, NexusRing.SMALL)
-            layout.addWidget(self.ring, 0, Qt.AlignmentFlag.AlignVCenter)
         block = QVBoxLayout()
         block.setSpacing(4)
         name_row = QHBoxLayout()
@@ -589,18 +559,6 @@ class ChannelStrip(QWidget):
         self.readouts[mix.id], self.mutes[mix.id] = readout, mute
         return fader, meter
 
-    def _ring_picture(self, ratio: float) -> QPixmap:
-        """The picture in the middle of the ring: the first app on the channel, a microphone for a device, or the channel's letter."""
-        channel, engine = self.channel, self.engine
-        if channel.apps:
-            app = channel.apps[0]
-            return icons.app_pixmap(engine.app_icon(app), engine.app_label(app), 36, ratio, app)
-        if channel.devices:
-            pixmap = icons.render("mic", themes.color("text2"), round(36 * ratio))
-            pixmap.setDevicePixelRatio(ratio)
-            return pixmap
-        return icons.app_pixmap("", channel.label, 36, ratio, channel.id)
-
     # ------------------------------------------------------------------ theme
     def _theme_tint(self) -> str:
         """The channel's colour on the theme in use: darker shades of it on light themes, so it stands out (0.11.5)."""
@@ -621,20 +579,11 @@ class ChannelStrip(QWidget):
             self.well.update()
         if getattr(self, "accent_bar", None) is not None:
             self.accent_bar.setStyleSheet(f"background: {tint};")
-        if self.ring is not None:
-            self.ring.set_color(tint)
-        if self.nexus:
-            from .ui_nexus import floor_of, card_edge_sheet
-
-            self.frame.setStyleSheet(card_edge_sheet("strip", tint))
-            floor = floor_of(self)
-            if floor is not None:
-                floor.set_color(self, tint)
 
     def refresh_theme(self) -> None:
         """Icons and the few colours set in code, from the theme in use."""
         self._retint()
-        own = self.tint if themes.current_skin() in ("calm", "glass", "nexus") else None  # 0.12.2: meters in the channel's colour
+        own = self.tint if themes.current_skin() == "calm" else None  # 0.12.2: meters in the channel's colour
         for meter in self.meters.values():
             if hasattr(meter, "set_tint"):
                 meter.set_tint(own)
@@ -703,8 +652,6 @@ class ChannelStrip(QWidget):
                 )
         self._update_fx_button()
         self.show_mic_state()
-        if self.ring is not None:
-            self.ring.refresh_source()
         even = getattr(self.window, "even_sources", None)
         if even is not None and not self.rows:
             even()
@@ -901,9 +848,6 @@ class ChannelStrip(QWidget):
         for mix in self.engine.mixer.mixes:
             self._show_mute(mix)
         self.show_mic_state()
-        if self.ring is not None:
-            mixes = self.engine.mixer.mixes
-            self.ring.set_state(channel.linked, bool(mixes) and all(channel.mutes.get(m.id) for m in mixes))
         if getattr(self, "link_badge", None) is not None:  # (a mic channel has its mic button there; its Link button says it)
             self.link_badge.setPixmap(icons.icon("link", themes.color("accent"), 16).pixmap(16, 16))
             self.link_badge.setVisible(channel.linked and not self.mic_button.isVisibleTo(self))

@@ -281,6 +281,11 @@ def test_a_release_without_its_zip_is_never_offered():
     zip_assets = lambda tag: [  # noqa: E731
         {"name": f"sluice-{tag}.zip", "browser_download_url": f"https://example.org/sluice-{tag}.zip"},
         {"name": f"sluice-{tag}.zip.sha256", "browser_download_url": f"https://example.org/sluice-{tag}.zip.sha256"},
+        # 0.13.1-beta.2: and its signature, without which a release is "not available yet"
+        {
+            "name": f"sluice-{tag}.zip.sha256.minisig",
+            "browser_download_url": f"https://example.org/sluice-{tag}.zip.sha256.minisig",
+        },
     ]
     releases = [
         {"tag_name": "v0.13.0", "assets": []},

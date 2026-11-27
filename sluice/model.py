@@ -276,6 +276,9 @@ class Mixer:
         # 0.13.1 (House Standard): a daily look for a new version (on by default; it only shows the update pill), the last
         # time one was made, and a version the person chose to skip
         self.check_daily = True
+        # 0.13.1-beta.2: the "Play to Sluice (X)" devices are hidden from OBS, apps' own sound menus and the desktop's sound
+        # settings (Sluice moves apps onto them itself). On: listed as output devices again, to pick one by hand in an app.
+        self.show_play_to_devices = False
         self.last_update_check = 0.0
         self.skipped_version = ""
         self.layout = "columns"  # how the channels are laid out: "columns" (a card each) or "rows" (a line each); a saved "free" (gone in 0.11.5) loads as columns
@@ -285,7 +288,7 @@ class Mixer:
         self.reduce_effects = False  # Nexus: no shimmer on the rings and no waveform on the faders (for slow or busy machines)
         self.desktop_widgets: list = []  # widgets left on the desktop: [{kind, mix, channel, x, y}], see ui_widgets
         self.hidden_widgets: list = []  # 0.11.7: the ones Ctrl+Shift+W put away, kept so the same key brings them back after a restart
-        self.skin = "calm"  # the skin: the shapes and sizes of the window ("calm", "nexus", "tile" or "glass"), apart from the colour theme
+        self.skin = "calm"  # the skin: the shapes and sizes of the window ("calm" or "tile"; "nexus" and "glass", retired in 0.13.1, load as "tile" and "calm"), apart from the colour theme
         self.theme = "dark"  # a theme id: dark, light, contrast, purple, system, or custom:<name> (an imported file)
         self.close_action = (
             DEFAULT_CLOSE  # "quit", "minimize" (keep running in the taskbar) or "tray" (keep running in the system tray)
@@ -467,6 +470,7 @@ class Mixer:
             "close_action": self.close_action,
             "auto_update": self.auto_update,
             "check_daily": self.check_daily,
+            "show_play_to_devices": self.show_play_to_devices,
             "last_update_check": self.last_update_check,
             "skipped_version": self.skipped_version,
             "update_channel": self.update_channel,
@@ -532,6 +536,7 @@ class Mixer:
             mixer.close_action = data["close_action"]
         mixer.auto_update = data.get("auto_update") is True
         mixer.check_daily = data.get("check_daily") is not False
+        mixer.show_play_to_devices = data.get("show_play_to_devices") is True
         if isinstance(data.get("last_update_check"), (int, float)) and not isinstance(data.get("last_update_check"), bool):
             mixer.last_update_check = float(data["last_update_check"])
         if isinstance(data.get("skipped_version"), str) and len(data["skipped_version"]) <= 40:

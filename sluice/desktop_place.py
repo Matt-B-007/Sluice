@@ -18,8 +18,7 @@ import logging
 import os
 import shutil
 import subprocess
-from pathlib import Path
-from typing import Callable, Optional
+from typing import Optional
 
 log = logging.getLogger("sluice.desktop_place")
 
@@ -319,10 +318,7 @@ def status() -> str:
         )
     else:
         line = f"ordinary windows ({shell.reason})"
-    if kde():
-        glass = blur()
-        line += "; Glass blur: " + ("KWin" if glass.available else f"none ({glass.reason})")
-    return line
+    return line  # (0.13.1-beta.2: no "Glass blur" part: the Glass skin was retired)
 
 
 def layer_shell() -> LayerShell:
@@ -347,131 +343,12 @@ def layer_shell() -> LayerShell:
     return _shell
 
 
-# ----------------------------------------------------------------------------- KDE blur behind (0.11.6)
+# ----------------------------------------------------------------------------- KDE
 def kde(env=None) -> bool:
     env = os.environ if env is None else env
     return "KDE" in (env.get("XDG_CURRENT_DESKTOP", "") + ":" + env.get("XDG_SESSION_DESKTOP", "")).upper()
 
 
-BLUR_LIBRARIES = ("libKF6WindowSystem.so.6", "libKF5WindowSystem.so.5")
-# void KWindowEffects::enableBlurBehind(QWindow *window, bool enable, const QRegion &region)
-BLUR_SYMBOL = "_ZN14KWindowEffects16enableBlurBehindEP7QWindowbRK7QRegion"
-
-
-LIB_DIRS = ("/usr/lib", "/usr/lib64", "/usr/lib/x86_64-linux-gnu", "/usr/lib/aarch64-linux-gnu")
-
-
-def system_qt(lib_dirs=LIB_DIRS) -> tuple:
-    """(the system's Qt version, its plugin folder) when KDE's window-system plugins are installed there, else ("", None).
-    Sluice runs PySide6's own Qt, so KDE's library looks for its plugins in PySide6's folder unless told where the system keeps
-    them: then it finds none, prints "Could not find any platform plugin" and blurs nothing (0.11.6 on Plasma)."""
-    import glob
-
-    for folder in lib_dirs:
-        plugins = Path(folder) / "qt6" / "plugins"
-        if not (plugins / "kf6" / "kwindowsystem").is_dir():
-            continue
-        cores = sorted(glob.glob(os.path.join(folder, "libQt6Core.so.6.*")))
-        version = cores[-1].rsplit(".so.", 1)[-1] if cores else ""
-        return version, plugins
-    return "", None
-
-
-def same_minor(a: str, b: str) -> bool:
-    return bool(a) and bool(b) and a.split(".")[:2] == b.split(".")[:2]
-
-
-class Blur:
-    """KDE's KWindowEffects, if it can be used: ``available`` says so. ``set(window, on, region)`` asks KWin to blur what is behind
-    ``window`` inside ``region`` (the Glass skin). Elsewhere, or when it cannot work in this Qt, nothing is blurred and ``reason``
-    says why (the bug report shows it)."""
-
-    def __init__(
-        self,
-        loader=None,
-        env=None,
-        qt_version: Optional[str] = None,
-        system: Optional[tuple] = None,
-        add_path: Optional[Callable] = None,
-    ) -> None:
-        self.function = None
-        self.reason = ""
-        if not kde(env):
-            self.reason = "not KDE Plasma"
-            return
-        version, plugins = system if system is not None else system_qt()
-        if plugins is None:
-            self.reason = "KDE's window-system plugins were not found"
-            return
-        if qt_version is None:
-            from PySide6.QtCore import qVersion
-
-            qt_version = qVersion()
-        if version and not same_minor(version, qt_version):  # a plugin built for another Qt would not load (or worse)
-            self.reason = f"the system's Qt is {version} and Sluice's is {qt_version}; KDE's blur only works in the same version"
-            return
-        if add_path is None:
-            from PySide6.QtCore import QCoreApplication
-
-            add_path = QCoreApplication.addLibraryPath
-        add_path(str(plugins))  # before KWindowSystem looks for its platform plugin (on its first call)
-        lib = (loader or self._load)()
-        if lib is None:
-            self.reason = "KDE's window system library (KWindowSystem) is not installed"
-            return
-        function = getattr(lib, BLUR_SYMBOL, None)
-        if function is None:
-            self.reason = "KWindowSystem has no blur function"
-            return
-        function.restype = None
-        function.argtypes = [ctypes.c_void_p, ctypes.c_bool, ctypes.c_void_p]
-        self.function = function
-
-    @staticmethod
-    def _load():
-        for name in BLUR_LIBRARIES + tuple(filter(None, [ctypes.util.find_library("KF6WindowSystem")])):
-            try:
-                return ctypes.CDLL(name)
-            except OSError:
-                continue
-        return None
-
-    @property
-    def available(self) -> bool:
-        return self.function is not None
-
-    def set(self, window, on: bool, region=None, pointers=None) -> bool:
-        """Blur behind ``window`` (a shown QWindow) inside ``region`` (a QRegion in its coordinates; None: all of it), or stop.
-        ``pointers`` is (window address, region address), found with shiboken when not given. Returns whether it was asked."""
-        if not self.available or window is None:
-            return False
-        try:
-            if pointers is None:
-                from PySide6.QtGui import QRegion
-
-                region = region if region is not None else QRegion()
-                pointers = (_address(window), _address(region))
-            self.function(ctypes.c_void_p(pointers[0]), bool(on), ctypes.c_void_p(pointers[1]))
-            return True
-        except Exception as error:  # a crash-free failure: the widget is simply not blurred
-            log.info("blur behind failed: %s", error)
-            return False
-
-
-_blur: Optional[Blur] = None
-
-
-def blur() -> Blur:
-    """The one Blur for this run (looked for once)."""
-    global _blur
-    if _blur is None:
-        _blur = Blur()
-        if kde() and not _blur.available:
-            log.info("Glass widgets: no blur behind (%s)", _blur.reason)
-    return _blur
-
-
-# ----------------------------------------------------------------------------- the KWin rule fallback
 RULE_GROUP = "sluice-desktop-widgets"
 RULE_TITLE = "Sluice widget"  # every widget window's title starts with this
 

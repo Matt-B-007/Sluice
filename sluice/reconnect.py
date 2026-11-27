@@ -54,6 +54,9 @@ def restart_command(show_window: bool = False) -> list:
     return command
 
 
+RESTARTED_AT = "SLUICE_RESTARTED_AT"  # (read and removed by efficiency.process_age)
+
+
 def restart_self(show_window: bool = False) -> None:  # pragma: no cover - replaces the process
     command = restart_command(show_window)
     log.info("restarting: %s", command)
@@ -63,4 +66,7 @@ def restart_self(show_window: bool = False) -> None:  # pragma: no cover - repla
         logs.mark_clean_exit()  # the process id stays the same, so the next start must not mistake this for a crash
     except Exception as exc:  # the restart goes ahead; the worst case is a "did not end normally" note next time
         log.warning("could not mark this session as ended cleanly before restarting: %s", exc)
+    import time
+
+    os.environ[RESTARTED_AT] = repr(time.time())  # 0.13.1-beta.2: the start-up times count from here, not the old process's start
     os.execv(command[0], command)

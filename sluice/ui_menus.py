@@ -141,6 +141,14 @@ class MenusMixin:
         self.devices_action = QAction("Every app channel has its own recording device", self)
         self.devices_action.setCheckable(True)
         self.devices_action.triggered.connect(lambda: self.set_devices_for_channels(self.devices_action.isChecked()))
+        # 0.13.1-beta.2: in Settings › Audio: the "Play to" devices are hidden unless this is on
+        self.play_to_action = QAction("Show the \u201cPlay to\u201d devices in apps\u2019 own sound settings", self)
+        self.play_to_action.setCheckable(True)
+        self.play_to_action.setToolTip(
+            "Off (normal): apps cannot pick \u201cPlay to Sluice (Chat)\u201d themselves, and OBS cannot record it by mistake. "
+            "Sluice puts each app on its channel. On: to pick one by hand inside an app, such as Discord."
+        )
+        self.play_to_action.triggered.connect(lambda: self.set_show_play_to_devices(self.play_to_action.isChecked()))
         heading(mixer_menu, "Quick mutes")
         self.mic_action = self._action(mixer_menu, "Mute my &microphone", self.toggle_mic_mute, "Ctrl+M", checkable=True)
         self.mute_actions = {}
@@ -198,15 +206,13 @@ class MenusMixin:
             checkable=True,
         )
         self.skin_colors_action.setToolTip(
-            "Nexus's deep blue and cyan, and Tile's graphite and white keys, on the Dark and Light themes. "
+            "Tile's graphite and white keys on the Dark and Light themes. "
             "Every other theme always keeps its own colours. Off: Dark and Light keep theirs too."
         )
-        self.nexus_section = self.reduce_action = None
         self.reduce_action = self._action(
             view_menu, "Re&duce effects", lambda: self.set_reduce_effects(self.reduce_action.isChecked()), checkable=True
         )
-        self.nexus_section = self.reduce_action  # (0.11.5 had a Nexus heading here; the item shows only in Nexus)
-        self.reduce_action.setToolTip("For slow or busy computers: the Nexus rings stop shimmering and the cards do not glow")
+        self.reduce_action.setToolTip("No faint grid behind the window and no glow on the focused control (every skin)")
         heading(view_menu, "Desktop")
         self.widgets_menu = view_menu.addMenu("Desktop wid&gets")
         self.widgets_menu.setToolTipsVisible(True)
@@ -439,9 +445,11 @@ class MenusMixin:
             self.say("That is as many widgets as Sluice keeps. Close one first.")
 
     def _show_skin_items(self) -> None:
-        """The View items that only mean something in some skins are shown only there (Reduce effects: Nexus and, 0.11.7, Glass)."""
-        self.reduce_action.setVisible(themes.current_skin() in ("nexus", "glass"))
-        self.skin_colors_action.setVisible(themes.current_skin() in ("nexus", "tile"))
+        """The View items that only mean something in some skins are shown only there. 0.13.1-beta.2: Reduce effects means
+        something in every skin (the grid and the glow), so it always shows; it was left showing only in the retired Nexus and
+        Glass."""
+        self.reduce_action.setVisible(True)
+        self.skin_colors_action.setVisible(themes.current_skin() == "tile")
 
     def uninstall_app(self) -> None:
         """Two ways to remove Sluice, each showing exactly what it removes; then Sluice closes and a separate process does it."""
@@ -503,6 +511,7 @@ class MenusMixin:
         self.recording_action.setChecked(self.engine.mixer.has_recording_mix)
         self.follow_action.setChecked(self.engine.mixer.devices_follow_broadcast)
         self.devices_action.setChecked(self.engine.mixer.devices_for_channels)
+        self.play_to_action.setChecked(self.engine.mixer.show_play_to_devices)
         for mix_id, action in self.mute_actions.items():
             action.setChecked(self.engine.mixer.mix(mix_id).mute)
         self.check_daily_action.setChecked(self.engine.mixer.check_daily)
@@ -535,6 +544,18 @@ class MenusMixin:
                 "db": "Levels are shown in dB.",
                 "percent": "Levels are shown in percent, as your desktop's volume slider shows them.",
             }[units]
+        )
+
+    def set_show_play_to_devices(self, on: bool) -> None:
+        """0.13.1-beta.2: list the "Play to" devices as output devices again, or hide them (the normal setting)."""
+        self.engine.set_show_play_to_devices(on)
+        if self.play_to_action.isChecked() != bool(on):
+            self.play_to_action.setChecked(bool(on))
+        self.save_settings()
+        self.say(
+            "The \u201cPlay to\u201d devices are listed again: apps can pick them in their own sound settings."
+            if on
+            else "The \u201cPlay to\u201d devices are hidden again. Sluice puts each app on its channel."
         )
 
     def set_devices_for_channels(self, on: bool) -> None:

@@ -1,5 +1,53 @@
 # Changelog
 
+## 0.13.1-beta.2
+The second test version of 0.13.1: the "Play to" devices are hidden, the logo has its green arcs back, and fixes from
+beta.1's bug reports. Updates must now be signed.
+
+**OBS and devices**
+- **The "Play to Sluice (X)" devices are hidden.** OBS, apps' own sound menus and the desktop's sound settings no longer
+  list them, so OBS cannot record one by mistake: they carry the sound from before every fader, so your Broadcast faders and
+  mutes did not reach it ("OBS records around your faders"). Sluice moves each app onto its channel with PipeWire's own
+  routing (the old way cannot see a hidden device), and when Sluice quits it takes that routing back, so apps return to your
+  normal output. Tested on PipeWire 1.6: hidden from OBS, and apps still move in. If a system ignores the hiding, the device is
+  made the usual way and still works.
+- **Settings › Audio › Show the "Play to" devices in apps' own sound settings** (off): for picking one by hand inside an app,
+  such as Discord's output menu.
+- **Devices are made in alphabetical order**, so OBS lists "Sluice (Broadcast) for OBS", "Sluice (Browser) for OBS",
+  "Sluice (Chat) for OBS"... in that order. A device turned on while Sluice runs comes last until Sluice restarts.
+
+**Look**
+- **The logo's arcs are green again** (the level meters' green) around the blue S: in the window, the launcher icon and the
+  tray. In the tray the arcs are a dimmer green while idle and close into a bright green ring while you talk; muted (red)
+  and disconnected (grey) are as before.
+- **The taskbar and the applications menu get the new icon after an update.** They show the icon copied when Sluice was
+  installed, and updates never replaced it; now Sluice copies a changed icon when it starts and asks the desktop to look
+  again. (Plasma may keep showing the old one until you log in again.)
+- **Settings › Updates is one box:** look once a day, update automatically, Stable or Beta, Check now and Go back.
+
+**Fixes from beta.1's bug reports**
+- **After rebuilding the audio engine, Sluice offers to restart** in a window. The message in the status line was easy to
+  miss, and the rebuilt engine (needed for the Rust audio path) only runs after a restart.
+- **Start-up times are right after an update.** Sluice restarts itself in the same process, so the report counted from the
+  old version's start ("Python and imports 5633 s").
+- **Reduce effects shows in every skin.** It turns off the background grid and the glow, but the menu showed it only in the
+  retired Nexus and Glass, so it could not be reached at all.
+- The bug report no longer mentions the Glass skin's blur.
+- **The Broadcast card's device button** ends in "…" in a narrow window instead of being cut off (already in beta.1).
+
+**Security**
+- **Updates must be signed.** beta.1 published signatures and still accepted an unsigned release; from this version a
+  release must carry a good signature from Sluice's main or backup key. Without one it counts as "not available yet", and
+  with a wrong one it is refused before anything is downloaded.
+
+**For developers**
+- **The code left over from Nexus and Glass is gone:** the Nexus ring meter, the Nexus fader's waveform and beam, the Glass
+  knob, panes and blur (and KDE's window-system library that only the blur used), and their branches in the cards, the
+  desktop widgets and the skin previews. Calm's card floor, which began in Nexus, stays.
+- **Tests changed, and why:** the tray test looks for the new green talking light; the logo tests check the green arcs and
+  the blue S; the install tests' releases are now signed with a key made for the test (signing is required); the Tile test
+  expects Reduce effects to show. The Glass blur tests went with the blur. None was loosened.
+
 ## 0.13.1-beta.1
 A test version of 0.13.1: the House Standard look and screens, the audio mixed in Rust without Python, signed updates, and
 names that say which device is for OBS. There is no 0.13.0: it was skipped, and the normal release will be 0.13.1. Beta

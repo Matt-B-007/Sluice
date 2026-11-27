@@ -19,6 +19,29 @@ PROJECT = Path(__file__).resolve().parent.parent
 DEPS = 'dependencies = [\n    "numpy>=1.24",\n    "pulsectl>=23.5",\n]\n'
 ZIP_URL = "https://github.com/Matt-B-007/Sluice/releases/download/v1.1.0/sluice-v1.1.0.zip"
 SUM_URL = ZIP_URL + ".sha256"
+SIG_URL = SUM_URL + ".minisig"
+TEST_KEY = None  # (private key, key id): set by the fixture below for each test
+
+
+@pytest.fixture(autouse=True)
+def a_trusted_test_key(monkeypatch):
+    """0.13.1-beta.2: updates must be signed. These tests are about downloading and installing, so their releases are signed
+    with a key made here, trusted for the test only (as the backup key); tests/test_signing.py tests the signing itself."""
+    pytest.importorskip("cryptography")
+    from minisign_helper import make_key
+
+    from sluice import signing
+
+    private, key_id, public = make_key()
+    monkeypatch.setitem(signing.PUBLIC_KEYS, "backup", public)
+    monkeypatch.setattr(sys.modules[__name__], "TEST_KEY", (private, key_id))
+    return private, key_id
+
+
+def signed(text: str) -> str:
+    from minisign_helper import minisign
+
+    return minisign(*TEST_KEY, text.encode("utf-8"))
 
 
 def pyproject(deps=DEPS):
@@ -66,6 +89,8 @@ class FakeNet:
 
     def fetch_text(self, url):
         self.fetched.append(url)
+        if url.endswith(".minisig"):
+            return signed(self.checksum_text)
         return self.checksum_text
 
     def download(self, url, dest, progress=None):
@@ -75,8 +100,16 @@ class FakeNet:
             progress(10, 10)
 
 
-def result(version="1.1.0", zip_url=ZIP_URL, checksum_url=SUM_URL):
-    return UpdateResult("available", "1.0.0", version, "https://example.com/r", zip_url=zip_url, checksum_url=checksum_url)
+def result(version="1.1.0", zip_url=ZIP_URL, checksum_url=SUM_URL, signature_url=None):
+    return UpdateResult(
+        "available",
+        "1.0.0",
+        version,
+        "https://example.com/r",
+        zip_url=zip_url,
+        checksum_url=checksum_url,
+        signature_url=checksum_url + ".minisig" if signature_url is None and checksum_url else (signature_url or ""),
+    )
 
 
 def fake_run_ok(version):
@@ -103,11 +136,12 @@ def test_the_zip_and_its_checksum_are_found_among_a_releases_assets():
             {"name": "sluice-1.1.0.tar.gz", "browser_download_url": "https://github.com/a/sluice-1.1.0.tar.gz"},
             {"name": "sluice-v1.1.0.zip", "browser_download_url": ZIP_URL},
             {"name": "sluice-v1.1.0.zip.sha256", "browser_download_url": SUM_URL},
+            {"name": "sluice-v1.1.0.zip.sha256.minisig", "browser_download_url": SIG_URL},  # 0.13.1: signed
         ],
     }
     assert find_assets(release) == (ZIP_URL, SUM_URL)
     found = check("1.0.0", url="https://x.example/releases", fetch=lambda u, t: [release])
-    assert found.zip_url == ZIP_URL and found.checksum_url == SUM_URL
+    assert found.zip_url == ZIP_URL and found.checksum_url == SUM_URL and found.signature_url == SIG_URL
     assert find_assets({"assets": [{"name": "sluice-v1.1.0.zip", "browser_download_url": ZIP_URL}]}) == ("", "")  # no checksum
     assert find_assets(
         {

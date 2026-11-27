@@ -60,5 +60,8 @@ def retry_with_pipewire_jack(argv: Optional[list] = None) -> bool:
             stream.flush()
         except Exception:
             pass  # about to replace this process: nothing left to report to, and the retry must go ahead
+    import time
+
+    env["SLUICE_RESTARTED_AT"] = repr(time.time())  # 0.13.1-beta.2: start-up times count from this restart
     os.execve(sys.executable, args, env)
     return True  # not reached

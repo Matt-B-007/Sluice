@@ -115,8 +115,8 @@ def monitor_message(app: str, channels: list) -> str:
     return (
         f"{app} is recording {names}: the sound apps play into Sluice, from before its faders and mutes, so Broadcast "
         f"cannot change or mute it. In {app}, choose {own} instead (or “Sluice (Broadcast) for OBS” for the whole "
-        f"mix): those follow your Broadcast faders and mutes. (Older Sluice versions called the wrong one "
-        f"“Sluice (…) output”.)"
+        f"mix): those follow your Broadcast faders and mutes. (Sluice hides the “Play to” devices so they cannot be picked "
+        f"by mistake; they show while Settings › Audio › Show the “Play to” devices is on.)"
     )
 
 

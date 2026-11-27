@@ -337,7 +337,7 @@ class SettingsWindow(QDialog):
             column,
             "Desktop widgets",
             "The widgets you keep on the desktop can have a skin and a theme of their "
-            "own, for example Glass widgets over your wallpaper with the window in Calm.",
+            "own, for example Tile widgets with the window in Calm.",
         )
         self.widget_skin = QComboBox()
         self.widget_skin.setAccessibleName("Desktop widgets' skin")
@@ -384,6 +384,14 @@ class SettingsWindow(QDialog):
         )
         self._bind(devices, w.follow_action)
         self._bind(devices, w.devices_action)  # 0.12.6: one switch for every app channel (each can still turn its own off)
+        play_to = self._group(
+            column,
+            "Where apps play in",
+            "Each channel has a \u201cPlay to Sluice (\u2026)\u201d device that its apps play into. Sluice keeps them hidden, so OBS "
+            "cannot record one by mistake (it is from before your faders) and apps\u2019 sound menus stay short; Sluice puts every "
+            "app on its channel itself.",
+        )
+        self._bind(play_to, w.play_to_action)
 
     def _startup(self, column: QVBoxLayout) -> None:
         w = self.window_
@@ -415,18 +423,18 @@ class SettingsWindow(QDialog):
 
     def _updates(self, column: QVBoxLayout) -> None:
         w = self.window_
-        group = self._group(column, "New versions")
-        self._bind(group, w.check_daily_action)
-        self._bind(group, w.auto_update_action)
-        self._action_button(group, "Check now", w.check_for_updates, name="Check for updates")
-        channel = self._group(
+        # 0.13.1-beta.2: one box: how Sluice looks for new versions, which ones it takes, and the buttons
+        group = self._group(
             column,
-            "Which versions",
+            "New versions",
             "Stable gets tested releases. Beta also gets test versions before they are released, to try new features first.",
         )
+        self._bind(group, w.check_daily_action)
+        self._bind(group, w.auto_update_action)
         choice = QButtonGroup(self)
         for action in w.channel_actions.values():
-            self._bind(channel, action, choice)
+            self._bind(group, action, choice)
+        self._action_button(group, "Check now", w.check_for_updates, name="Check for updates")
         self.rollback_button = self._action_button(group, "Go back", w.rollback_action, name="Go back to the previous version")
         if w.runs_from_download():  # 0.12.0: installed the old way, in the folder it was downloaded to
             where = self._group(column, "Where Sluice is installed")
@@ -697,9 +705,7 @@ class SettingsWindow(QDialog):
             card.setChecked(skin_id == skin)
             card.blockSignals(False)
             card.show_preview(theme)
-        dark_only = skin == "nexus" and themes.is_light_theme(theme)  # 0.12.2: Nexus is dark only, and the picker says so
-        self.theme_button.setText(f"{theme.name} (Nexus stays dark)" if dark_only else theme.name)
-        self.theme_button.setToolTip(themes.NEXUS_DARK_ONLY if dark_only else "")
+        self.theme_button.setText(theme.name)
         self._fill_widget_choices()
         for item in self.bound:
             item.refresh()

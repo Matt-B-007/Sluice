@@ -424,12 +424,14 @@ def test_tiles_take_their_own_key_colours_on_dark_and_light_while_the_look_colou
     assert d["tile_edge"] != l["tile_edge"] and d["skirt"] != l["skirt"]
 
 
-def test_the_tile_look_has_no_glow_and_no_nexus_items(qapp, tmp_path):
+def test_the_tile_look_has_no_rings_and_offers_reduce_effects(qapp, tmp_path):
+    """0.13.1-beta.2: Reduce effects turns off the grid and the glow in every skin, so it shows in every skin (it was left
+    showing only in the retired Nexus and Glass, so it could not be reached from the menu at all)."""
     win, _ = make(qapp, tmp_path, "tile", "columns")
     try:
         assert all(getattr(s, "ring", None) is None for s in win.strips)
         win._refresh_view_menu()
-        assert not win.reduce_action.isVisible() and win.skin_colors_action.isVisible()
+        assert win.reduce_action.isVisible() and win.skin_colors_action.isVisible()
     finally:
         win.shutdown()
 

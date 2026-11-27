@@ -13,7 +13,6 @@ STEPS = ("roomy", "standard", "compact", "mini")
 # 16 px between). A cell narrower than that puts the level over the slider, so the window never offers Rows narrower than this.
 ROW_FIXED = 458
 ROW_CELL_MIN = 260
-ROW_RING = 64  # Nexus (0.11.6): the 48 px ring at the start of each row, and the 16 px gap after it
 ROW_SLACK = 72  # the window's side margins, the list's right margin and room for its scroll bar
 MASTERS_SIDE = 328  # Listen and Broadcast docked at the right: their column and the gap before it
 THREE_MASTERS_HEIGHT = 1000  # three mix cards stacked at the right need this much height; shorter, they go in the bar below
@@ -21,7 +20,7 @@ THREE_MASTERS_HEIGHT = 1000  # three mix cards stacked at the right need this mu
 
 def rows_min_width(mixes: int, skin: str = "") -> int:
     """The narrowest window that shows the Rows layout with this many mixes, Listen and Broadcast in the bar below."""
-    return ROW_FIXED + (ROW_RING if skin == "nexus" else 0) + max(2, mixes) * (ROW_CELL_MIN + 16) + ROW_SLACK
+    return ROW_FIXED + max(2, mixes) * (ROW_CELL_MIN + 16) + ROW_SLACK
 
 
 class Plan(NamedTuple):

@@ -449,8 +449,19 @@ def flags(data: dict) -> list:
 STARTUP: dict = {}  # name -> seconds after the process started, in the order they happened
 
 
+_RESTARTED_AT = os.environ.pop("SLUICE_RESTARTED_AT", None)  # set by Sluice just before it restarted itself in place
+
+
 def process_age() -> Optional[float]:
-    """Seconds since this process started (the kernel's own record, so Python's start-up and imports are counted too)."""
+    """Seconds since this process started (the kernel's own record, so Python's start-up and imports are counted too).
+
+    0.13.1-beta.2: when Sluice restarted itself (after an update, or a buffer change), it is the same process, so the kernel's
+    record is the old start: a beta report said "Python and imports 5633 s". Then the time of the restart is used instead."""
+    if _RESTARTED_AT:
+        try:
+            return max(0.0, time.time() - float(_RESTARTED_AT))
+        except ValueError:
+            pass
     try:
         start_ticks = int(Path("/proc/self/stat").read_text().rsplit(")", 1)[1].split()[19])
         uptime = float(Path("/proc/uptime").read_text().split()[0])

@@ -249,7 +249,8 @@ def test_the_tray_states_look_different_and_say_what_they_mean(qapp):
     idle, talking, muted, gone = (tray_pixmap(s, 32) for s in ("idle", "talking", "muted", "disconnected"))
     images = [p.toImage() for p in (idle, talking, muted, gone)]
     assert len({bytes(i.constBits()) for i in images}) == 4  # all four look different
-    lit = lambda c: c.alpha() > 200 and abs(c.red() - 0x60) < 25 and abs(c.green() - 0xA5) < 25 and abs(c.blue() - 0xFA) < 25  # noqa: E731  (the talking blue)
+    # 0.13.1-beta.2: the talking light is the arcs in full bright green (idle: a dimmer green)
+    lit = lambda c: c.alpha() > 200 and abs(c.red() - 0x4A) < 25 and abs(c.green() - 0xDE) < 25 and abs(c.blue() - 0x80) < 25  # noqa: E731
     red = lambda c: c.alpha() > 200 and c.red() > 200 and c.green() < 82 and c.blue() < 82  # noqa: E731
     assert _count(talking, lit) > 2 * max(1, _count(idle, lit))  # the closed, lit ring
     assert _count(muted, red) > 20 and _count(idle, red) == 0 and _count(talking, red) == 0
@@ -274,11 +275,14 @@ def test_the_logo_is_one_blue_symbol_and_the_launcher_icon_is_the_house_square(q
 
     data = Path(__import__("sluice").__file__).parent / "data"
     logo = (data / "sluice.svg").read_text()
-    assert "<rect" not in logo and "#3b82f6" in logo and "#0d9488" not in logo and "#f0603f" not in logo  # no teal, no coral
+    # 0.13.1-beta.2: the S in Sluice's blue, the arcs in green; no teal, no coral
+    assert "<rect" not in logo and 'fill="#3b82f6"' in logo and 'stroke="#3ddc84"' in logo
+    assert "#0d9488" not in logo and "#f0603f" not in logo
     launcher = (data / "sluice-launcher.svg").read_text()
     assert (
         'fill="#0c1016"' in launcher and 'rx="28"' in launcher and 'stroke-opacity="0.35"' in launcher and "#60a5fa" in launcher
     )
+    assert 'stroke="#3ddc84"' in launcher  # 0.13.1-beta.2: the arcs are green there too
     for size in (16, 128, 512):
         image = QImage(str(data / "png" / f"sluice-{size}.png"))
         assert image.pixelColor(0, 0).alpha() == 0  # the rounded corner
