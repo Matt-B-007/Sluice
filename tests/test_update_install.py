@@ -89,23 +89,34 @@ def fake_run_ok(version):
 
 
 def stage_it(root, net, res=None, run=None):
-    return update_install.stage(res or result(), root, fetch_text=net.fetch_text, download=net.download,
-                            run=run or fake_run_ok("1.1.0"))
+    return update_install.stage(
+        res or result(), root, fetch_text=net.fetch_text, download=net.download, run=run or fake_run_ok("1.1.0")
+    )
 
 
 # ------------------------------------------------------------------------------------------ release asset discovery
 def test_the_zip_and_its_checksum_are_found_among_a_releases_assets():
-    release = {"tag_name": "v1.1.0", "html_url": "https://github.com/x/y/releases/tag/v1.1.0", "assets": [
-        {"name": "sluice-1.1.0.tar.gz", "browser_download_url": "https://github.com/a/sluice-1.1.0.tar.gz"},
-        {"name": "sluice-v1.1.0.zip", "browser_download_url": ZIP_URL},
-        {"name": "sluice-v1.1.0.zip.sha256", "browser_download_url": SUM_URL},
-    ]}
+    release = {
+        "tag_name": "v1.1.0",
+        "html_url": "https://github.com/x/y/releases/tag/v1.1.0",
+        "assets": [
+            {"name": "sluice-1.1.0.tar.gz", "browser_download_url": "https://github.com/a/sluice-1.1.0.tar.gz"},
+            {"name": "sluice-v1.1.0.zip", "browser_download_url": ZIP_URL},
+            {"name": "sluice-v1.1.0.zip.sha256", "browser_download_url": SUM_URL},
+        ],
+    }
     assert find_assets(release) == (ZIP_URL, SUM_URL)
     found = check("1.0.0", url="https://x.example/releases", fetch=lambda u, t: [release])
     assert found.zip_url == ZIP_URL and found.checksum_url == SUM_URL
     assert find_assets({"assets": [{"name": "sluice-v1.1.0.zip", "browser_download_url": ZIP_URL}]}) == ("", "")  # no checksum
-    assert find_assets({"assets": [{"name": "sluice-v1.zip", "browser_download_url": "http://x/sluice-v1.zip"},
-                                   {"name": "sluice-v1.zip.sha256", "browser_download_url": "http://x/s"}]}) == ("", "")
+    assert find_assets(
+        {
+            "assets": [
+                {"name": "sluice-v1.zip", "browser_download_url": "http://x/sluice-v1.zip"},
+                {"name": "sluice-v1.zip.sha256", "browser_download_url": "http://x/s"},
+            ]
+        }
+    ) == ("", "")
     assert find_assets({}) == ("", "")
     same = check("1.1.0", url="https://x.example/releases", fetch=lambda u, t: [release])
     assert same.status == "up_to_date" and same.zip_url == ""
@@ -193,8 +204,16 @@ def test_only_newer_versions_and_only_https_from_github_are_taken(tmp_path, monk
         stage_it(root, net, res=result(zip_url="https://evil.example/sluice-v1.1.0.zip"))
     assert net.fetched == []
     monkeypatch.setenv("SLUICE_UPDATE_URL", "https://mirror.example/releases")  # a deliberately chosen feed
-    assert stage_it(root, net, res=result(zip_url="https://mirror.example/sluice-v1.1.0.zip",
-                                          checksum_url="https://mirror.example/sluice-v1.1.0.zip.sha256")) == "1.1.0"
+    assert (
+        stage_it(
+            root,
+            net,
+            res=result(
+                zip_url="https://mirror.example/sluice-v1.1.0.zip", checksum_url="https://mirror.example/sluice-v1.1.0.zip.sha256"
+            ),
+        )
+        == "1.1.0"
+    )
 
 
 def test_unsafe_archives_are_refused(tmp_path):
@@ -367,9 +386,12 @@ def test_the_real_check_accepts_this_very_program_as_new_code(tmp_path):
     init.write_text(init.read_text().replace(update_install.disk_version(PROJECT), "9.9.9"))
     files = {str(p.relative_to(new)): p.read_text(errors="replace") for p in new.rglob("*") if p.is_file()}
     net = FakeNet(tmp_path, files=files, version="9.9.9")
-    stage_it(root, net, res=result(version="9.9.9", zip_url=ZIP_URL.replace("1.1.0", "9.9.9"),
-                                   checksum_url=SUM_URL.replace("1.1.0", "9.9.9")),
-             run=lambda *a, **k: subprocess.CompletedProcess(a[0], 0, "", ""))
+    stage_it(
+        root,
+        net,
+        res=result(version="9.9.9", zip_url=ZIP_URL.replace("1.1.0", "9.9.9"), checksum_url=SUM_URL.replace("1.1.0", "9.9.9")),
+        run=lambda *a, **k: subprocess.CompletedProcess(a[0], 0, "", ""),
+    )
     assert update_install.apply_staged(root) == "9.9.9"  # the default runner: a real process imports the new code
     assert update_install.disk_version(root) == "9.9.9"
 
@@ -434,12 +456,15 @@ def test_this_python_can_run_the_try_out_snippet_syntax():
 # ---------------------------------------------------------------- the Rust engine after an update (0.11.6)
 def test_a_newer_shipped_engine_is_offered_for_rebuilding(tmp_path):
     from sluice import update_install
+
     (tmp_path / "rust" / "sluice_dsp").mkdir(parents=True)
     have_cargo = lambda name: "/usr/bin/cargo"  # noqa: E731
     offer = update_install.engine_rebuild_offer(tmp_path, "0.10.0", "0.10.1", True, which=have_cargo)
     assert "0.10.1" in offer and "0.10.0" in offer and "restart" in offer.lower()
     assert update_install.engine_rebuild_offer(tmp_path, "0.10.1", "0.10.1", False, which=have_cargo) == ""  # up to date
-    assert update_install.engine_rebuild_offer(tmp_path, "", "0.10.1", False, which=have_cargo) == ""  # the Python engine by choice
+    assert (
+        update_install.engine_rebuild_offer(tmp_path, "", "0.10.1", False, which=have_cargo) == ""
+    )  # the Python engine by choice
     assert update_install.engine_rebuild_offer(tmp_path, "0.10.0", "0.10.1", True, which=lambda name: None) == ""  # no Rust
     assert update_install.engine_rebuild_offer(None, "0.10.0", "0.10.1", True, which=have_cargo) == ""  # not a Sluice folder
 
@@ -447,6 +472,7 @@ def test_a_newer_shipped_engine_is_offered_for_rebuilding(tmp_path):
 def test_rebuilding_the_engine_runs_maturin_in_the_engine_folder(tmp_path):
     import subprocess
     from sluice import update_install
+
     bin_dir = tmp_path / "venv" / "bin"
     bin_dir.mkdir(parents=True)
     python = bin_dir / "python"
@@ -458,7 +484,10 @@ def test_rebuilding_the_engine_runs_maturin_in_the_engine_folder(tmp_path):
         return subprocess.CompletedProcess(command, 0, "", "")
 
     # (prefix and base as when not inside a venv: else the venv running the tests would be the answer, rightly)
-    assert update_install.rebuild_engine(tmp_path, run=run, python=str(python), prefix="/usr", base="/usr", remember=lambda r: None) == ""
+    assert (
+        update_install.rebuild_engine(tmp_path, run=run, python=str(python), prefix="/usr", base="/usr", remember=lambda r: None)
+        == ""
+    )
     assert calls[0][0][1:4] == ["-m", "pip", "install"]  # maturin first, when it is not there
     assert calls[1][0][1:] == ["develop", "--release"] and calls[1][1] == str(tmp_path / "rust" / "sluice_dsp")
     assert calls[1][2] == str((tmp_path / "venv").resolve())
@@ -467,22 +496,24 @@ def test_rebuilding_the_engine_runs_maturin_in_the_engine_folder(tmp_path):
         return subprocess.CompletedProcess(command, 1, "", "error: linker cc not found")
 
     (bin_dir / "maturin").write_text("")
-    problem = update_install.rebuild_engine(tmp_path, run=failing, python=str(python), prefix="/usr", base="/usr", remember=lambda r: None)
+    problem = update_install.rebuild_engine(
+        tmp_path, run=failing, python=str(python), prefix="/usr", base="/usr", remember=lambda r: None
+    )
     assert "failed" in problem and "linker cc not found" in problem  # the build's last line, said where you see it
 
 
 def test_the_start_up_check_names_only_modules_every_version_has():
-    """The check imports these from the downloaded files before installing them. 0.11.6 renamed updates to update_check: naming a
-    renamed module there would refuse every other version, so the check names only long-lived modules, and sluice.updates stays
-    as a shim because the updater in 0.11.5 and earlier imports it from the new files."""
-    import importlib
+    """The check imports these from the downloaded files before installing them, so it names only long-lived modules.
+    0.13.1: the sluice.updates stand-in for the updater in 0.11.5 and earlier is gone (updating from those needs a fresh
+    install), and a new version's own quick self-test runs too."""
+    import importlib.util
     import re
     from sluice import update_install
+
     line = next(line for line in update_install._CHECK.splitlines() if line.startswith("import sluice"))
-    names = [name.strip() for name in line[len("import "):].split(",")]
+    names = [name.strip() for name in line[len("import ") :].split(",")]
     assert names == ["sluice", "sluice.engine", "sluice.model", "sluice.ui"]
-    old = importlib.import_module("sluice.updates")  # what Sluice 0.11.5's updater asks the new files for
-    assert old.check is not None and old.UpdateResult is not None
+    assert importlib.util.find_spec("sluice.updates") is None
     assert not re.search(r"\bsluice\.updates\b", update_install._CHECK)
 
 
@@ -491,6 +522,7 @@ def test_the_rebuild_never_follows_the_link_a_venv_python_is(tmp_path):
     (no pip there: "Failed to find pip")."""
     import subprocess
     from sluice import update_install
+
     system = tmp_path / "usr" / "bin"
     system.mkdir(parents=True)
     (system / "python").write_text("")
@@ -509,13 +541,16 @@ def test_the_rebuild_never_follows_the_link_a_venv_python_is(tmp_path):
     assert update_install.venv_for(str(venv_bin / "python"), root, "/usr", "/usr") == root / ".venv"
     # running inside it: Python says which
     assert update_install.venv_for("/usr/bin/python", None, str(root / ".venv"), "/usr") == root / ".venv"
-    update_install.rebuild_engine(root, run=run, python=str(venv_bin / "python"), prefix="/usr", base="/usr", remember=lambda r: None)
+    update_install.rebuild_engine(
+        root, run=run, python=str(venv_bin / "python"), prefix="/usr", base="/usr", remember=lambda r: None
+    )
     assert all(venv == str(root / ".venv") for _c, venv, _p in seen)
     assert seen[0][0][0] == str(venv_bin / "python") and seen[0][2] == str(venv_bin)  # its own python and pip come first
 
 
 def test_the_last_rebuild_is_remembered_for_the_bug_report(tmp_path):
     from sluice import update_install
+
     path = tmp_path / "engine-rebuild.json"
     update_install.remember_rebuild("the build failed (pip)", path, when=1000.0)
     assert update_install.last_rebuild(path) == {"at": 1000.0, "result": "the build failed (pip)"}

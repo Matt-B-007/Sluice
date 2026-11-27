@@ -196,7 +196,7 @@ def test_rename_through_the_strip(ui, monkeypatch):
     chat = strip_for(win, "chat")
     chat.rename()
     assert chat.title.text() == "Voice"
-    assert system.null_sinks["sluice_ch_chat"][0] == "Sluice (Voice) output"
+    assert system.null_sinks["sluice_ch_chat"][0] == "Play to Sluice (Voice)"
 
 
 def test_meters_update_without_error(ui):
@@ -295,10 +295,19 @@ def test_help_menu_saves_a_bug_report(ui, tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
     help_menu = next(m for m in win.action_groups if m.title().replace("&", "") == "Help")
 
+    # 0.13.1: the House Standard's order first (Report a problem · What's new · Keyboard shortcuts · Show the tour · About),
+    # then Sluice's own items; Uninstall moved to Settings > About & uninstall
     assert [a.text().replace("&", "") for a in help_menu.actions() if a.text()] == [
-        "Learn", "Keyboard shortcuts", "What's new in this version", "Something wrong", "I heard a glitch", "Save bug report…",
-        "Report a problem", "Community", "Join the Discord", "Project page on GitHub", "About", "About Sluice",
-        "Uninstall Sluice…"]
+        "Report a problem…",
+        "What's new",
+        "Keyboard shortcuts",
+        "Show the tour",
+        "About Sluice",
+        "Sluice",
+        "I heard a glitch",
+        "Join the Discord",
+        "Project page on GitHub",
+    ]
     target = tmp_path / "report.txt"
     win.save_report_to(target)
     assert target.read_text().startswith("sluice bug report")
@@ -359,15 +368,20 @@ def test_one_picker_for_playing_installed_and_typed_apps(ui, monkeypatch):
     from sluice.ui_apps import AppPickerDialog
 
     win, system, engine = ui
-    engine.catalog = Catalog([
-        AppEntry("Half-Life 2", "steam:220", "game", frozenset({"steam:220", "half-life 2"})),
-        AppEntry("Krita", "krita", "app", frozenset({"krita"})),
-        AppEntry("Spotify", "spotify", "app", frozenset({"spotify"})),
-    ])
+    engine.catalog = Catalog(
+        [
+            AppEntry("Half-Life 2", "steam:220", "game", frozenset({"steam:220", "half-life 2"})),
+            AppEntry("Krita", "krita", "app", frozenset({"krita"})),
+            AppEntry("Spotify", "spotify", "app", frozenset({"spotify"})),
+        ]
+    )
     owner = lambda key: "Music" if key == "spotify" else None  # noqa: E731
     dialog = AppPickerDialog(engine.catalog, "Game", owner, running=[("Firefox", "firefox"), ("Spotify", "spotify")])
     texts = lambda: [dialog.list.item(i).text() for i in range(dialog.list.count())]  # noqa: E731
-    assert texts()[:2] == ["Firefox   (playing now)", "Spotify   (playing now)   now in Music"]  # playing apps first, no duplicates
+    assert texts()[:2] == [
+        "Firefox   (playing now)",
+        "Spotify   (playing now)   now in Music",
+    ]  # playing apps first, no duplicates
     assert len(texts()) == 4 and not any("by name" in t for t in texts())
 
     dialog.games_only.setChecked(True)
@@ -480,6 +494,7 @@ def _texts(menu):
 
 def test_menu_bar_has_the_usual_menus_in_the_usual_order(ui):
     win, _, engine = ui
+
     class FakeControls:
         shown = 0
 
@@ -492,22 +507,68 @@ def test_menu_bar_has_the_usual_menus_in_the_usual_order(ui):
     win.attach_controls(FakeControls())
     names = [m.title().replace("&", "") for m in win.action_groups]
     assert names == ["File", "Mixer", "Window", "Settings", "Help"]  # 0.12.0: groups of actions; no menu bar shows them
-    assert _texts(_menu(win, "File")) == ["Save settings", "Import settings…", "Export settings…", "Restore earlier settings",
-                                          "Reset all settings to the defaults…", "Open folder", "Quit", "Settings…"]
-    assert _texts(_menu(win, "Mixer")) == ["Channels", "Add channel…", "Refresh devices and apps", "Mixes", "Recording mix (a third mix)",
-                                           "Recording devices for OBS…", "Recording devices follow Broadcast", "Quick mutes", "Mute my microphone", "Mute Listen",
-                                           "Mute Broadcast", "Hear Broadcast"]
+    assert _texts(_menu(win, "File")) == [
+        "Save settings",
+        "Import settings…",
+        "Export settings…",
+        "Restore earlier settings",
+        "Reset all settings to the defaults…",
+        "Open folder",
+        "Quit",
+        "Settings…",
+    ]
+    assert _texts(_menu(win, "Mixer")) == [
+        "Channels",
+        "Add channel…",
+        "Refresh devices and apps",
+        "Mixes",
+        "Recording mix (a third mix)",
+        "Recording devices for OBS…",
+        "Recording devices follow Broadcast",
+        "Quick mutes",
+        "Mute my microphone",
+        "Mute Listen",
+        "Mute Broadcast",
+        "Hear Broadcast",
+    ]
     assert _texts(_menu(win, "Settings")) == [
-        "Startup and background", "Running in the background", "Add Sluice to the applications menu",
-        "Audio", "Audio buffer", "Controllers", "MIDI controllers and Stream Deck…",
-        "Updates", "Update automatically when a new version is found", "Check for updates…", "Go back to the previous version…", "Which versions"]
-    assert _texts(_menu(win, "Window")) == ["Layout", "Columns (a card for each channel)", "Rows (a line for each channel)", "Show levels as",
-                                          "Themes and skins", "Skin", "Theme", "Skin's own colours on Dark and Light",
-                                          "Reduce effects", "See-through window (Glass on KDE Plasma)", "Desktop", "Desktop widgets",
-                                          "Show or hide my widgets", "Window", "Full screen", "Reset window size", "Hide to tray"]
+        "Startup and background",
+        "Running in the background",
+        "Add Sluice to the applications menu",
+        "Audio",
+        "Audio buffer",
+        "Controllers",
+        "MIDI controllers and Stream Deck…",
+        "Updates",
+        "Update automatically when a new version is found",
+        "Look for a new version once a day",
+        "Check for updates…",
+        "Go back to the previous version…",
+        "Which versions",
+    ]
+    assert _texts(_menu(win, "Window")) == [
+        "Layout",
+        "Columns (a card for each channel)",
+        "Rows (a line for each channel)",
+        "Compact list (for a second screen)",
+        "Show levels as",
+        "Themes and skins",
+        "Skin",
+        "Theme",
+        "Skin's own colours on Dark and Light",
+        "Reduce effects",
+        "Desktop",
+        "Desktop widgets",
+        "Show or hide my widgets",
+        "Window",
+        "Full screen",
+        "Reset window size",
+        "Hide to tray",
+    ]
     # a heading is words over a group, never a blank band: the first thing in a menu with groups is a heading
     from sluice.ui_menus import MENU_HEADING
-    for name in ("Mixer", "Window", "Settings", "Help"):
+
+    for name in ("Mixer", "Window", "Settings"):  # 0.13.1: Help starts with the House Standard's items, no heading
         first = _menu(win, name).actions()[0]
         assert first.property("heading") and first.defaultWidget().objectName() == MENU_HEADING
         assert first.defaultWidget().property("first") is True
@@ -611,8 +672,16 @@ def test_fader_value_roundtrip_and_wheel(ui):
         assert abs(fader.gain() - tenths) <= 1  # the fader has 1000 steps: tenths of a dB survive the round trip
     fader.setGain(0)
     seen.clear()
-    event = QWheelEvent(QPointF(5, 5), QPointF(5, 5), QPoint(0, 0), QPoint(0, 120), Qt.MouseButton.NoButton,
-                        Qt.KeyboardModifier.NoModifier, Qt.ScrollPhase.NoScrollPhase, False)
+    event = QWheelEvent(
+        QPointF(5, 5),
+        QPointF(5, 5),
+        QPoint(0, 0),
+        QPoint(0, 120),
+        Qt.MouseButton.NoButton,
+        Qt.KeyboardModifier.NoModifier,
+        Qt.ScrollPhase.NoScrollPhase,
+        False,
+    )
     fader.wheelEvent(event)
     assert fader.gain() == pytest.approx(10, abs=1)  # one notch is about 1 dB
     fader.mouseDoubleClickEvent(type("E", (), {"accept": lambda self: None})())
@@ -725,7 +794,9 @@ def test_fader_readouts_can_be_typed_into(ui):
     music.readouts["monitor"].entered.emit(float("-inf"))
     assert engine.mixer.channel("music").levels["monitor"] == -60.0 and music.readouts["monitor"].toolTip().startswith("-inf dB")
     win.mix_strips[1].readout.entered.emit(-6.0)
-    assert engine.mixer.mix(STREAM).gain_db == -6.0 and win.mix_strips[1].readout.toolTip().startswith("-6.0 dB")  # (0.12.3: followed by the percent)
+    assert engine.mixer.mix(STREAM).gain_db == -6.0 and win.mix_strips[1].readout.toolTip().startswith(
+        "-6.0 dB"
+    )  # (0.12.3: followed by the percent)
 
 
 def test_meters_stop_while_the_window_is_hidden(ui):
@@ -1137,8 +1208,10 @@ def test_the_tray_menu_has_every_quick_control(ui, tray):
     assert win._tray_mutes["stream"].isChecked() and win._tray_hear.isChecked() and not win._tray_mutes["monitor"].isChecked()
 
 
-def test_the_tray_icon_shows_muted_and_lights_up_while_you_talk(ui, tray):
+def test_the_tray_icon_shows_muted_and_lights_up_while_you_talk(ui, tray, monkeypatch):
     from sluice import ui_icons
+
+    monkeypatch.setattr("sluice.ui_tray.TRAY_HOLD", 0.0)  # (the 400 ms hold is tested in test_obs_routing)
 
     win, _, engine = ui
     win.close_actions["tray"].trigger()
@@ -1163,6 +1236,7 @@ def test_the_tray_icon_shows_muted_and_lights_up_while_you_talk(ui, tray):
 
 def test_the_tray_icon_is_not_redrawn_while_nothing_changes(ui, tray, monkeypatch):
     win, _, engine = ui
+    monkeypatch.setattr("sluice.ui_tray.TRAY_HOLD", 0.0)
     win.close_actions["tray"].trigger()
     calls = []
     monkeypatch.setattr(win._tray, "setIcon", lambda icon: calls.append(1))

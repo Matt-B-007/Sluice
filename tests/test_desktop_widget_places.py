@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Desktop widgets in 0.11.5: a channel widget and a mix widget, snapping to screen edges and to each other, a place remembered on
 each screen, KDE's layer-shell when it can be used (and an ordinary window when it cannot), and the KWin rule fallback."""
+
 import ctypes
 import os
 
@@ -57,8 +58,16 @@ def test_a_place_is_remembered_on_each_screen_and_used_when_that_screen_is_back(
 
 
 def test_saved_places_are_cleaned_and_new_kinds_are_accepted():
-    spec = clean_widget_spec({"kind": "channel", "channel": "game", "x": 10, "y": 20, "screen": "eDP-1",
-                              "places": {"eDP-1": [10, 20], "bad": [1, "x"], 5: [1, 2], "big": [1, 99999]}})
+    spec = clean_widget_spec(
+        {
+            "kind": "channel",
+            "channel": "game",
+            "x": 10,
+            "y": 20,
+            "screen": "eDP-1",
+            "places": {"eDP-1": [10, 20], "bad": [1, "x"], 5: [1, 2], "big": [1, 99999]},
+        }
+    )
     assert spec["places"] == {"eDP-1": [10, 20]} and spec["screen"] == "eDP-1"
     assert clean_widget_spec({"kind": "channel"}) is None  # a channel widget needs its channel
     assert clean_widget_spec({"kind": "mix", "mix": "stream"})["kind"] == "mix"
@@ -95,8 +104,9 @@ def test_layer_shell_is_only_used_on_kde_wayland_with_every_function_there():
     missing = desktop_place.LayerShell(loader=lambda: FakeLibrary(missing=("setMargins",)), env=KDE, platform="wayland")
     assert not missing.available and "missing" in missing.reason
     assert desktop_place.LayerShell(loader=lambda: FakeLibrary(missing=("setScope",)), env=KDE, platform="wayland").available
-    optional_gone = desktop_place.LayerShell(loader=lambda: FakeLibrary(missing=("setKeyboardInteractivity", "setScreen")), env=KDE,
-                                             platform="wayland")
+    optional_gone = desktop_place.LayerShell(
+        loader=lambda: FakeLibrary(missing=("setKeyboardInteractivity", "setScreen")), env=KDE, platform="wayland"
+    )
     assert optional_gone.available and set(optional_gone.missing_optional()) == {"setKeyboardInteractivity", "setScreen"}
     assert optional_gone.attach(object(), pointer=1)  # works without them
 
@@ -107,8 +117,15 @@ def test_a_layer_shell_widget_is_put_on_the_top_layer_and_moved_by_its_margins()
     window = object()
     assert shell.attach(window, pointer=0xBEEF) and shell.is_attached(window)
     names = [name for name, _ in lib.calls]
-    assert names[:7] == ["get", "setLayer", "setAnchors", "setKeyboardInteractivity", "setExclusiveZone",
-                         "setWantsToBeOnActiveScreen", "setActivateOnShow"]
+    assert names[:7] == [
+        "get",
+        "setLayer",
+        "setAnchors",
+        "setKeyboardInteractivity",
+        "setExclusiveZone",
+        "setWantsToBeOnActiveScreen",
+        "setActivateOnShow",
+    ]
     assert lib.calls[5][1][1] is False and lib.calls[6][1][1] is False  # stays on its screen, takes no focus
     assert lib.calls[1][1][1] == desktop_place.LAYER_TOP
     assert lib.calls[2][1][1] == desktop_place.ANCHOR_TOP | desktop_place.ANCHOR_LEFT
@@ -155,8 +172,16 @@ def test_a_channel_widget_changes_levels_and_mutes_in_every_mix(qapp, tmp_path):
         widget.set_db(engine.mixer.mixes[0].id, -12.0)
         assert engine.mixer.channel("game").levels[engine.mixer.mixes[0].id] == -12.0
         point = groove.center()
-        event = QWheelEvent(point, widget.mapToGlobal(point.toPoint()).toPointF(), QPointF(0, 0).toPoint(), QPointF(0, 120).toPoint(),
-                            Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier, Qt.ScrollPhase.NoScrollPhase, False)
+        event = QWheelEvent(
+            point,
+            widget.mapToGlobal(point.toPoint()).toPointF(),
+            QPointF(0, 0).toPoint(),
+            QPointF(0, 120).toPoint(),
+            Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.NoModifier,
+            Qt.ScrollPhase.NoScrollPhase,
+            False,
+        )
         before = engine.mixer.channel("game").levels[engine.mixer.mixes[1].id]
         widget.wheelEvent(event)
         assert engine.mixer.channel("game").levels[engine.mixer.mixes[1].id] == before + 1.0
@@ -179,6 +204,7 @@ def test_a_mix_widget_changes_the_level_mute_and_limiter(qapp, tmp_path):
         assert mix.mute
         limiter = mix.limiter
         from PySide6.QtTest import QTest
+
         QTest.mouseClick(widget, Qt.MouseButton.LeftButton, pos=widget._limiter_rect().center().toPoint())
         assert mix.limiter is (not limiter)
         widget.grab()
@@ -242,19 +268,22 @@ def test_every_layer_shell_name_is_one_the_plasma_6_library_exports():
 
 def test_mangled_names_count_their_lengths_right():
     import re
+
     for name in desktop_place.SYMBOLS.values():
-        rest = name[len("_ZN12LayerShellQt6Window"):]
+        rest = name[len("_ZN12LayerShellQt6Window") :]
         digits = re.match(r"\d+", rest).group(0)
-        method = rest[len(digits):len(digits) + int(digits)]
+        method = rest[len(digits) : len(digits) + int(digits)]
         assert method.isalpha() and method.startswith(("get", "set")) and rest[len(digits) + int(digits)] == "E", name
         for found in re.finditer(r"NS0_(\d+)", rest):  # a nested name of that many letters, then E
-            count, after = int(found.group(1)), rest[found.end():]
+            count, after = int(found.group(1)), rest[found.end() :]
             assert after[:count].isalpha() and after[count] == "E", name
     assert desktop_place.nested("KeyboardInteractivity") == "NS0_21KeyboardInteractivityE"
 
 
 def test_the_bug_report_says_how_widgets_are_shown(monkeypatch):
-    monkeypatch.setattr(desktop_place, "_shell", desktop_place.LayerShell(env={"XDG_CURRENT_DESKTOP": "GNOME"}, platform="wayland"))
+    monkeypatch.setattr(
+        desktop_place, "_shell", desktop_place.LayerShell(env={"XDG_CURRENT_DESKTOP": "GNOME"}, platform="wayland")
+    )
     assert desktop_place.status().startswith("ordinary windows (not KDE Plasma on Wayland")
     monkeypatch.setattr(desktop_place, "_shell", desktop_place.LayerShell(loader=FakeLibrary, env=KDE, platform="wayland"))
     assert desktop_place.status().startswith("KDE layer-shell")
@@ -266,6 +295,7 @@ def test_a_layer_shell_widget_follows_the_pointer_without_lag_or_jumps(qapp, tmp
     by it lagged and jumped. The widget now moves by the pointer's distance from where it was taken, inside the widget, one step
     per frame; this drives it with a compositor that applies each move only when the frame comes, and stale screen positions."""
     import os
+
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtCore import QEvent, QPointF, Qt
     from PySide6.QtGui import QMouseEvent

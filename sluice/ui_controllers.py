@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Glue for outside control: the control socket, the MIDI hub, and the "Controllers" window."""
+
 from __future__ import annotations
 
 import logging
@@ -250,7 +251,7 @@ class ControllersPanel(QWidget):
         row = self.list.currentRow()
         hub = self.controls.hub
         if 0 <= row < len(hub.bindings):
-            hub.set_bindings(hub.bindings[:row] + hub.bindings[row + 1:])
+            hub.set_bindings(hub.bindings[:row] + hub.bindings[row + 1 :])
             self.controls.save()
             self._refresh()
 

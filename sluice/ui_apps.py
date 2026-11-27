@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The "Installed app or game" picker."""
+
 from __future__ import annotations
 
 from typing import Callable, Optional
@@ -25,8 +26,15 @@ class AppPickerDialog(QDialog):
     """One searchable list for everything that can go on a channel: programs playing sound now, installed
     programs and games, and (by typing a name that is not in the list) any other program."""
 
-    def __init__(self, catalog: Catalog, channel_label: str, owner_of: Callable[[str], Optional[str]],
-                 parent: Optional[QWidget] = None, running: Optional[list] = None, anchor: Optional[QWidget] = None) -> None:
+    def __init__(
+        self,
+        catalog: Catalog,
+        channel_label: str,
+        owner_of: Callable[[str], Optional[str]],
+        parent: Optional[QWidget] = None,
+        running: Optional[list] = None,
+        anchor: Optional[QWidget] = None,
+    ) -> None:
         super().__init__(parent)
         self.catalog = catalog
         self.owner_of = owner_of  # key -> label of the channel that has it now, or None
@@ -63,6 +71,7 @@ class AppPickerDialog(QDialog):
         self.list.itemSelectionChanged.connect(self._selection_changed)
         self._fill()
         from .ui_dialog import card_panel  # 0.12.2: drops from the card's menu, not a separate window
+
         card_panel(self, f"Add an app or game to {channel_label}", anchor)
         self.search.setFocus()
 

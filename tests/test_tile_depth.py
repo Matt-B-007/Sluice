@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The Tile look in 0.11.5: keys with full depth (shadows that are never cut off, a thick skirt with a rim, a lit face), a sunken
 tray, and Listen and Broadcast as short keys with sideways sliders."""
+
 import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -51,6 +52,7 @@ def test_a_key_has_room_for_its_shadows_so_none_is_cut_off(qapp, tmp_path):
 
 def test_keys_overlap_by_their_shadow_room_and_sit_in_a_tray(qapp, tmp_path):
     from sluice.ui_base import TILE_GAP
+
     win, _ = make(qapp, tmp_path)
     try:
         first, second = win.strips[0], win.strips[1]
@@ -69,7 +71,8 @@ def test_listen_and_broadcast_are_short_keys_with_a_sideways_slider(qapp, tmp_pa
         assert listen.height() < 200 and listen.x() == broadcast.x() and broadcast.y() > listen.y()  # stacked at the right
         assert listen.fader is listen.meter and listen.fader.orientation() == Qt.Orientation.Horizontal
         assert listen.combo is not None and not listen.details.isVisible()  # the device picker is folded away
-        listen.fold.click(); qapp.processEvents()
+        listen.fold.click()
+        qapp.processEvents()
         assert listen.details.isVisible() and listen.combo.isVisible()
         assert broadcast.device_line.text() == engine.mixer.mixes[1].source_description
         listen.fader.setGain(-60)
@@ -97,8 +100,9 @@ def test_a_recording_mix_key_can_be_removed_from_its_fold_out(qapp, tmp_path):
     win, _ = make(qapp, tmp_path, recording=True)
     try:
         recording = win.mix_strips[-1]
-        assert recording.tile_key and any(b.text().startswith("Remove the Recording mix")
-                                          for b in recording.details.findChildren(type(recording.limiter)))
+        assert recording.tile_key and any(
+            b.text().startswith("Remove the Recording mix") for b in recording.details.findChildren(type(recording.limiter))
+        )
     finally:
         win.shutdown()
 

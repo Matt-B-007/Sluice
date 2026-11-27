@@ -1,8 +1,17 @@
 """0.12.6 (House Standard): every visible interactive control has a name a screen reader can say, and faders and effect
 sliders say their value in dB or the effect's own unit, not the handle's position. Buttons that show text are named by it."""
+
 import pytest
-from PySide6.QtWidgets import (QAbstractButton, QAbstractSlider, QAbstractSpinBox, QComboBox, QLineEdit, QScrollBar,
-                               QStackedWidget, QWidget)
+from PySide6.QtWidgets import (
+    QAbstractButton,
+    QAbstractSlider,
+    QAbstractSpinBox,
+    QComboBox,
+    QLineEdit,
+    QScrollBar,
+    QStackedWidget,
+    QWidget,
+)
 
 from sluice.audio_io import NullIO
 from sluice.backend import MockSystem
@@ -27,6 +36,7 @@ def unnamed(root: QWidget) -> list:
 @pytest.fixture
 def window(qapp, tmp_path, request):
     from sluice.ui import MainWindow
+
     mixer = Mixer.demo()
     mixer.skin = getattr(request, "param", "calm")
     engine = Engine(mixer, MockSystem(), NullIO(realtime=False), NullLinker())
@@ -57,10 +67,15 @@ def test_settings_and_dialogs_have_names_for_every_control(window, qapp):
     from sluice.ui_channel import OwnDevicesDialog
     from sluice.ui_effects import EffectsDialog
     from sluice.ui_settings import SettingsWindow
+
     engine = window.engine
     mic = engine.mixer.channel("mic")
-    dialogs = [SettingsWindow(window), EffectsDialog(engine, mic, window), OwnDevicesDialog(engine, window),
-               AppPickerDialog(engine.catalog, "Game", lambda key: None, window)]
+    dialogs = [
+        SettingsWindow(window),
+        EffectsDialog(engine, mic, window),
+        OwnDevicesDialog(engine, window),
+        AppPickerDialog(engine.catalog, "Game", lambda key: None, window),
+    ]
     try:
         for dialog in dialogs:
             dialog.show()
@@ -79,6 +94,7 @@ def test_settings_and_dialogs_have_names_for_every_control(window, qapp):
 
 def test_effect_sliders_say_their_value(window):
     from sluice.ui_effects import EffectsDialog, ParamRow
+
     dialog = EffectsDialog(window.engine, window.engine.mixer.channel("mic"), window)
     try:
         row = dialog.findChildren(ParamRow)[0]

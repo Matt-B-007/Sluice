@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The layout switch, the first-run screen, the slim fader, the status chip, and old theme files."""
+
 import json
 
 import pytest
@@ -94,14 +95,26 @@ def test_theme_file_without_the_new_colours_still_loads_and_gets_them(tmp_path):
     assert theme.colors["accent"] == "#ff8844"
 
 
-def test_every_shipped_theme_lists_all_colours_and_passes_contrast():
+def test_the_downloadable_themes_still_import():
+    """0.13.1: the themes/ folder is unmaintained (community themes, as they are): it is not held to the contrast test or to
+    new colour names, but every file must still import, the missing colours filled in from its base."""
     import pathlib
+
     folder = pathlib.Path(__file__).resolve().parent.parent / "themes"
     files = sorted(folder.glob("*.json"))
-    assert len(files) == 21
+    assert len(files) == 18  # 21 until 0.13.1: three of them are built in now
+    built_in = {t.name for t in themes.BUILT_IN.values()}
     for path in files:
-        data = json.loads(path.read_text())
-        assert set(data["colors"]) >= set(themes.TOKEN_NAMES), path.name
+        theme, _notes = themes.parse(json.loads(path.read_text()))
+        assert theme.name not in built_in, path.name  # no theme twice
+        assert set(theme.colors) >= set(themes.TOKEN_NAMES), path.name
+
+
+def test_every_built_in_theme_passes_the_contrast_test():
+    """0.13.1 (House Standard v1.3): every text colour on every surface it sits on, in every built-in theme."""
+    for theme in themes.BUILT_IN.values():
+        assert themes.contrast_problems(theme.colors, strict=True) == [], theme.name
+        assert themes.house_contrast_problems(theme.colors) == [], theme.name
 
 
 def test_clicking_a_control_never_changes_its_size_or_the_window(rig):
@@ -112,14 +125,22 @@ def test_clicking_a_control_never_changes_its_size_or_the_window(rig):
     for layout in ("columns", "rows"):
         win.set_layout(layout)
         QTest.qWait(20)
-        controls = [w for kind in (QPushButton, QToolButton, QComboBox, QLineEdit) for w in win.findChildren(kind) if w.isVisible()]
+        controls = [
+            w for kind in (QPushButton, QToolButton, QComboBox, QLineEdit) for w in win.findChildren(kind) if w.isVisible()
+        ]
         assert controls
         size = win.size()
         for widget in controls:
             before = widget.sizeHint()
             widget.setFocus(Qt.FocusReason.TabFocusReason)
             QTest.qWait(1)
-            assert widget.sizeHint() == before, (layout, widget.objectName(), widget.text() if hasattr(widget, "text") else "", before, widget.sizeHint())
+            assert widget.sizeHint() == before, (
+                layout,
+                widget.objectName(),
+                widget.text() if hasattr(widget, "text") else "",
+                before,
+                widget.sizeHint(),
+            )
             widget.clearFocus()
         assert win.size() == size
 
@@ -131,7 +152,9 @@ def test_icons_are_drawn_for_the_exact_size_and_scale(qapp):
         for px in (16, 18, 20, 24, 30, 40):
             pixmap = ui_icons.render(name, "#ffffff", px)
             assert pixmap.width() == px and pixmap.height() == px
-            assert pixmap.toImage().pixelColor(0, 0).alpha() == 0 or name == "gear"  # transparent corner: nothing is stretched
+            # transparent corner: nothing is stretched (0.13.1: Lucide's mic-off slash ends a unit from the corner, so its
+            # round cap tints that pixel faintly)
+            assert pixmap.toImage().pixelColor(0, 0).alpha() < (64 if name == "mic_off" else 1) or name == "gear", name
     icon = ui_icons.icon("plus", "#ffffff", 20)
     assert icon.pixmap(20, 20).width() >= 20
     assert not icon.pixmap(40, 40).isNull()
@@ -145,8 +168,10 @@ def test_a_straight_icon_line_is_sharp_at_every_size(qapp):
         image = ui_icons.render("plus", "#ffffff", px).toImage()
         column = [image.pixelColor(int(px * 0.2), y).alpha() for y in range(px)]
         lit = [a for a in column if a]
-        # one stroke of whole pixels on the pixel grid: as many solid rows as it is wide, nothing smeared beyond (0.12.2: bolder)
-        width = max(1, round(2.4 * px / 24))
+        # one stroke of whole pixels on the pixel grid: as many solid rows as it is wide, nothing smeared beyond (0.12.2: bolder;
+        # 0.13.1: Lucide's weight, rounded to whole pixels)
+        width = ui_icons.stroke_pixels(px)
+        assert abs(width - 2.0 * px / 24) <= 1.0
         assert width <= len(lit) <= width + 1 and lit == lit[::-1] and max(lit) >= 200, (px, column)
 
 

@@ -6,6 +6,7 @@ Personal details are replaced before it is written: the home folder becomes ``~`
 computer name, user id, USB serial numbers and Bluetooth addresses become placeholders. Device names,
 app names and plugin paths remain, so it is still worth a look before sharing.
 """
+
 from __future__ import annotations
 
 import os
@@ -21,9 +22,9 @@ from . import __version__, efficiency, logs
 from .model import config_path
 
 LOG_LINES = 300
-PREVIOUS_LINES = 60        # the end of the session before this one (a crash happens at the end of a session)
+PREVIOUS_LINES = 60  # the end of the session before this one (a crash happens at the end of a session)
 CRASH_BLOCK_LINES = 40
-REPEAT_MIN = 4             # this many identical lines in a row are shown as the first, a count, and the last
+REPEAT_MIN = 4  # this many identical lines in a row are shown as the first, a count, and the last
 SESSION_START = "=== sluice "
 CRASH_HEADERS = ("--- sluice session started", "--- sluice command started")
 
@@ -57,7 +58,7 @@ def last_pw_top_round(text: str, limit: int = 40) -> str:
     """From ``pw-top -b -n 2`` keep the last round: the first has no timings yet, the second shows who is busy or erring."""
     lines = text.splitlines()
     starts = [i for i, line in enumerate(lines) if line.split()[:2] == ["S", "ID"]]
-    kept = lines[starts[-1]:] if starts else lines
+    kept = lines[starts[-1] :] if starts else lines
     return "\n".join(kept[:limit]) or "(no output)"
 
 
@@ -90,13 +91,15 @@ def collapse_repeats(lines: list) -> list:
         run = j - i + 1
         if run >= REPEAT_MIN:
             out.append(lines[i])
-            slow = [line for line in lines[i + 1:j] if _SLOW_BLOCK.search(line)][:3]  # a block over 100% is worth keeping
-            out.append(f"    ... {run - 2 - len(slow)} similar lines, {_log_time(lines[i])} to {_log_time(lines[j])}"
-                       + (", the slow ones kept ..." if slow else " ..."))
+            slow = [line for line in lines[i + 1 : j] if _SLOW_BLOCK.search(line)][:3]  # a block over 100% is worth keeping
+            out.append(
+                f"    ... {run - 2 - len(slow)} similar lines, {_log_time(lines[i])} to {_log_time(lines[j])}"
+                + (", the slow ones kept ..." if slow else " ...")
+            )
             out.extend(slow)
             out.append(lines[j])
         else:
-            out.extend(lines[i:j + 1])
+            out.extend(lines[i : j + 1])
         i = j + 1
     return out
 
@@ -145,7 +148,7 @@ def crash_summary(text: str, modified: Optional[float] = None, archive_text: str
     """The native-crash file split into sessions: which session each trace belongs to, and when the file last changed.
     Traces from long-gone sessions live in the archive file and are only mentioned in one line."""
     lines = text.splitlines()
-    blocks: list = []   # (header or None, trace lines)
+    blocks: list = []  # (header or None, trace lines)
     header: Optional[str] = None
     trace: list = []
     for line in lines:
@@ -184,10 +187,12 @@ def crash_summary(text: str, modified: Optional[float] = None, archive_text: str
     return "\n".join(head)
 
 
-_PW_TOP_COLUMNS = 9   # S ID QUANT RATE WAIT BUSY W/Q B/Q ERR
+_PW_TOP_COLUMNS = 9  # S ID QUANT RATE WAIT BUSY W/Q B/Q ERR
 
 
-_VIDEO_FORMAT = re.compile(r"^(?:BGR|RGB|ARGB|ABGR|xRGB|xBGR|NV\d|I4\d\d|YUY|UYVY|YV12|MJPG|JPEG|GRAY|P0\d\d|YUV|H264|VP\d)", re.IGNORECASE)
+_VIDEO_FORMAT = re.compile(
+    r"^(?:BGR|RGB|ARGB|ABGR|xRGB|xBGR|NV\d|I4\d\d|YUY|UYVY|YV12|MJPG|JPEG|GRAY|P0\d\d|YUV|H264|VP\d)", re.IGNORECASE
+)
 _SIZE = re.compile(r"^\d+x\d+$")
 
 
@@ -208,7 +213,12 @@ def top_errors(text: str, limit: int = 6) -> str:
     found: dict = {"audio": [], "video": [], "virtual": []}
     for line in text.splitlines():
         parts = line.split()
-        if len(parts) <= _PW_TOP_COLUMNS or parts[0] not in "RIS" or not parts[1].isdigit() or not parts[_PW_TOP_COLUMNS - 1].isdigit():
+        if (
+            len(parts) <= _PW_TOP_COLUMNS
+            or parts[0] not in "RIS"
+            or not parts[1].isdigit()
+            or not parts[_PW_TOP_COLUMNS - 1].isdigit()
+        ):
             continue
         errors = int(parts[_PW_TOP_COLUMNS - 1])
         if errors > 0:
@@ -217,8 +227,10 @@ def top_errors(text: str, limit: int = 6) -> str:
     if found["audio"]:
         found["audio"].sort(reverse=True)
         listed = ", ".join(f"{name} ({count})" for count, name in found["audio"][:limit])
-        lines.append("Dropouts counted per audio program or device, most first: " + listed + ". The device that drives the audio "
-                     "is usually the one to look at; programs behind it show errors when it is late.")
+        lines.append(
+            "Dropouts counted per audio program or device, most first: " + listed + ". The device that drives the audio "
+            "is usually the one to look at; programs behind it show errors when it is late."
+        )
     else:
         lines.append("No audio program or device shows dropouts in this snapshot.")
     if found["video"]:
@@ -226,14 +238,21 @@ def top_errors(text: str, limit: int = 6) -> str:
         lines.append("Video feeds with errors (screen or camera capture: skipped frames, not audio): " + listed + ".")
     if found["virtual"]:
         total = sum(count for count, _ in found["virtual"])
-        lines.append(f"Sluice's own virtual devices ({len(found['virtual'])}) show {total} errors in total. These counters do not "
-                     "match what you hear; the line \"audio dropouts\" in the log below is what Sluice itself counts.")
+        lines.append(
+            f"Sluice's own virtual devices ({len(found['virtual'])}) show {total} errors in total. These counters do not "
+            'match what you hear; the line "audio dropouts" in the log below is what Sluice itself counts.'
+        )
     return "\n".join(lines)
 
 
 _LOG_STAMP = re.compile(r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)")
-DROPOUT_MARKERS = ("audio dropouts:", "what changed just before", "nothing changed in the audio system", "MARKED BY YOU",
-                   "a dropout right after")
+DROPOUT_MARKERS = (
+    "audio dropouts:",
+    "what changed just before",
+    "nothing changed in the audio system",
+    "MARKED BY YOU",
+    "a dropout right after",
+)
 
 
 def _stamp(line: str) -> Optional[float]:
@@ -260,17 +279,22 @@ def dropout_timeline(lines: list, now: Optional[float] = None, limit: int = 40) 
         state = "still happening (the last one was moments ago)" if ago <= 120 else "not happening now"
         gaps = [b - a for a, b in zip(sorted(times), sorted(times)[1:])]
         spread = f"; the gaps between them are {min(gaps) / 60:.0f} to {max(gaps) / 60:.0f} min" if gaps else ""
-        head.append(f"{len(times)} dropout event(s) or marked glitch(es) in this session; the last was {when} before this report: "
-                    f"{state}{spread}.")
+        head.append(
+            f"{len(times)} dropout event(s) or marked glitch(es) in this session; the last was {when} before this report: "
+            f"{state}{spread}."
+        )
     shown = picked[-limit:]
     if len(picked) > len(shown):
         head.append(f"(first {len(picked) - len(shown)} lines not shown)")
     return "\n".join(head + shown)
 
 
-USB_LINE = re.compile(r"usb \d+-[\d.]+: (?:new .*USB device number|USB disconnect|reset .*USB device|Product:|Manufacturer:|"
-                      r"over-current|cannot enumerate|unable to enumerate|disabled by hub|device not accepting address|"
-                      r"device descriptor read|cannot submit urb)", re.IGNORECASE)
+USB_LINE = re.compile(
+    r"usb \d+-[\d.]+: (?:new .*USB device number|USB disconnect|reset .*USB device|Product:|Manufacturer:|"
+    r"over-current|cannot enumerate|unable to enumerate|disabled by hub|device not accepting address|"
+    r"device descriptor read|cannot submit urb)",
+    re.IGNORECASE,
+)
 
 
 def usb_events(limit: int = 30) -> str:
@@ -281,8 +305,10 @@ def usb_events(limit: int = 30) -> str:
     if text.startswith("("):
         text = _run(["dmesg", "--time-format", "iso"], timeout=8.0)
     if text.startswith("("):
-        return (f"{text}\nReading the kernel log may need permission: on many systems it works for members of the "
-                "'systemd-journal' group.")
+        return (
+            f"{text}\nReading the kernel log may need permission: on many systems it works for members of the "
+            "'systemd-journal' group."
+        )
     found = [line for line in text.splitlines() if USB_LINE.search(line)]
     if not found:
         return "No USB connect, disconnect or reset lines in the kernel log of the last hours."
@@ -361,7 +387,7 @@ def busy_programs(limit: int = 6) -> str:
         lines.append(table)
     else:
         lines.append("Programs using the most CPU at this moment (percent of one thread):")
-        lines.extend("  " + row.strip() for row in table.splitlines()[1:limit + 1])
+        lines.extend("  " + row.strip() for row in table.splitlines()[1 : limit + 1])
     return "\n".join(lines)
 
 
@@ -376,8 +402,10 @@ def hardware_summary() -> str:
     except OSError:
         pass
     lines.append(f"CPU threads: {os.cpu_count() or '?'}")
-    for label, path in (("CPU frequency setting", "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor"),
-                        ("USB power saving (seconds, -1 is off)", "/sys/module/usbcore/parameters/autosuspend")):
+    for label, path in (
+        ("CPU frequency setting", "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor"),
+        ("USB power saving (seconds, -1 is off)", "/sys/module/usbcore/parameters/autosuspend"),
+    ):
         try:
             lines.append(f"{label}: {Path(path).read_text(encoding='utf-8').strip()}")
         except OSError:
@@ -398,6 +426,8 @@ def anonymize(text: str) -> str:
     except Exception:  # no home folder or user name on this system: nothing to hide, so nothing to replace
         user = ""
     host = platform.node()
+    # Windows-style home folders first (Proton games show Z:\home\<name>\...), before the user name is replaced inside them
+    text = re.sub(r"(?i)\b[A-Z]:\\(?:home|users)\\[^\\\s]+", "~", text)
     # 'User Name: x' / 'Host Name: y' lines from pactl info, then every other mention of the same words
     text = re.sub(r"(?m)^(\s*User Name:\s*).+$", r"\1<user>", text)
     text = re.sub(r"(?m)^(\s*Host Name:\s*).+$", r"\1<host>", text)
@@ -418,10 +448,13 @@ def anonymize(text: str) -> str:
     text = _IPV6.sub(_ipv6_or_not, text)
     text = re.sub(r"\b7656119\d{10}\b", "<steamid>", text)  # Steam ACCOUNT ids only: game ids (steam:1240440) stay
     text = re.sub(r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b", "<secret>", text)
-    text = re.sub(r"(?i)\b((?:api[_-]?key|access[_-]?token|auth[_-]?token|token|secret|password|passwd)\s*[=:]\s*)"
-                  r"(?!<secret>)[^\s\"',;]{6,}", r"\1<secret>", text)
+    text = re.sub(
+        r"(?i)\b((?:api[_-]?key|access[_-]?token|auth[_-]?token|token|secret|password|passwd)\s*[=:]\s*)"
+        r"(?!<secret>)[^\s\"',;]{6,}",
+        r"\1<secret>",
+        text,
+    )
     text = re.sub(r"(?i)(Authorization:\s*(?:Bearer|token)\s+)\S+", r"\1<secret>", text)
-    text = re.sub(r"(?i)\b[A-Z]:\\(?:home|users)\\[^\\\s]+", "~", text)  # Windows-style paths, as Proton games show them
     return text
 
 
@@ -432,6 +465,7 @@ _IPV6 = re.compile(r"(?<![\w:])[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,7}(?![\w:
 def _ipv6_or_not(match) -> str:
     """Only what really is an IPv6 address (a time of day such as 19:02:00 is not) becomes <ip>; ::1 stays."""
     import ipaddress
+
     text = match.group(0)
     if not any(ch.isdigit() for ch in text):  # "a::b" in a program's text is not an address
         return text
@@ -455,8 +489,10 @@ def _section(title: str, body: str) -> str:
     return f"\n===== {title} =====\n{body.rstrip()}\n"
 
 
-_UPDATED = re.compile(r"^(\d{4}-\d\d-\d\d \d\d:\d\d)(?::\d\d)?\S*\s+INFO\s+sluice\.(?:selfupdate|update_install): updated (\S+) -> (\S+)",
-                      re.MULTILINE)
+_UPDATED = re.compile(
+    r"^(\d{4}-\d\d-\d\d \d\d:\d\d)(?::\d\d)?\S*\s+INFO\s+sluice\.(?:selfupdate|update_install): updated (\S+) -> (\S+)",
+    re.MULTILINE,
+)
 
 
 def update_history(log_text: str) -> str:
@@ -469,17 +505,25 @@ def update_history(log_text: str) -> str:
     return f"Last update: {old} -> {new} on {when}{more}.\n"
 
 
-def engine_summary(version: Optional[str] = None, expected: Optional[str] = None, older: Optional[bool] = None,
-                   error: Optional[str] = None, rebuild: Optional[dict] = "unset") -> str:
+def engine_summary(
+    version: Optional[str] = None,
+    expected: Optional[str] = None,
+    older: Optional[bool] = None,
+    error: Optional[str] = None,
+    rebuild: Optional[dict] = "unset",
+) -> str:
     """0.11.7: one line on the Rust engine: which, whether this Sluice ships a newer one, and the last rebuild and how it went."""
     from . import spectral, update_install
+
     version = spectral.RUST_VERSION if version is None else version
     expected = spectral.RUST_EXPECTED if expected is None else expected
     older = spectral.rust_is_older() if older is None else older
     error = spectral.RUST_ERROR if error is None else error
     rebuild = update_install.last_rebuild() if rebuild == "unset" else rebuild
     if version:
-        line = f"Audio engine: Rust {version}" + (f" (this Sluice comes with {expected}: rebuild it for the fixes since)" if older else "")
+        line = f"Audio engine: Rust {version}" + (
+            f" (this Sluice comes with {expected}: rebuild it for the fixes since)" if older else ""
+        )
     elif error:
         line = f"Audio engine: Python (the Rust build could not be used: {error})"
     else:
@@ -493,6 +537,7 @@ def engine_summary(version: Optional[str] = None, expected: Optional[str] = None
 def skin_summary() -> str:
     """One line on what is on screen: the look, the layout shown (a saved Free, gone in 0.11.5, shows Columns) and whether effects are reduced."""
     from . import themes
+
     try:
         saved = json.loads(config_path().read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -529,13 +574,15 @@ def window_summary() -> str:
         return f"Window: (could not read: {info['error']})\n"
     dock = {"right": "Listen and Broadcast beside the channels", "bottom": "Listen and Broadcast in a bar under the channels"}
     automatic = "yes" if info["mode"] != info["chosen"] else "no"
-    return (f"Window: {info['width']}x{info['height']} px{' (full screen)' if info.get('fullscreen') else ''} on a {info['screen']} screen at scale "
-            f"{info['scale']}. Size step: {info['step']}. Arrangement: {info['mode']}"
-            f"{'' if info['mode'] == 'mini' else ', ' + dock.get(info['dock'], info['dock'])} (chosen: {info['chosen']}; "
-            f"switched by the window's size: {automatic}). Rearranged {info['relayouts']} times this session. "
-            f"Skin's own colours: {'on' if info.get('look_colors', True) else 'off'}.\n"
-            f"Desktop widgets: {info.get('widgets', 'none open')}.\n"
-            + (f"Minimizing: {info['minimize']}.\n" if info.get("minimize") else ""))
+    return (
+        f"Window: {info['width']}x{info['height']} px{' (full screen)' if info.get('fullscreen') else ''} on a {info['screen']} screen at scale "
+        f"{info['scale']}. Size step: {info['step']}. Arrangement: {info['mode']}"
+        f"{'' if info['mode'] == 'mini' else ', ' + dock.get(info['dock'], info['dock'])} (chosen: {info['chosen']}; "
+        f"switched by the window's size: {automatic}). Rearranged {info['relayouts']} times this session. "
+        f"Skin's own colours: {'on' if info.get('look_colors', True) else 'off'}.\n"
+        f"Desktop widgets: {info.get('widgets', 'none open')}.\n"
+        + (f"Minimizing: {info['minimize']}.\n" if info.get("minimize") else "")
+    )
 
 
 def window_layout() -> str:
@@ -552,7 +599,39 @@ def _safe(make) -> str:
         return f"({type(exc).__name__} while writing a summary line: {exc})\n"
 
 
-def build_report(log_lines: int = LOG_LINES) -> str:
+def header() -> str:
+    """0.13.1 (House Standard): app, version, channel, install type, distro, desktop, Wayland/X11, kernel. One line each."""
+    from . import update_install
+    from .model import Mixer
+
+    try:
+        channel = Mixer.load(config_path()).update_channel if config_path().is_file() else "stable"
+    except Exception:  # noqa: BLE001 - a damaged settings file still gets a report
+        channel = "unknown"
+    root = update_install.install_root()
+    if root is None:
+        install = "not installed (run from a folder or a package)"
+    elif update_install.runs_from_download(root):
+        install = f"from its download folder ({logs.short_path(root)})"
+    else:
+        install = f"in its own folder ({logs.short_path(root)})"
+    distro = ""
+    try:
+        for line in Path("/etc/os-release").read_text().splitlines():
+            if line.startswith("PRETTY_NAME="):
+                distro = line.split("=", 1)[1].strip().strip('"')
+    except OSError:
+        pass
+    session = "Wayland" if os.environ.get("WAYLAND_DISPLAY") else "X11" if os.environ.get("DISPLAY") else "no desktop session"
+    return (
+        f"App: Sluice {__version__}\nUpdate channel: {channel}\nInstalled: {install}\nDistribution: {distro or 'unknown'}\n"
+        f"Desktop: {os.environ.get('XDG_CURRENT_DESKTOP') or 'unknown'} ({session})\nKernel: {platform.release()}\n"
+    )
+
+
+def build_report(log_lines: int = LOG_LINES, include_settings: bool = True) -> str:
+    """The bug report. ``include_settings`` False (the Report dialog's choice) leaves the settings file out: it names your
+    channels, devices and apps."""
     from .diagnose import report as diagnose_report
 
     try:
@@ -564,6 +643,7 @@ def build_report(log_lines: int = LOG_LINES) -> str:
         "Your user name, computer name, home folder, USB serial numbers and Bluetooth addresses are replaced.\n"
         "It still contains device names, app names and plugin file paths. Look it over before sharing it.\n"
         f"Created: {time.strftime('%Y-%m-%d %H:%M:%S %Z')} by Sluice {__version__}\n"
+        + _safe(header)
         + skin_summary()
         + window_summary()
         + _safe(engine_summary)
@@ -582,23 +662,41 @@ def build_report(log_lines: int = LOG_LINES) -> str:
     parts.append(_section("PipeWire", _run(["pipewire", "--version"])))
     parts.append(_section("WirePlumber", _run(["wireplumber", "--version"])))
     parts.append(_section("pactl info", _run(["pactl", "info"])))
-    parts.append(_section("PipeWire clock and buffer size (pw-metadata -n settings)",
-                          _grep(_run(["pw-metadata", "-n", "settings"]), "clock")))
+    parts.append(
+        _section(
+            "PipeWire clock and buffer size (pw-metadata -n settings)", _grep(_run(["pw-metadata", "-n", "settings"]), "clock")
+        )
+    )
     top = _run(["pw-top", "-b", "-n", "2"], timeout=10.0)
     if top.startswith("("):
         parts.append(_section("Who is busy or erring right now (pw-top; ERR is dropouts per program)", top))
     else:
         last = last_pw_top_round(top)
-        parts.append(_section("Who is busy or erring right now (pw-top; ERR is dropouts per program)",
-                              top_errors(last) + "\n\n" + last))
+        parts.append(
+            _section("Who is busy or erring right now (pw-top; ERR is dropouts per program)", top_errors(last) + "\n\n" + last)
+        )
     parts.append(_section("Sinks (pactl list short sinks)", _run(["pactl", "list", "short", "sinks"])))
     parts.append(_section("Sources (pactl list short sources)", _run(["pactl", "list", "short", "sources"])))
-    parts.append(_section("Apps playing and where their sound goes (pactl list sink-inputs)",
-                          stream_routes(_run(["pactl", "list", "sink-inputs"]), _run(["pactl", "list", "short", "sinks"]),
-                                        "Sink Input", "Sink", "playing")))
-    parts.append(_section("Apps recording and what they record (pactl list source-outputs; \".monitor\" is before the faders)",
-                          stream_routes(_run(["pactl", "list", "source-outputs"]), _run(["pactl", "list", "short", "sources"]),
-                                        "Source Output", "Source", "recording")))
+    parts.append(
+        _section(
+            "Apps playing and where their sound goes (pactl list sink-inputs)",
+            stream_routes(
+                _run(["pactl", "list", "sink-inputs"]), _run(["pactl", "list", "short", "sinks"]), "Sink Input", "Sink", "playing"
+            ),
+        )
+    )
+    parts.append(
+        _section(
+            'Apps recording and what they record (pactl list source-outputs; ".monitor" is before the faders)',
+            stream_routes(
+                _run(["pactl", "list", "source-outputs"]),
+                _run(["pactl", "list", "short", "sources"]),
+                "Source Output",
+                "Source",
+                "recording",
+            ),
+        )
+    )
     parts.append(_section("sluice modules loaded", _grep(_run(["pactl", "list", "short", "modules"]), "sluice")))
     parts.append(_section("sluice ports and links (pw-link -l)", sluice_blocks(_run(["pw-link", "-l"]))))
 
@@ -606,9 +704,15 @@ def build_report(log_lines: int = LOG_LINES) -> str:
         config = config_path().read_text(encoding="utf-8")
     except OSError:
         config = "(no saved settings yet)"
+    if not include_settings:
+        config = "(left out: chosen when the report was made)"
     parts.append(_section(f"Settings ({config_path()})", config))
-    parts.append(_section("Sluice's own efficiency (its CPU, memory and wake-ups; numbers only)",
-                          efficiency.format_section(efficiency_data, efficiency_source)))
+    parts.append(
+        _section(
+            "Sluice's own efficiency (its CPU, memory and wake-ups; numbers only)",
+            efficiency.format_section(efficiency_data, efficiency_source),
+        )
+    )
     parts.append(_section("Computer (CPU and USB, which matter for dropouts)", hardware_summary()))
     parts.append(_section("How busy the computer is right now", busy_programs()))
     parts.append(_section("USB connects, disconnects and resets in the kernel log (last hours)", usb_events()))
@@ -617,10 +721,18 @@ def build_report(log_lines: int = LOG_LINES) -> str:
     except OSError:
         log_text = ""
     sessions = split_sessions(log_text.splitlines()) if log_text else []
-    parts.append(_section("Dropouts in this session and what changed just before each",
-                          dropout_timeline(sessions[-1]) if sessions else "(no log yet)"))
-    parts.append(_section(f"Log: this session, then the end of the one before ({logs.log_path()})",
-                          session_log(log_text, log_lines) if log_text else "(file not found)"))
+    parts.append(
+        _section(
+            "Dropouts in this session and what changed just before each",
+            dropout_timeline(sessions[-1]) if sessions else "(no log yet)",
+        )
+    )
+    parts.append(
+        _section(
+            f"Log: this session, then the end of the one before ({logs.log_path()})",
+            session_log(log_text, log_lines) if log_text else "(file not found)",
+        )
+    )
     try:
         crash_text = logs.crash_path().read_text(encoding="utf-8", errors="replace")
         modified = logs.crash_path().stat().st_mtime
@@ -630,9 +742,14 @@ def build_report(log_lines: int = LOG_LINES) -> str:
         archive_text = logs.crash_archive_path().read_text(encoding="utf-8", errors="replace")
     except OSError:
         archive_text = ""
-    parts.append(_section(f"Native crash log ({logs.crash_path()})",
-                          crash_summary(crash_text, modified, archive_text) if crash_text
-                          else ("(file not found: no crash has been recorded)" + ("\n" + archive_note(archive_text) if archive_text else ""))))
+    parts.append(
+        _section(
+            f"Native crash log ({logs.crash_path()})",
+            crash_summary(crash_text, modified, archive_text)
+            if crash_text
+            else ("(file not found: no crash has been recorded)" + ("\n" + archive_note(archive_text) if archive_text else "")),
+        )
+    )
     return "\n".join(parts)
 
 

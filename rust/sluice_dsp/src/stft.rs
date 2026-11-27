@@ -121,6 +121,40 @@ impl Stft {
         }
     }
 
+    /// 0.13.1: the same as `process`, in place on a stereo buffer (the native graph's own buffers; nothing is allocated
+    /// once the queues have their room).
+    pub fn process_buf<F: FnMut(&[f64], &mut [f64])>(
+        &mut self,
+        buf: &mut [Vec<f32>; 2],
+        mut gain: F,
+    ) {
+        let frames = buf[0].len().min(buf[1].len());
+        for (c, ch) in buf.iter().enumerate() {
+            self.inb[c].extend(ch[..frames].iter().copied());
+        }
+        while self.inb[0].len() >= HOP {
+            for c in 0..2 {
+                for (i, v) in self.inb[c].drain(..HOP).enumerate() {
+                    self.hop_in[c][i] = v;
+                }
+            }
+            self.hop(&mut gain);
+        }
+        if self.outb[0].len() < frames {
+            let missing = frames - self.outb[0].len();
+            for c in 0..2 {
+                for _ in 0..missing {
+                    self.outb[c].push_front(0.0);
+                }
+            }
+        }
+        for (c, ch) in buf.iter_mut().enumerate() {
+            for (dst, v) in ch.iter_mut().zip(self.outb[c].drain(..frames)) {
+                *dst = v;
+            }
+        }
+    }
+
     fn hop<F: FnMut(&[f64], &mut [f64])>(&mut self, gain: &mut F) {
         for c in 0..2 {
             self.frame[c].copy_within(HOP.., 0);

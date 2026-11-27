@@ -2,17 +2,19 @@
 """The system tray icon, its menu and the hidden-window watcher of the main window.
 
 Part of the main window, split out of ``ui.py``: ``MainWindow`` inherits this class, so every method here is still a method of the window."""
+
 from __future__ import annotations
 
 import logging
 import time
 from functools import partial
+from typing import Optional
 
 from PySide6.QtCore import QEvent, QObject, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices
 
 from . import ui_dialog
-from . import ui_icons as icons
+from . import rawmic, ui_icons as icons
 from .engine import REFRESH_SECONDS
 from .model import config_path
 from .ui_base import TALKING_HOLD, TALKING_LEVEL, TRAY_WATCH_MS
@@ -22,13 +24,28 @@ HIDDEN_REFRESH_SECONDS = 4.0
 log = logging.getLogger("sluice.ui")
 
 
-SUSPEND_GRACE_MS = 250   # 0.11.7: the window must stay suspended this long before it counts as minimized
-ACTIVE_WITHIN = 1.0      # ...and have been the active window this recently (a minimize is clicked on the window in use)
+SUSPEND_GRACE_MS = 250  # 0.11.7: the window must stay suspended this long before it counts as minimized
+ACTIVE_WITHIN = 1.0  # ...and have been the active window this recently (a minimize is clicked on the window in use)
 
 
 def is_wayland() -> bool:
     from PySide6.QtGui import QGuiApplication
+
     return (QGuiApplication.platformName() or "").startswith("wayland")
+
+
+TRAY_HOLD = 0.4  # seconds: the House Standard's shortest time for a tray state
+
+
+def _dark_panel() -> bool:
+    """Whether the desktop is dark (so the panel the tray sits on probably is): picks the talking light's shade."""
+    try:
+        from PySide6.QtCore import Qt
+        from PySide6.QtGui import QGuiApplication
+
+        return QGuiApplication.styleHints().colorScheme() != Qt.ColorScheme.Light
+    except Exception:  # an older Qt: assume a dark panel, the usual one
+        return True
 
 
 class SuspendWatcher(QObject):
@@ -39,7 +56,7 @@ class SuspendWatcher(QObject):
     def __init__(self, window) -> None:
         super().__init__(window)
         self.window = window
-        self.seen = 0       # times a suspension counted as a minimize (for the bug report)
+        self.seen = 0  # times a suspension counted as a minimize (for the bug report)
         self.last_active = 0.0
         self.timer = QTimer(self)
         self.timer.setSingleShot(True)
@@ -64,7 +81,13 @@ class SuspendWatcher(QObject):
         handle = w.windowHandle()
         exposed = (handle.isExposed() if handle is not None else True) if exposed is None else exposed
         now = time.monotonic() if now is None else now
-        if exposed or not w.isVisible() or w._closed or not w.tray_active or now - self.last_active > ACTIVE_WITHIN + SUSPEND_GRACE_MS / 1000:
+        if (
+            exposed
+            or not w.isVisible()
+            or w._closed
+            or not w.tray_active
+            or now - self.last_active > ACTIVE_WITHIN + SUSPEND_GRACE_MS / 1000
+        ):
             return False
         self.seen += 1
         log.info("the window was suspended right after being in use (minimized on Wayland): hiding it into the tray")
@@ -128,7 +151,9 @@ class TrayMixin:
         watcher (5 times a second) does that, and only while it is needed: not with the window showing (the meter timer does it
         then), not with the microphone muted (the icon is fixed), and not with no tray icon."""
         meters = getattr(self, "meter_timer", None)
-        want = (self.tray_active and not (meters is not None and meters.isActive()) and not self.engine.mic_muted and not self._closed)
+        want = (
+            self.tray_active and not (meters is not None and meters.isActive()) and not self.engine.mic_muted and not self._closed
+        )
         if want and not self.tray_timer.isActive():
             self.tray_timer.start(TRAY_WATCH_MS)
         elif not want and self.tray_timer.isActive():
@@ -140,25 +165,56 @@ class TrayMixin:
         self._refresh_tray_icon()
 
     def _tray_tooltip(self) -> str:
-        return "Sluice" + (" (microphone muted)" if self.engine.mic_muted else "")
+        """0.13.1: the tooltip says why the icon looks the way it does."""
+        reasons = []
+        if getattr(self.engine, "server_lost", False):
+            reasons.append("the audio server is not answering")
+        if self.engine.mic_muted:
+            reasons.append("microphone muted")
+        problem = self._tray_problem()
+        if problem:
+            reasons.append(problem)
+        for key in list(getattr(self.engine, "raw_mic", {}))[:1]:
+            reasons.append(rawmic.short_for(key)[2:])
+        return "Sluice" + (": " + " \u00b7 ".join(reasons) if reasons else "")
+
+    def _tray_problem(self) -> str:
+        """Something broken, for the tray's red dot: the audio engine reporting a failure."""
+        error = getattr(self.engine.io, "error", "") or ""
+        return "the audio engine stopped" if error else ""
+
+    def _tray_dot(self) -> Optional[str]:
+        """0.13.1 (House Standard): a red dot for a problem, an amber one while a warning shows (red wins)."""
+        if self._tray_problem():
+            return "problem"
+        if getattr(self.engine, "raw_mic", None):
+            return "warning"
+        return None
 
     def _refresh_tray_icon(self, force: bool = False) -> None:
         """Muted: a red badge. Talking: lit up (the engine's microphone level, held for a moment so it does not flicker). Else plain."""
         if self._tray is None or not (force or self._tray.isVisible()):
             return
-        if self.engine.mic_muted:
+        now = time.monotonic()
+        if getattr(self.engine, "server_lost", False):
+            state = "disconnected"  # 0.13.1: the microphone cannot be read, so never "talking"
+        elif self.engine.mic_muted:
             state = "muted"
         else:
-            now = time.monotonic()
             if self.engine.mic_level > TALKING_LEVEL:
                 self._voice_until = now + TALKING_HOLD
             state = "talking" if now < self._voice_until else "idle"
-        if state != self._tray_state or force:
-            self._tray_state = state
-            self._tray.setIcon(icons.tray_icon(state))  # only when it changes: nothing is redrawn while the state is steady
+        wanted = (state, self._tray_dot(), _dark_panel())
+        shown = getattr(self, "_tray_shown", None)
+        if shown is not None and wanted != shown and not force and now - getattr(self, "_tray_since", 0.0) < TRAY_HOLD:
+            wanted = shown  # 0.13.1 (House Standard): every state stays at least 400 ms, so the icon never flickers
+        if wanted != shown or force:
+            self._tray_shown, self._tray_since = wanted, now
+            self._tray_state = wanted[0]
+            self._tray.setIcon(icons.tray_icon(*wanted))  # only when it changes: nothing is redrawn while the state is steady
         tip = self._tray_tooltip()
         if force or tip != getattr(self, "_tray_tip", None):  # 0.12.4: only when it changes. On KDE every call is a message to
-            self._tray_tip = tip                              # the panel, and this runs with the meters (60 a second)
+            self._tray_tip = tip  # the panel, and this runs with the meters (60 a second)
             self._tray.setToolTip(tip)
 
     def _refresh_tray_menu(self) -> None:
@@ -192,15 +248,19 @@ class TrayMixin:
             return "the desktop says so (X11): minimizing hides Sluice into the tray when the tray is on"
         watcher = getattr(self, "suspend_watcher", None)
         seen = watcher.seen if watcher is not None else 0
-        return (f"Wayland says nothing; Sluice watches for KWin suspending the window ({seen} time{'s' if seen != 1 else ''} this "
-                "session). Ctrl+W always hides into the tray")
+        return (
+            f"Wayland says nothing; Sluice watches for KWin suspending the window ({seen} time{'s' if seen != 1 else ''} this "
+            "session). Ctrl+W always hides into the tray"
+        )
 
     def start_minimized(self) -> None:
         """Start without showing the window: into the tray if that is how Sluice is set to run, else to the taskbar."""
         self._update_tray()
         if self.tray_active:
             self.say("Sluice is running in the system tray.")
-            self._set_meters_running(False)  # the window was never shown, so no hide event will stop the meters (or start the tray watcher)
+            self._set_meters_running(
+                False
+            )  # the window was never shown, so no hide event will stop the meters (or start the tray watcher)
         else:
             self.showMinimized()
 
@@ -224,7 +284,9 @@ class TrayMixin:
         for key, action in self.close_actions.items():
             action.setChecked(key == self.engine.mixer.close_action)
         in_tray = self.engine.mixer.close_action == "tray" and self._tray_possible()
-        self.autostart_actions["minimized"].setText("Start minimized to the tray" if in_tray else "Start minimized to the taskbar")
+        self.autostart_actions["minimized"].setText(
+            "Start minimized to the tray" if in_tray else "Start minimized to the taskbar"
+        )
         self.no_tray_note.setVisible(not self._tray_possible())
 
     def set_autostart(self, mode: str) -> None:
@@ -235,10 +297,14 @@ class TrayMixin:
         except OSError as exc:
             ui_dialog.warning(self, "Could not change start-up", str(exc))
             return
-        self.say({"off": "Sluice will not start by itself.",
-                  "window": "Sluice will start when you log in, with its window open.",
-                  "minimized": "Sluice will start when you log in, minimized to the "
-                               + ("tray." if self.engine.mixer.close_action == "tray" and self._tray_possible() else "taskbar.")}[mode])
+        self.say(
+            {
+                "off": "Sluice will not start by itself.",
+                "window": "Sluice will start when you log in, with its window open.",
+                "minimized": "Sluice will start when you log in, minimized to the "
+                + ("tray." if self.engine.mixer.close_action == "tray" and self._tray_possible() else "taskbar."),
+            }[mode]
+        )
 
     def toggle_launcher(self) -> None:
         from . import launcher
@@ -257,4 +323,3 @@ class TrayMixin:
         folder = (self.config_file or config_path()).parent
         folder.mkdir(parents=True, exist_ok=True)
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
-

@@ -8,6 +8,7 @@ turned down, the limiter's ceiling. Frequency displays for the EQ, High-pass, No
 All of it is drawn from numbers Sluice already has in memory while this window is open and the effect is selected (see
 ``effects.Tap``). Nothing is recorded or stored. The displays are drawn about 30 times a second.
 """
+
 from __future__ import annotations
 
 import logging
@@ -24,10 +25,10 @@ from . import presets, themes
 
 log = logging.getLogger(__name__)
 
-FLOOR_DB = -60.0       # the centre line of the waveform, the edge of the compressor curve
-SPECTRUM_TOP = -30.0   # the spectrum shows band levels from here down to SPECTRUM_FLOOR
+FLOOR_DB = -60.0  # the centre line of the waveform, the edge of the compressor curve
+SPECTRUM_TOP = -30.0  # the spectrum shows band levels from here down to SPECTRUM_FLOOR
 SPECTRUM_FLOOR = -100.0
-BANDS = 96             # frequency bands between 20 Hz and 20 kHz, spaced evenly on a log scale
+BANDS = 96  # frequency bands between 20 Hz and 20 kHz, spaced evenly on a log scale
 SPECTRUM_TYPES = ("eq", "highpass", "noise_reducer", "echo_reducer")
 WAVE_TYPES = ("noise_gate", "compressor", "limiter")
 
@@ -50,7 +51,7 @@ def band_levels(samples: np.ndarray, rate: int, bands: int = BANDS) -> np.ndarra
     """Level of each of ``bands`` log-spaced frequency bands (20 Hz to 20 kHz) in dB, for a block of samples."""
     n = len(samples)
     spectrum = np.abs(np.fft.rfft(samples.astype(np.float64) * np.hanning(n))) / (n / 4.0)  # a full-scale sine reads 1.0
-    power = spectrum ** 2
+    power = spectrum**2
     freqs = np.fft.rfftfreq(n, 1.0 / rate)
     edges = np.geomspace(20.0, min(20000.0, rate / 2.0 - 1.0), bands + 1)
     out = np.empty(bands)
@@ -278,7 +279,9 @@ class CurveView(QWidget):
         x = fraction(self.threshold) * s
         p.drawLine(QPointF(x, 0), QPointF(x, s))
         curve = QPolygonF([self._pos(db, self.out_db(db)) for db in (FLOOR_DB, self.threshold, 0.0)])
-        p.setPen(QPen(QColor(themes.color("accent")), 3, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+        p.setPen(
+            QPen(QColor(themes.color("accent")), 3, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
+        )
         p.drawPolyline(curve)
         if self.dot is not None:
             p.setPen(Qt.PenStyle.NoPen)
@@ -354,7 +357,7 @@ def _caption(text: str = "", name: str = "hint") -> QLabel:
 
 
 class LivePanel(QFrame):
-    """"YOUR VOICE, LIVE": the display that goes with the effect selected in the Effects window."""
+    """ "YOUR VOICE, LIVE": the display that goes with the effect selected in the Effects window."""
 
     def __init__(self, engine, channel) -> None:
         super().__init__()
@@ -363,7 +366,7 @@ class LivePanel(QFrame):
         self.effect = None
         self.kind = ""
         self._ticks = 0
-        self._recent = deque(maxlen=240)       # about 8 seconds of "how loud is it going in", for the room and voice levels
+        self._recent = deque(maxlen=240)  # about 8 seconds of "how loud is it going in", for the room and voice levels
         self._smooth_in = FLOOR_DB
         self._smooth_out = FLOOR_DB
         self._reduction = 0.0
@@ -475,7 +478,7 @@ class LivePanel(QFrame):
         notes = {
             "limiter": "The dashed lines are the ceiling. Nothing coming out goes above them.",
             "highpass": "Low sounds are on the left, high ones on the right. Everything left of the dashed line is turned down: "
-                        "that is rumble from fans and desks.",
+            "that is rumble from fans and desks.",
             "eq": "Low sounds are on the left, high ones on the right. The dashed lines mark the three bands you are shaping.",
             "noise_reducer": "Steady noise such as a fan or hiss sits as a flat grey layer. Watch it drop while you talk.",
             "echo_reducer": "The tail of your room's echo shows as grey that lingers after you stop. It should be lower coming out.",
@@ -505,7 +508,9 @@ class LivePanel(QFrame):
         elif self.kind == "highpass":
             self.spectrum.set_markers([self._value("cutoff_frequency_hz", 100.0)])
         elif self.kind == "eq":
-            self.spectrum.set_markers([self._value("low_hz", 120.0), self._value("mid_hz", 250.0), self._value("high_hz", 10000.0)])
+            self.spectrum.set_markers(
+                [self._value("low_hz", 120.0), self._value("mid_hz", 250.0), self._value("high_hz", 10000.0)]
+            )
 
     def parameters_changed(self) -> None:
         """A slider moved: redraw the lines that depend on it."""
@@ -554,8 +559,9 @@ class LivePanel(QFrame):
         if len(values) >= 45 and max(values) - min(values) >= 12:
             ordered = sorted(values)
             room, voice = ordered[int(len(ordered) * 0.1)], ordered[int(len(ordered) * 0.95) - 1]
-            self.room_text.setText(f"Room about {room:.0f} dB, your voice peaks near {voice:.0f} dB, "
-                                   f"{-voice:.0f} dB below the top.")
+            self.room_text.setText(
+                f"Room about {room:.0f} dB, your voice peaks near {voice:.0f} dB, {-voice:.0f} dB below the top."
+            )
         else:
             self.room_text.setText("Talk for a few seconds to measure your room and your voice.")
 
@@ -578,7 +584,7 @@ class LivePanel(QFrame):
     def _tick_gate(self, in_db: float, quiet: bool) -> None:
         threshold = self._value("threshold_db", -40.0)
         if in_db >= threshold:
-            self._gate_hold = 10                      # stays "open" for a third of a second after the last loud block
+            self._gate_hold = 10  # stays "open" for a third of a second after the last loud block
         elif self._gate_hold:
             self._gate_hold -= 1
         opened = self._gate_hold > 0
@@ -595,10 +601,14 @@ class LivePanel(QFrame):
     def _gate_explanation(self, threshold: float) -> str:
         values = [v for v in self._recent if v > -75]
         if len(values) < 45 or max(values) - min(values) < 12:
-            return ("Talk, then stay quiet for a moment. The dashed lines are the threshold: keep them above your room's "
-                    "background noise and below your quietest words.")
+            return (
+                "Talk, then stay quiet for a moment. The dashed lines are the threshold: keep them above your room's "
+                "background noise and below your quietest words."
+            )
         ordered = sorted(values)
         room = ordered[int(len(ordered) * 0.1)]
         voice = ordered[int(len(ordered) * 0.95) - 1]
-        return (f"Your room sits at about {room:.0f} dB and your voice peaks near {voice:.0f} dB. The dashed lines are the "
-                "threshold. Keep it between the two: above the room, below your quietest words.")
+        return (
+            f"Your room sits at about {room:.0f} dB and your voice peaks near {voice:.0f} dB. The dashed lines are the "
+            "threshold. Keep it between the two: above the room, below your quietest words."
+        )

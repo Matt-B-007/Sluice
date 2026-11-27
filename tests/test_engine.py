@@ -38,7 +38,14 @@ def peak(io, key="stream", blocks=3):
 # ------------------------------------------------------------------ virtual devices
 def test_start_creates_a_sink_per_channel_and_the_stream_mix(rig):
     system, *_ = rig
-    ids = ["mic", "browser", "game", "chat", "music", "system"]  # 0.12.6: every channel has its own recording device from the start
+    ids = [
+        "mic",
+        "browser",
+        "game",
+        "chat",
+        "music",
+        "system",
+    ]  # 0.12.6: every channel has its own recording device from the start
     assert set(system.null_sinks) == {f"sluice_ch_{i}" for i in ids} | {f"sluice_solo_{i}" for i in ids} | {"sluice_stream"}
     assert system.null_sinks["sluice_stream"][1] is True  # also exposed as a microphone
     assert system.null_sinks["sluice_ch_game"][1] is False
@@ -124,7 +131,7 @@ def test_remove_channel_returns_its_apps_and_cleans_up(rig):
 def test_rename_recreates_the_sink_with_the_new_name(rig):
     system, _, _, engine = rig
     engine.rename_channel("game", "Games")
-    assert system.null_sinks["sluice_ch_game"][0] == "Sluice (Games) output"
+    assert system.null_sinks["sluice_ch_game"][0] == "Play to Sluice (Games)"
     assert engine.mixer.channel("game").label == "Games"
     assert {s.key: s.sink for s in system.streams}["gamelauncher"] == "sluice_ch_game"
 
@@ -217,7 +224,9 @@ def test_connect_handles_mono_on_either_side():
     stereo_in = ["sluice:in_a_L", "sluice:in_a_R"]
     assert _connect(["mic:capture_MONO"], stereo_in) == {("mic:capture_MONO", stereo_in[0]), ("mic:capture_MONO", stereo_in[1])}
     assert _connect(["x:out_L", "x:out_R"], ["spk:playback_MONO"]) == {
-        ("x:out_L", "spk:playback_MONO"), ("x:out_R", "spk:playback_MONO")}
+        ("x:out_L", "spk:playback_MONO"),
+        ("x:out_R", "spk:playback_MONO"),
+    }
     assert _connect(["a:L", "a:R"], ["b:L", "b:R"]) == {("a:L", "b:L"), ("a:R", "b:R")}
     assert _connect([], stereo_in) == set() and _connect(["a"], []) == set()
 
@@ -301,10 +310,27 @@ def test_a_vst3_can_be_moved_but_built_ins_stay_in_order(rig):
     engine.add_effect("mic", plugin)
     assert channel.effects[-1] is plugin
     engine.move_effect("mic", plugin.id, -2)
-    assert [e.type or e.kind for e in channel.effects] == ["highpass", "echo_reducer", "noise_reducer", "noise_gate", "eq", "vst3", "compressor", "limiter"]
+    assert [e.type or e.kind for e in channel.effects] == [
+        "highpass",
+        "echo_reducer",
+        "noise_reducer",
+        "noise_gate",
+        "eq",
+        "vst3",
+        "compressor",
+        "limiter",
+    ]
     engine.move_effect("mic", plugin.id, -9)  # clamped to the top
     assert channel.effects[0] is plugin
-    assert [e.type for e in channel.effects[1:]] == ["highpass", "echo_reducer", "noise_reducer", "noise_gate", "eq", "compressor", "limiter"]
+    assert [e.type for e in channel.effects[1:]] == [
+        "highpass",
+        "echo_reducer",
+        "noise_reducer",
+        "noise_gate",
+        "eq",
+        "compressor",
+        "limiter",
+    ]
 
 
 def test_the_recommended_voice_chain_replaces_the_built_ins_and_keeps_plugins(rig):
@@ -314,10 +340,26 @@ def test_the_recommended_voice_chain_replaces_the_built_ins_and_keeps_plugins(ri
     engine.add_effect("game", plugin)
     engine.apply_voice_chain("game")
     assert [e.type or e.kind for e in channel.effects[:1]] == ["vst3"] or plugin in channel.effects
-    assert [e.type for e in channel.effects if e.kind == "builtin"] == ["highpass", "echo_reducer", "noise_reducer", "noise_gate", "eq", "compressor", "limiter"]
+    assert [e.type for e in channel.effects if e.kind == "builtin"] == [
+        "highpass",
+        "echo_reducer",
+        "noise_reducer",
+        "noise_gate",
+        "eq",
+        "compressor",
+        "limiter",
+    ]
     assert plugin in channel.effects
     engine.apply_voice_chain("game")  # again: still exactly one of each
-    assert [e.type for e in channel.effects if e.kind == "builtin"] == ["highpass", "echo_reducer", "noise_reducer", "noise_gate", "eq", "compressor", "limiter"]
+    assert [e.type for e in channel.effects if e.kind == "builtin"] == [
+        "highpass",
+        "echo_reducer",
+        "noise_reducer",
+        "noise_gate",
+        "eq",
+        "compressor",
+        "limiter",
+    ]
 
 
 def test_a_broken_effect_is_kept_but_skipped(rig):
@@ -499,7 +541,7 @@ def test_a_channel_can_be_its_own_recording_device(rig):
     engine.set_separate("game", False)  # (and Game's off, as the old default, for the "no game in it" check below)
     assert "sluice_solo_music" not in system.null_sinks and not any("solo_music" in out for out, _ in linker.links)
     engine.set_separate("music", True)
-    assert system.null_sinks["sluice_solo_music"] == ("Sluice (Music) recording feed", True)  # also offered as a microphone
+    assert system.null_sinks["sluice_solo_music"] == ("Sluice (Music) for OBS", True)  # also offered as a microphone
     assert any(out == "sluice:out_solo_music_L" and inp.startswith("sluice_solo_music:") for out, inp in linker.links)
     assert "solo_music" in io.mix_ids  # the audio client has ports for it
     engine.set_level("music", "stream", 0.0)  # (0.12.4: the own output follows the Broadcast fader, -18 dB in the demo)
@@ -536,7 +578,7 @@ def test_own_output_follows_the_channels_effects_and_rename_and_removal(rig):
     engine.set_separate("mic", True)
     engine.set_effect_bypass("mic", engine.mixer.channel("mic").effects[0].id, False)
     engine.rename_channel("mic", "Voice")
-    assert system.null_sinks["sluice_solo_mic"][0] == "Sluice (Voice) recording feed"
+    assert system.null_sinks["sluice_solo_mic"][0] == "Sluice (Voice) for OBS"
     engine.remove_channel("mic")
     assert "sluice_solo_mic" not in system.null_sinks and "sluice_ch_mic" not in system.null_sinks
 
@@ -629,7 +671,7 @@ def test_the_mic_has_its_own_recording_device_with_its_effects_from_the_start():
     mixer = Mixer.default()
     assert all(c.separate for c in mixer.channels)  # 0.12.6: every channel, not only the Mic
     assert mixer.channel("mic").solo_description == "Sluice (Mic)"  # what OBS, Discord and games list as a microphone
-    assert mixer.channel("mic").description == "Sluice (Mic) output"  # the output apps play into: a different name
+    assert mixer.channel("mic").description == "Play to Sluice (Mic)"  # the output apps play into: a different name
     assert mixer.mix(STREAM).source_description == "Sluice (Broadcast)"
 
 

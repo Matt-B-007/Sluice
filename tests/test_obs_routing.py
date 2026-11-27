@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """0.12.4: OBS and Sluice's Broadcast. Recording devices follow the Broadcast faders, Sluice says when OBS records around them
 or hears itself, no app plays into Sluice's own outputs, and apps outside every channel are easy to put on one."""
+
 import json
 
 import pytest
@@ -67,11 +68,14 @@ def test_the_choice_is_saved():
 # ----------------------------------------------------------------------------- 2 and 4. recording around the faders, loops
 def test_obs_recording_a_monitor_of_a_channel_is_found(engine):
     game = app_channel(engine)
-    links = {(f"{game.sink_name}:monitor_FL", "obs:input_1"), (f"{game.sink_name}:monitor_FL", "sluice:in_game_L"),
-             (f"{game.sink_name}:monitor_FR", "pavucontrol:input_FR")}
+    links = {
+        (f"{game.sink_name}:monitor_FL", "obs:input_1"),
+        (f"{game.sink_name}:monitor_FL", "sluice:in_game_L"),
+        (f"{game.sink_name}:monitor_FR", "pavucontrol:input_FR"),
+    }
     assert rawmic.find_monitors(links, engine.mixer.channels) == {"obs": [game]}  # (Sluice itself and level meters are not)
     text = rawmic.monitor_message("OBS", [game])
-    assert f"Monitor of Sluice ({game.label}) output" in text and "Sluice (Broadcast)" in text
+    assert f"Play to Sluice ({game.label})" in text and "Sluice (Broadcast)" in text
 
 
 def test_the_warning_appears_after_a_few_seconds_and_can_be_dismissed(engine):
@@ -107,8 +111,7 @@ def test_recording_another_channels_device_is_not_a_loop(engine):
     mic = mic_channel(engine)
     obs.apps.append("obs")
     engine.streams = [Stream(9, "obs", "OBS", obs.sink_name)]
-    links = {(f"sluice_solo_{mic.id}_mic:capture_FL", "OBS:input_FL"),
-             (f"sluice_solo_{browser.id}:monitor_FL", "OBS:input_FL")}
+    links = {(f"sluice_solo_{mic.id}_mic:capture_FL", "OBS:input_FL"), (f"sluice_solo_{browser.id}:monitor_FL", "OBS:input_FL")}
     in_broadcast = lambda channel: True  # noqa: E731
     assert rawmic.find_loops(links, engine.streams, engine.channel_for_stream, in_broadcast) == {}
 
@@ -125,6 +128,7 @@ def test_recording_the_device_of_the_channel_you_play_into_is_a_loop(engine):
 
 def test_a_warning_is_not_repeated_when_obs_reconnects(engine, caplog):
     import logging
+
     game = app_channel(engine)
     engine.linker.others = {(f"{game.sink_name}:monitor_FL", "obs:input_1")}
     key = "obs" + rawmic.MONITOR
@@ -146,6 +150,7 @@ def test_a_warning_is_not_repeated_when_obs_reconnects(engine, caplog):
 
 def test_the_check_uses_the_link_list_the_last_sync_read():
     from sluice.linker import PwLinker
+
     calls = []
 
     def run(args):
@@ -153,6 +158,7 @@ def test_the_check_uses_the_link_list_the_last_sync_read():
         if args == ["-l"]:
             return 0, "a:out_1\n  |-> b:in_1\n"
         return 0, ""
+
     linker = PwLinker(run=run)
     linker.sync({("a:out_1", "b:in_1"), ("c:out_1", "d:in_1")})
     assert calls.count(["-l"]) == 1
@@ -165,7 +171,7 @@ def test_an_app_playing_into_the_broadcast_feed_is_moved_off_it(engine):
     engine.system.streams = [Stream(42, "mystery", "Mystery app", "sluice_stream")]
     engine.apply_rules(1000.0)
     assert engine.system.moves[-1] == (42, engine.default_sink)
-    assert any("Sluice (Broadcast) feed" in n for n in engine.take_notices())
+    assert any("Sluice (Broadcast) for OBS" in n for n in engine.take_notices())
 
 
 def test_an_app_on_a_recording_feed_goes_to_its_channel(engine):
@@ -191,6 +197,7 @@ def test_apps_that_played_outside_every_channel_are_remembered_for_a_while(engin
 
 def test_playing_now_offers_them(qapp, tmp_path):
     from sluice.ui import MainWindow
+
     eng = Engine(Mixer.demo(), MockSystem(), NullIO(realtime=False), NullLinker())
     eng.start()
     win = MainWindow(eng, tmp_path / "config.json")
@@ -215,6 +222,7 @@ def test_playing_now_offers_them(qapp, tmp_path):
 
 def test_the_follow_setting_is_in_the_menu_and_settings(qapp, tmp_path):
     from sluice.ui import MainWindow
+
     eng = Engine(Mixer.demo(), MockSystem(), NullIO(realtime=False), NullLinker())
     eng.start()
     win = MainWindow(eng, tmp_path / "config.json")
@@ -233,6 +241,7 @@ def test_the_follow_setting_is_in_the_menu_and_settings(qapp, tmp_path):
 # ----------------------------------------------------------------------------- 8. Tile: a tile folded in again keeps its size
 def test_a_tile_folded_out_and_in_again_is_as_tall_as_the_others(qapp, tmp_path):
     from sluice.ui import MainWindow
+
     mixer = Mixer.demo()
     mixer.skin = "tile"
     eng = Engine(mixer, MockSystem(), NullIO(realtime=False), NullLinker())
@@ -264,6 +273,7 @@ def test_a_stream_that_ended_while_being_moved_is_not_an_error(engine):
     def gone(index, sink):  # what PipeWire does when the stream closed a moment before
         engine.system.streams = []
         raise RuntimeError("51891")
+
     engine.system.move_stream = gone
     engine.take_errors()
     engine.apply_rules(1000.0)
@@ -316,6 +326,7 @@ def test_quitting_when_the_audio_server_is_gone_does_not_wait_or_warn(caplog):
 # ----------------------------------------------------------------------------- 9 and 10. tray and meter rate
 def test_the_tray_tooltip_is_only_sent_when_it_changes(qapp, tmp_path):
     from sluice.ui import MainWindow
+
     eng = Engine(Mixer.demo(), MockSystem(), NullIO(realtime=False), NullLinker())
     eng.start()
     win = MainWindow(eng, tmp_path / "config.json")
@@ -331,6 +342,7 @@ def test_the_tray_tooltip_is_only_sent_when_it_changes(qapp, tmp_path):
 
             def setToolTip(self, text):
                 sent.append(text)
+
         real, win._tray = win._tray, FakeTray()
         for _ in range(20):
             win._refresh_tray_icon()
@@ -346,6 +358,7 @@ def test_the_tray_tooltip_is_only_sent_when_it_changes(qapp, tmp_path):
 def test_meters_run_at_half_rate_while_another_window_is_in_use(qapp, tmp_path):
     from sluice import ui_meters
     from sluice.ui import MainWindow
+
     eng = Engine(Mixer.demo(), MockSystem(), NullIO(realtime=False), NullLinker())
     eng.start()
     win = MainWindow(eng, tmp_path / "config.json")
@@ -373,6 +386,7 @@ def test_new_setups_and_new_channels_have_their_own_recording_device(engine):
 
 def test_older_settings_are_kept_and_asked_about_once(tmp_path):
     import json
+
     mixer = Mixer.default()
     for channel in mixer.channels:
         if not channel.devices:
@@ -396,6 +410,7 @@ def test_older_settings_are_kept_and_asked_about_once(tmp_path):
 def test_the_question_and_the_settings_switch(qapp, tmp_path, monkeypatch):
     from PySide6.QtWidgets import QMessageBox
     from sluice.ui import MainWindow
+
     eng = Engine(Mixer.demo(), MockSystem(), NullIO(realtime=False), NullLinker())
     eng.start()
     win = MainWindow(eng, tmp_path / "config.json")
@@ -409,4 +424,75 @@ def test_the_question_and_the_settings_switch(qapp, tmp_path, monkeypatch):
         win.devices_action.trigger()  # Settings › Audio switch off
         assert not any(c.separate for c in eng.mixer.channels if not c.devices)
     finally:
+        win.shutdown()
+
+
+# ----------------------------------------------------------------------------- 0.13.1: device names
+def test_device_names_say_which_one_is_for_obs():
+    """Tested on PipeWire 1.6 with OBS: OBS cannot be moved off a device (it opens its recordings "don't reconnect") and
+    shows virtual devices too, so the names do the steering. The before-the-faders device says what it is for and sorts
+    apart from the "for OBS" ones."""
+    mixer = Mixer.default()
+    game, broadcast = mixer.channel("game"), mixer.mix(STREAM)
+    assert game.description == "Play to Sluice (Game)"
+    assert game.solo_sink_description == "Sluice (Game) for OBS"
+    assert game.solo_description == "Sluice (Game)" and broadcast.source_description == "Sluice (Broadcast)"
+    assert broadcast.description == "Sluice (Broadcast) for OBS"
+    listed = sorted([game.description, game.solo_sink_description, broadcast.description, "Play to Sluice (Browser)"])
+    assert listed[:2] == ["Play to Sluice (Browser)", "Play to Sluice (Game)"]  # the wrong ones sit together, apart
+
+
+def test_the_warning_names_the_right_device(engine):
+    game = app_channel(engine)
+    text = rawmic.monitor_message("OBS", [game])
+    assert f"“Play to Sluice ({game.label})”" in text and f"“Sluice ({game.label}) for OBS”" in text
+
+
+# ----------------------------------------------------------------------------- 0.13.1: tray states (House Standard)
+def test_the_tray_shows_warnings_problems_and_a_lost_server(qapp, tmp_path, monkeypatch):
+    from sluice import ui_tray
+    from sluice.ui import MainWindow
+
+    eng = Engine(Mixer.demo(), MockSystem(), NullIO(realtime=False), NullLinker())
+    eng.start()
+    win = MainWindow(eng, tmp_path / "config.json")
+    shown = []
+
+    class FakeTray:
+        def isVisible(self):
+            return True
+
+        def setIcon(self, icon):
+            pass
+
+        def setToolTip(self, text):
+            pass
+
+    real, win._tray = win._tray, FakeTray()
+    clock = [100.0]
+    monkeypatch.setattr(ui_tray.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(ui_tray.icons, "tray_icon", lambda *wanted: shown.append(wanted))
+    try:
+        win._refresh_tray_icon(force=True)
+        assert shown[-1][:2] == ("idle", None)
+        eng.raw_mic["obs · monitor"] = "OBS records around your faders"
+        clock[0] += 0.1
+        win._refresh_tray_icon()
+        assert shown[-1][:2] == ("idle", None)  # held: a state lasts at least 400 ms
+        clock[0] += 0.5
+        win._refresh_tray_icon()
+        assert shown[-1][:2] == ("idle", "warning")
+        assert "records around your faders" in win._tray_tooltip()
+        eng.io.error = "callback failed"
+        clock[0] += 0.5
+        win._refresh_tray_icon()
+        assert shown[-1][:2] == ("idle", "problem")  # red wins over amber
+        eng.io.error = ""
+        eng.server_lost = True
+        clock[0] += 0.5
+        win._refresh_tray_icon()
+        assert shown[-1][0] == "disconnected" and "not answering" in win._tray_tooltip()
+    finally:
+        win._tray = real
+        eng.server_lost = False
         win.shutdown()

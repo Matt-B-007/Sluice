@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The ☰ panel (0.11.7): one flat panel built from the window's actions, usable from the keyboard and by a screen reader."""
+
 import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -44,13 +45,23 @@ def test_the_menu_button_opens_the_panel_with_its_groups(qapp, tmp_path):
     try:
         panel = open_panel(qapp, win)
         assert panel.isVisible() and win.menu_button.menu() is None  # a panel, not the old nested menus
-        sections = [label.text() for label in panel.findChildren(type(panel.rows[0].name)) if label.objectName() == "panelsection"]
+        sections = [
+            label.text() for label in panel.findChildren(type(panel.rows[0].name)) if label.objectName() == "panelsection"
+        ]
         assert sections == ["QUICK MUTES", "MIXER AND DESKTOP", "HELP"]  # 0.12.0: Columns and Rows are in the top bar
         assert [t.name.text() for t in panel.tiles] == ["Mute my mic", "Add channel", "Refresh"]
         names = [r.name.text() for r in panel.rows]
         assert names[-2:] == ["Settings…", "Quit"]
-        for wanted in ("Desktop widgets", "Show or hide my widgets", "Recording mix", "Full screen", "Hide to tray",
-                       "Keyboard shortcuts", "I heard a glitch", "Save bug report…", "Report a problem"):
+        for wanted in (
+            "Desktop widgets",
+            "Show or hide my widgets",
+            "Recording mix",
+            "Full screen",
+            "Hide to tray",
+            "Keyboard shortcuts",
+            "I heard a glitch",
+            "Report a problem…",
+        ):  # 0.13.1: Save is in the Report dialog
             assert wanted in names
         # the shortcuts it shows are the actions' own (so they can never disagree with what the keys do)
         row = next(r for r in panel.rows if r.name.text() == "Show or hide my widgets")
@@ -78,6 +89,7 @@ def test_the_panel_works_from_the_keyboard(qapp, tmp_path):
 
 def test_everything_in_the_panel_has_a_name_for_a_screen_reader(qapp, tmp_path):
     from PySide6.QtWidgets import QAbstractButton
+
     win, _ = make(qapp, tmp_path)
     try:
         panel = open_panel(qapp, win)

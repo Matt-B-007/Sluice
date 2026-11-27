@@ -14,6 +14,7 @@ The data plane (``audio_io`` + ``dsp``) mixes; this class only decides *what is 
 to what*, creates virtual devices, moves apps onto their channel's sink, and pushes
 gains and effect chains into the DSP graph.
 """
+
 from __future__ import annotations
 
 import re
@@ -30,7 +31,19 @@ from .dsp import Graph
 from .effects import EffectInstance, runner_for
 from .linker import Linker
 from . import rawmic, events, reconnect, room
-from .model import (BUFFER_CHOICES, MONITOR, PREFIX, STREAM, VOICE_CHAIN, Channel, Effect, Mix, Mixer, canonical_order, linear_to_db)
+from .model import (
+    BUFFER_CHOICES,
+    MONITOR,
+    PREFIX,
+    STREAM,
+    VOICE_CHAIN,
+    Channel,
+    Effect,
+    Mix,
+    Mixer,
+    canonical_order,
+    linear_to_db,
+)
 
 log = logging.getLogger("sluice.engine")
 
@@ -39,14 +52,16 @@ UNASSIGNED_MEMORY = 15 * 60.0  # 0.12.4: an app that played outside every channe
 UNASSIGNED_KEEP = 12
 GUARD_STREAK_LOST = 6  # this many failed audio-server calls in a row, with no success between, means the server is gone
 RAW_SAFETY_SECONDS = 60.0  # with a graph watcher: the raw-microphone check runs at least this often (0.11.7)
-RELINK_EVERY = 5  # without a graph watcher: re-check the connections every 5th device refresh (10 s) unless something changed sooner
+RELINK_EVERY = (
+    5  # without a graph watcher: re-check the connections every 5th device refresh (10 s) unless something changed sooner
+)
 RELINK_SAFETY = 30  # with one (0.11.5): only when the graph changed, and once a minute in case a change was missed
 XRUN_LOG_SECONDS = 10.0  # dropouts are summed up into one log line per this many seconds
 SETTLE_SECONDS = 8.0  # dropouts while starting up or loading effects are expected and are not shown in the status bar
 CHANGE_SETTLE_SECONDS = 3.0  # the same quiet time after a change such as adding an effect
 RULES_SECONDS = 0.5
 MOVE_RETRY_SECONDS = 5.0
-FIGHT_MOVES = 3          # this many moves of one app within FIGHT_WINDOW seconds means something moves it back
+FIGHT_MOVES = 3  # this many moves of one app within FIGHT_WINDOW seconds means something moves it back
 FIGHT_WINDOW = 10.0
 FIGHT_PAUSE = 60.0
 
@@ -95,27 +110,27 @@ class Engine:
         self.server_lost = False  # the audio server (PipeWire) went away: the window then restarts Sluice (see reconnect.py)
         self._guard_streak = 0
         self.mic_level = 0.0  # the loudest microphone channel at the last meter update (0 to 1), for the tray icon
-        self.last_levels: dict = {}   # what levels() returned last, and when: see sample_levels()
+        self.last_levels: dict = {}  # what levels() returned last, and when: see sample_levels()
         self._levels_at = -1.0
         self.mic_muted = False  # not saved either: Sluice always starts with the microphone live
         self.hear_broadcast = False  # not saved: it always starts off, so nobody is surprised by the wrong mix
         self._started = False
         self._last_links: set = set()
         self.refresh_seconds = REFRESH_SECONDS  # the window lengthens this while it is hidden in the tray
-        self._raw_first_seen: dict = {}   # app -> when it was first seen on the raw microphone
-        self._raw_reported: set = set()   # apps already reported (once each, until they stop listening)
-        self.raw_mic: dict = {}           # app -> the sentence to show, for the ones reported now and not dismissed
+        self._raw_first_seen: dict = {}  # app -> when it was first seen on the raw microphone
+        self._raw_reported: set = set()  # apps already reported (once each, until they stop listening)
+        self.raw_mic: dict = {}  # app -> the sentence to show, for the ones reported now and not dismissed
         self._last_failed: set = set()
         self._logged_xruns = 0
         self._xrun_base = 0
         self._ours_base = 0
-        self._pending_xruns = 0           # dropouts not yet written to the log (they are summed up, not logged one by one)
+        self._pending_xruns = 0  # dropouts not yet written to the log (they are summed up, not logged one by one)
         self._pending_since = 0.0
         self._last_xrun_log = float("-inf")
         self._xrun_hint_given = False
         self._chain_compare: set = set()  # channels whose whole effect chain is bypassed for a before/after listen
-        self._hints_given: set = set()   # which kind of dropout advice was already written to the log
-        self._last_dropout_note = ""      # what the latest dropout came right after, for the tooltip
+        self._hints_given: set = set()  # which kind of dropout advice was already written to the log
+        self._last_dropout_note = ""  # what the latest dropout came right after, for the tooltip
         self._prev_devices: Optional[dict] = None
         self._prev_default_source: Optional[str] = None
         self._prev_streams: Optional[dict] = None
@@ -127,7 +142,7 @@ class Engine:
         self._load_worst_after = 0.0
         self._born = time.monotonic()
         self.tap_open = False  # the Effects window is showing the live voice display
-        self._load = (0.0, 0.0)           # (average, worst) share of a block that Sluice's own work uses, recently
+        self._load = (0.0, 0.0)  # (average, worst) share of a block that Sluice's own work uses, recently
         self._known_inputs: Optional[set] = None
         self._notices: list = []
         self.recent_unassigned: dict = {}  # 0.12.4: assign key -> (name, last seen): apps that played outside every channel
@@ -137,9 +152,13 @@ class Engine:
     # --------------------------------------------------------------- lifecycle
     def start(self) -> None:
         self.graph = Graph(self.io.sample_rate, [m.id for m in self.mixer.mixes])
-        log.info("starting: channels %s, mixes %s, %d Hz, %d frames per block",
-                 [c.id for c in self.mixer.channels], [m.id for m in self.mixer.mixes],
-                 self.io.sample_rate, self.io.blocksize)
+        log.info(
+            "starting: channels %s, mixes %s, %d Hz, %d frames per block",
+            [c.id for c in self.mixer.channels],
+            [m.id for m in self.mixer.mixes],
+            self.io.sample_rate,
+            self.io.blocksize,
+        )
         self._settling(SETTLE_SECONDS)
         for mix in self.mixer.mixes:
             if mix.sink_name:
@@ -147,7 +166,13 @@ class Engine:
         for channel in self.mixer.channels:
             self._guard(self.system.ensure_null_sink, channel.sink_name, channel.description)
             if channel.separate:
-                self._guard(self.system.ensure_null_sink, channel.solo_sink_name, channel.solo_sink_description, True, channel.solo_description)
+                self._guard(
+                    self.system.ensure_null_sink,
+                    channel.solo_sink_name,
+                    channel.solo_sink_description,
+                    True,
+                    channel.solo_description,
+                )
             self._load_effects(channel)
         self._sync_graph()
         self._push_gains(force=True)
@@ -252,7 +277,7 @@ class Engine:
         return bigger[0] if bigger else None
 
     def dropout_text(self) -> str:
-        """"0 dropouts", or for three or more, who is probably to blame: "12 dropouts · mostly elsewhere"."""
+        """ "0 dropouts", or for three or more, who is probably to blame: "12 dropouts · mostly elsewhere"."""
         total, ours = self.dropout_counts()
         text = f"{total} {'dropout' if total == 1 else 'dropouts'}"
         if total >= 3:  # one or two say nothing about who is to blame
@@ -263,7 +288,7 @@ class Engine:
         return text
 
     def rate_text(self) -> str:
-        """"48 kHz · 512 frames": the sample rate and the buffer."""
+        """ "48 kHz · 512 frames": the sample rate and the buffer."""
         rate = self.io.sample_rate
         khz = f"{rate / 1000:g}"
         text = f"{khz} kHz · {self.io.blocksize} frames"
@@ -286,28 +311,39 @@ class Engine:
         found = events.before(now)
         load = events.load_average()
         total, ours = self.dropout_counts()
-        log.warning("MARKED BY YOU: a glitch was heard now (%d dropouts counted since Sluice started, %d of them Sluice's). "
-                    "What changed in the last 10 s: %s%s",
-                    total, ours, events.describe(found) if found else "nothing", f" ({load})" if load else "")
+        log.warning(
+            "MARKED BY YOU: a glitch was heard now (%d dropouts counted since Sluice started, %d of them Sluice's). "
+            "What changed in the last 10 s: %s%s",
+            total,
+            ours,
+            events.describe(found) if found else "nothing",
+            f" ({load})" if load else "",
+        )
         events.record("you marked a glitch here")
         return "Marked. The bug report will show this moment and what happened around it."
 
     def dropout_tooltip(self) -> str:
         total, ours = self.dropout_counts()
-        text = ("A dropout is a moment the audio could not keep up: you may hear a click or a gap. It can come from Sluice or "
-                "from any other program or device in the audio system. Dropouts while starting or changing effects are not "
-                "counted.")
+        text = (
+            "A dropout is a moment the audio could not keep up: you may hear a click or a gap. It can come from Sluice or "
+            "from any other program or device in the audio system. Dropouts while starting or changing effects are not "
+            "counted."
+        )
         average, worst = self._load
         if average > 0:
             text += f"\n\nSluice's own audio work is using about {average * 100:.0f}% of each block (worst recently: {worst * 100:.0f}%)."
         if total and self._last_dropout_note:
             text += f"\n\n{self._last_dropout_note} Plugging in a device or starting a call or game briefly rearranges the audio system, which is normal."
         if total:
-            text += (f"\n\nOf the {total}, {ours} came while Sluice was running late and {total - ours} while it was keeping up, "
-                     "which points at something else: another program, a busy USB device, or the system itself.")
+            text += (
+                f"\n\nOf the {total}, {ours} came while Sluice was running late and {total - ours} while it was keeping up, "
+                "which points at something else: another program, a busy USB device, or the system itself."
+            )
             if not self._last_dropout_note:
-                text += ("\n\nTo find the cause, run  pw-top  in a terminal and watch the ERR column. To give everything more room, "
-                         "choose a larger buffer in Settings > Audio, or remove heavy effects.")
+                text += (
+                    "\n\nTo find the cause, run  pw-top  in a terminal and watch the ERR column. To give everything more room, "
+                    "choose a larger buffer in Settings > Audio, or remove heavy effects."
+                )
         return text
 
     def _note(self, text: str, level: int = logging.INFO) -> None:
@@ -329,8 +365,13 @@ class Engine:
                 self._note(f"{key[0]} removed: {previous[key]}")
         if self._prev_default_source is not None and self.default_source != self._prev_default_source:
             names = {d.name: d.description for d in self.sources}
-            self._note("default input changed from %s to %s" % (names.get(self._prev_default_source, self._prev_default_source),
-                                                                 names.get(self.default_source, self.default_source)))
+            self._note(
+                "default input changed from %s to %s"
+                % (
+                    names.get(self._prev_default_source, self._prev_default_source),
+                    names.get(self.default_source, self.default_source),
+                )
+            )
         self._prev_default_source = self.default_source
 
     def refresh_devices(self) -> bool:
@@ -344,8 +385,11 @@ class Engine:
             self.default_sink = self._guard(self.system.default_sink)
         if self.default_sink and self.default_sink.startswith(PREFIX) and not self._warned_default:
             self._warned_default = True
-            log.warning("the default output is a Sluice device (%s); the Listen mix cannot use 'Default'. "
-                        "Pick your headphones in the Listen device list.", self.default_sink)
+            log.warning(
+                "the default output is a Sluice device (%s); the Listen mix cannot use 'Default'. "
+                "Pick your headphones in the Listen device list.",
+                self.default_sink,
+            )
             self._error("The system default output is a Sluice device: pick your headphones in the Listen list.")
         signature = (
             tuple(d.name for d in self.sources),
@@ -358,7 +402,7 @@ class Engine:
         if changed:
             self._describe_device_changes()
         elif self._prev_devices is None:
-            self._describe_device_changes()   # the first look: remember what is there, say nothing
+            self._describe_device_changes()  # the first look: remember what is there, say nothing
         inputs = {d.name: d.description for d in self.sources if not d.monitor}
         if self._known_inputs is not None:  # not the first look: anything new was plugged in (or switched on) just now
             for name in inputs.keys() - self._known_inputs:
@@ -366,8 +410,13 @@ class Engine:
         self._known_inputs = set(inputs)
         self._last_refresh = time.monotonic()
         if changed:
-            log.info("devices: %d inputs, %d outputs, default output %s, default input %s",
-                     sum(not d.monitor for d in self.sources), len(self.sinks), self.default_sink, self.default_source)
+            log.info(
+                "devices: %d inputs, %d outputs, default output %s, default input %s",
+                sum(not d.monitor for d in self.sources),
+                len(self.sinks),
+                self.default_sink,
+                self.default_source,
+            )
             log.debug("inputs: %s", [d.name for d in self.sources if not d.monitor])
             log.debug("outputs: %s", [d.name for d in self.sinks])
         return changed
@@ -393,7 +442,9 @@ class Engine:
             # default instead of going silent. It is not saved, so the choice returns when the device does.
             if mix.id not in self._loop_warned:
                 self._loop_warned.add(mix.id)
-                log.warning("output %s for mix '%s' is not available; using the system default %s", mix.device, mix.id, self.default_sink)
+                log.warning(
+                    "output %s for mix '%s' is not available; using the system default %s", mix.device, mix.id, self.default_sink
+                )
             return self._resolve("", self.sinks, self.default_sink)
         return found
 
@@ -418,7 +469,11 @@ class Engine:
                     if name in output_nodes:
                         if name not in self._loop_warned:
                             self._loop_warned.add(name)
-                            log.warning("not using the monitor of %s on channel '%s': a mix plays into it, which would loop", name, channel.id)
+                            log.warning(
+                                "not using the monitor of %s on channel '%s': a mix plays into it, which would loop",
+                                name,
+                                channel.id,
+                            )
                             self._error("A channel cannot take what your own output is playing: that would be a feedback loop.")
                         continue
                 sources.append(name)
@@ -496,7 +551,9 @@ class Engine:
         self.streams = streams
         self._describe_stream_changes(streams)
 
-        for stream in streams:  # 0.12.4: remembered for a while, so one that only plays now and then (alerts) can be put on a channel
+        for (
+            stream
+        ) in streams:  # 0.12.4: remembered for a while, so one that only plays now and then (alerts) can be put on a channel
             if self.channel_for_stream(stream) is None and not stream.sink.startswith(PREFIX):
                 self.recent_unassigned[stream.assign_key] = (stream.name, now)
         for key in [k for k, (_n, seen) in self.recent_unassigned.items() if now - seen > UNASSIGNED_MEMORY]:
@@ -529,8 +586,10 @@ class Engine:
                 self._move_history[stream.index] = history
                 log.info("moved %s (stream %d) from %s to %s", stream.name, stream.index, stream.sink, target)
                 if self._internal_sink(stream.sink):
-                    self._notices.append(f"Sluice moved {stream.name} off \u201c{self._sink_label(stream.sink)}\u201d, one of "
-                                         f"Sluice's own outputs: playing there, it would skip your faders and mutes.")
+                    self._notices.append(
+                        f"Sluice moved {stream.name} off \u201c{self._sink_label(stream.sink)}\u201d, one of "
+                        f"Sluice's own outputs: playing there, it would skip your faders and mutes."
+                    )
             except Exception as exc:
                 self._move_backoff[key] = now + MOVE_RETRY_SECONDS
                 if not self._stream_still_there(stream.index):  # 0.12.4: it stopped while being moved (a game opening and
@@ -552,7 +611,7 @@ class Engine:
             if key in stream.names or not stream.names.isdisjoint(wanted):
                 return stream.name
         if key.startswith(STEAM_PREFIX):
-            return f"Steam game {key[len(STEAM_PREFIX):]}"
+            return f"Steam game {key[len(STEAM_PREFIX) :]}"
         return key
 
     def app_icon(self, key: str) -> str:
@@ -566,7 +625,7 @@ class Engine:
             if (key in stream.names or not stream.names.isdisjoint(wanted)) and stream.icon:
                 return stream.icon
         if key.startswith(STEAM_PREFIX):
-            return f"steam_icon_{key[len(STEAM_PREFIX):]}"
+            return f"steam_icon_{key[len(STEAM_PREFIX) :]}"
         return ""
 
     def _stream_still_there(self, index: int) -> bool:
@@ -581,7 +640,7 @@ class Engine:
         if channel is not None:
             return channel.sink_name
         if stream.sink.startswith(f"{PREFIX}ch_") or self._internal_sink(stream.sink):  # on a channel it no longer belongs
-            default = self.default_sink                                                  # to, or on Sluice's own outputs
+            default = self.default_sink  # to, or on Sluice's own outputs
             if default and not default.startswith(PREFIX):
                 return default
         return None
@@ -590,7 +649,7 @@ class Engine:
         """What the desktop calls one of Sluice's outputs."""
         for mix in self.mixer.mixes:
             if mix.sink_name == sink:
-                return f"Sluice ({mix.label}) feed"
+                return mix.description
         for channel in self.mixer.channels:
             if channel.solo_sink_name == sink:
                 return channel.solo_sink_description
@@ -699,15 +758,18 @@ class Engine:
             links = self._guard(current_links)
         if links is None:
             return
-        found = {app: rawmic.message(app, channels)
-                 for app, channels in rawmic.find(links, self.mixer.channels, self.resolve_source).items()}
+        found = {
+            app: rawmic.message(app, channels)
+            for app, channels in rawmic.find(links, self.mixer.channels, self.resolve_source).items()
+        }
         # 0.12.4: an app recording "Monitor of Sluice (Game) output" (a copy from before the faders), and an app that records
         # Broadcast while its own sound plays into a channel that goes to Broadcast (a loop)
         for app, channels in rawmic.find_monitors(links, self.mixer.channels).items():
             found[app + rawmic.MONITOR] = rawmic.monitor_message(app, channels)
         stream_mix = self.mixer.mix(STREAM)
-        in_broadcast = (lambda channel: stream_mix is not None and not stream_mix.mute
-                        and self.mixer.route_gain(channel, stream_mix) > 0.0)
+        in_broadcast = lambda channel: (
+            stream_mix is not None and not stream_mix.mute and self.mixer.route_gain(channel, stream_mix) > 0.0
+        )
         for app, (channel, via) in rawmic.find_loops(links, self.streams, self.channel_for_stream, in_broadcast).items():
             found[app + rawmic.LOOP] = rawmic.loop_message(app, channel, via)
         for key in [k for k in self._raw_first_seen if k not in found]:
@@ -732,7 +794,7 @@ class Engine:
             self._note(rawmic.short_for(key)[2:], logging.WARNING)
 
     def dismiss_raw_mic(self, app: str) -> None:
-        """"Don't remind me about this app": remembered with the settings."""
+        """ "Don't remind me about this app": remembered with the settings."""
         self.raw_mic.pop(app, None)
         hint = f"rawmic:{app}"
         if hint not in self.mixer.hints_seen:
@@ -743,11 +805,19 @@ class Engine:
         """One line for every stretch of dropouts, not one per half second: a long burst used to fill the whole log."""
         total, ours = self.io.xruns, self.io.xruns_ours
         average, worst = self._load
-        log.warning("audio dropouts: %d in the last %.0f s (%d since Sluice started; %d of those while Sluice itself was running "
-                    "late). Sluice's own work uses about %.0f%% of a block, worst %.0f%%%s.",
-                    self._pending_xruns, max(1.0, now - self._pending_since), total, ours, average * 100, worst * 100,
-                    f" (of that, waiting for the window: about {self._wait[0]:.0%}, worst {self._wait[1]:.0%})"
-                    if self._wait_ticks else "")
+        log.warning(
+            "audio dropouts: %d in the last %.0f s (%d since Sluice started; %d of those while Sluice itself was running "
+            "late). Sluice's own work uses about %.0f%% of a block, worst %.0f%%%s.",
+            self._pending_xruns,
+            max(1.0, now - self._pending_since),
+            total,
+            ours,
+            average * 100,
+            worst * 100,
+            f" (of that, waiting for the window: about {self._wait[0]:.0%}, worst {self._wait[1]:.0%})"
+            if self._wait_ticks
+            else "",
+        )
         found = events.before(self._pending_since)
         load = events.load_average()
         cause = events.likely_cause(found)
@@ -760,13 +830,17 @@ class Engine:
             if "change" not in self._hints_given:
                 self._hints_given.add("change")
                 self._xrun_hint_given = True
-                log.warning("a dropout right after a device or stream change is normal: PipeWire rearranges itself for a moment, "
-                            "and a larger buffer does not prevent it")
+                log.warning(
+                    "a dropout right after a device or stream change is normal: PipeWire rearranges itself for a moment, "
+                    "and a larger buffer does not prevent it"
+                )
         elif not self._xrun_hint_given:
             self._xrun_hint_given = True
             self._hints_given.add("busy")
-            log.warning("if dropouts keep coming: run pw-top and look at the ERR column to see which program is behind them, or "
-                        "choose a larger buffer in Settings > Audio")
+            log.warning(
+                "if dropouts keep coming: run pw-top and look at the ERR column to see which program is behind them, or "
+                "choose a larger buffer in Settings > Audio"
+            )
         self._pending_xruns = 0
         self._last_xrun_log = now
 
@@ -790,7 +864,9 @@ class Engine:
         if force:
             self._applied_gains.clear()
         for channel in self.mixer.channels:
-            muted = self.mic_muted and bool(channel.devices)  # "Mute my microphone" silences every microphone channel, own outputs too
+            muted = self.mic_muted and bool(
+                channel.devices
+            )  # "Mute my microphone" silences every microphone channel, own outputs too
             solo = (0.0 if muted else self.mixer.own_device_gain(channel)) if channel.separate else None  # (0.12.4)
             if self._applied_gains.get((channel.id, "solo"), "unset") != solo:
                 self._applied_gains[(channel.id, "solo")] = solo
@@ -945,7 +1021,7 @@ class Engine:
             if effect.id == gate_effect_id:
                 break
             if effect.type not in ("echo_reducer", "noise_reducer"):  # they adapt over the first seconds, which would
-                ahead.append(effect)                                  # look like a disturbance; the gate is set above the raw noise
+                ahead.append(effect)  # look like a disturbance; the gate is set above the raw noise
         return room.analyse(audio, self.io.sample_rate, runner_for(ahead, self.io.sample_rate))
 
     def measure_echo_finish(self, channel_id: str) -> Optional[room.EchoResult]:
@@ -1027,8 +1103,12 @@ class Engine:
         log.info("%s output set to %s (plays into %s)", mix.label, shown, self.resolve_mix_sink(mix) or "no device")
         picked = next((d for d in self.sinks if d.name == device), None)
         if picked is not None and picked.channels > 2:
-            log.warning("%s has %d channels: Sluice plays into the first two, which may not be your headphones. "
-                        "A stereo entry for the same hardware is usually the right choice.", picked.name, picked.channels)
+            log.warning(
+                "%s has %d channels: Sluice plays into the first two, which may not be your headphones. "
+                "A stereo entry for the same hardware is usually the right choice.",
+                picked.name,
+                picked.channels,
+            )
         self.apply_links()
 
     def set_hear_broadcast(self, on: bool) -> None:
@@ -1059,8 +1139,13 @@ class Engine:
         log.info("channel '%s' added", channel.id)
         self._guard(self.system.ensure_null_sink, channel.sink_name, channel.description)
         if channel.separate:  # 0.12.6: new channels come with their own recording device
-            self._guard(self.system.ensure_null_sink, channel.solo_sink_name, channel.solo_sink_description, True,
-                        channel.solo_description)
+            self._guard(
+                self.system.ensure_null_sink,
+                channel.solo_sink_name,
+                channel.solo_sink_description,
+                True,
+                channel.solo_description,
+            )
         self._sync_graph()
         self._push_gains()
         self.apply_links()
@@ -1096,7 +1181,13 @@ class Engine:
         self._guard(self.system.ensure_null_sink, channel.sink_name, channel.description)
         if channel.separate:  # its recording device carries the name too
             self._guard(self.system.remove_null_sink, channel.solo_sink_name)
-            self._guard(self.system.ensure_null_sink, channel.solo_sink_name, channel.solo_sink_description, True, channel.solo_description)
+            self._guard(
+                self.system.ensure_null_sink,
+                channel.solo_sink_name,
+                channel.solo_sink_description,
+                True,
+                channel.solo_description,
+            )
         self.apply_links()
 
     def set_devices_follow_broadcast(self, on: bool) -> None:
@@ -1119,7 +1210,13 @@ class Engine:
             return
         channel.separate = on
         if on:
-            self._guard(self.system.ensure_null_sink, channel.solo_sink_name, channel.solo_sink_description, True, channel.solo_description)
+            self._guard(
+                self.system.ensure_null_sink,
+                channel.solo_sink_name,
+                channel.solo_sink_description,
+                True,
+                channel.solo_description,
+            )
             log.info("channel '%s' now has its own recording device: %s", channel_id, channel.solo_description)
         else:
             self._guard(self.system.remove_null_sink, channel.solo_sink_name)

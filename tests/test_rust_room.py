@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The Rust room/echo/voice arithmetic gives the numpy results; the results of whole analyses agree."""
+
 import importlib
 
 import numpy as np
@@ -67,7 +68,7 @@ def clap(seconds=4.0, rt=0.6, seed=2):
     t = np.arange(int(SR * 1.5)) / SR
     tail = rng.standard_normal(len(t)) * np.exp(-6.9 * t / rt) * 0.5
     start = SR
-    x[start:start + len(t)] += tail
+    x[start : start + len(t)] += tail
     return np.stack([x, x]).astype(np.float32)
 
 

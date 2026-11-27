@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Effects dialog: a channel's effect chain, built-in effects and VST3 plugins."""
+
 from __future__ import annotations
 
 import logging
@@ -82,7 +83,9 @@ class ParamRow(QWidget):
         self.slider.valueChanged.connect(self._changed)
         self.slider.reset_requested.connect(self._reset)  # double-click: back to the default
         self.readout.entered.connect(self._typed)
-        tip = "Double-click to reset" + (f" to {format_value(info.default, info.unit, info.normalized)}" if info.default is not None else "")
+        tip = "Double-click to reset" + (
+            f" to {format_value(info.default, info.unit, info.normalized)}" if info.default is not None else ""
+        )
         self.slider.setToolTip(tip if info.default is not None else "")
 
     def _announce(self, value: float) -> None:
@@ -179,7 +182,11 @@ class CardDelegate(QStyledItemDelegate):
         small.setPixelSize(12)
         painter.setFont(small)
         painter.setPen(QColor(themes.color("text_dim")))
-        painter.drawText(QRectF(card.left() + 12, card.top() + 12, 24, 20), int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter), str(index.row() + 1))
+        painter.drawText(
+            QRectF(card.left() + 12, card.top() + 12, 24, 20),
+            int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
+            str(index.row() + 1),
+        )
         sw = self._switch_rect(card)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor(themes.color("accent") if on else themes.color("track")))
@@ -194,12 +201,22 @@ class CardDelegate(QStyledItemDelegate):
         painter.setFont(name)
         painter.setPen(text)
         metrics = QFontMetrics(name)
-        label = metrics.elidedText(str(index.data(Qt.ItemDataRole.DisplayRole)), Qt.TextElideMode.ElideRight, int(card.width() - 24))
-        painter.drawText(QRectF(card.left() + 12, card.top() + 48, card.width() - 24, 22), int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter), label)
+        label = metrics.elidedText(
+            str(index.data(Qt.ItemDataRole.DisplayRole)), Qt.TextElideMode.ElideRight, int(card.width() - 24)
+        )
+        painter.drawText(
+            QRectF(card.left() + 12, card.top() + 48, card.width() - 24, 22),
+            int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
+            label,
+        )
         painter.setFont(small)
         painter.setPen(QColor(themes.color("text_dim")))
         summary = str(index.data(SUMMARY_ROLE) or "")
-        painter.drawText(QRectF(card.left() + 12, card.top() + 72, card.width() - 24, 36), int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop | Qt.TextFlag.TextWordWrap), summary if on else "Off")
+        painter.drawText(
+            QRectF(card.left() + 12, card.top() + 72, card.width() - 24, 36),
+            int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop | Qt.TextFlag.TextWordWrap),
+            summary if on else "Off",
+        )
         if index.row() < index.model().rowCount() - 1:
             mid = QRectF(card.right(), card.center().y() - 8, ARROW_W, 16)
             painter.setPen(QPen(QColor(themes.color("text_dim")), 2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
@@ -235,7 +252,9 @@ class CardDelegate(QStyledItemDelegate):
         return False
 
     def helpEvent(self, event, view, option, index) -> bool:
-        if event.type() == QEvent.Type.ToolTip and self._switch_rect(self._card(option)).adjusted(-6, -6, 6, 6).contains(event.pos()):
+        if event.type() == QEvent.Type.ToolTip and self._switch_rect(self._card(option)).adjusted(-6, -6, 6, 6).contains(
+            event.pos()
+        ):
             QToolTip.showText(event.globalPos(), "Switch this effect on or off", view)
             return True
         return super().helpEvent(event, view, option, index)
@@ -321,8 +340,9 @@ class EffectsDialog(QDialog):
         self.level_button.hide()
         axes.addWidget(self.level_prompt)
         axes.addWidget(self.level_button, 0, Qt.AlignmentFlag.AlignLeft)
-        self.room_hint = QLabel("Tip: open the Noise Gate and press Measure my room. Sluice listens and picks the Room "
-                                "choice that fits.")
+        self.room_hint = QLabel(
+            "Tip: open the Noise Gate and press Measure my room. Sluice listens and picks the Room choice that fits."
+        )
         self.room_hint.setWordWrap(True)
         self.room_hint.setObjectName("hint")
         self.room_hint.hide()
@@ -339,8 +359,10 @@ class EffectsDialog(QDialog):
         icons.dropdown(self.mine_button)
         self.mine_button.setMenu(QMenu(self.mine_button))
         self.mine_button.menu().aboutToShow.connect(self._build_mine_menu)
-        self.mine_button.setToolTip("Your own saved settings (they also keep the gate threshold and gain). "
-                                    "Save as my preset works from any state, even after a tiny change.")
+        self.mine_button.setToolTip(
+            "Your own saved settings (they also keep the gate threshold and gain). "
+            "Save as my preset works from any state, even after a tiny change."
+        )
         side.addWidget(self.mine_button)
         # After a change to a preset of yours: keep it, save it as a new one, or go back
         self._active_user: Optional[str] = None
@@ -369,8 +391,10 @@ class EffectsDialog(QDialog):
         side.addWidget(self.mine_changed_row)
         self.compare_button = QPushButton("Hear my original microphone")
         self.compare_button.setCheckable(True)
-        self.compare_button.setToolTip("Switches the whole effect chain off so you can compare with and without. "
-                                       "Not saved: it ends when you untick it or close Sluice.")
+        self.compare_button.setToolTip(
+            "Switches the whole effect chain off so you can compare with and without. "
+            "Not saved: it ends when you untick it or close Sluice."
+        )
         self.compare_button.toggled.connect(self._compare_chain)
         side.addWidget(self.compare_button)
         side.addStretch(1)
@@ -401,7 +425,10 @@ class EffectsDialog(QDialog):
         self.add_button.setMenu(QMenu(self.add_button))
         self.add_button.menu().aboutToShow.connect(self._build_add_menu)
         up, down, remove = QPushButton(), QPushButton(), QPushButton("Remove")
-        for button, name, label in ((up, "chevron_left", "Move earlier"), (down, "chevron_right", "Move later")):  # 0.12.2: drawn arrows
+        for button, name, label in (
+            (up, "chevron_left", "Move earlier"),
+            (down, "chevron_right", "Move later"),
+        ):  # 0.12.2: drawn arrows
             button.setIcon(icons.themed_icon(name, "text"))
             button.setIconSize(QSize(16, 16))
             button.setAccessibleName(label)
@@ -442,8 +469,10 @@ class EffectsDialog(QDialog):
         right.addWidget(self.error)
         right.addWidget(self.editor_button, 0, Qt.AlignmentFlag.AlignLeft)
         right.addWidget(self.params_area, 1)
-        foot = QLabel("Switch an effect off to skip it. The built-in effects stay in the best order; VST3 plugins can be moved "
-                      "with the arrow buttons.")
+        foot = QLabel(
+            "Switch an effect off to skip it. The built-in effects stay in the best order; VST3 plugins can be moved "
+            "with the arrow buttons."
+        )
         foot.setObjectName("hint")
         foot.setWordWrap(True)
         right.addWidget(foot)
@@ -579,8 +608,10 @@ class EffectsDialog(QDialog):
     def _choose(self, axis: str, name: str) -> None:
         entries = presets.AXES[axis][name][1]
         presets.apply(self.engine, self.channel.id, entries)
-        target = next((i for i, e in enumerate(self.channel.effects) if e.kind == "builtin"
-                       and any(x["type"] == e.type for x in entries)), None)
+        target = next(
+            (i for i, e in enumerate(self.channel.effects) if e.kind == "builtin" and any(x["type"] == e.type for x in entries)),
+            None,
+        )
         self._reload(select=target if target is not None else max(0, self.list.currentRow()))
         self._tell(f"{'Room' if axis == 'room' else 'Voice style'}: {name}. {presets.summary(entries)}.")
 
@@ -652,10 +683,13 @@ class EffectsDialog(QDialog):
         if name is None:
             return
         answer = ui_dialog.question(
-            self, "Update preset",
+            self,
+            "Update preset",
             f"Replace your preset \u201c{name}\u201d with the settings on this channel as they are now?\n\n"
             "The old version of the preset will be gone.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
         if answer != QMessageBox.StandardButton.Yes:
             return
         path = self._presets_file()
@@ -780,6 +814,7 @@ class EffectsDialog(QDialog):
             if effect is None:  # 0.12.2: a picture of "nothing changes" and the effects most voices want, one click each
                 from .effects import BUILTIN_NAMES
                 from .ui_live import CurveView
+
                 row = QHBoxLayout()
                 row.setSpacing(24)
                 flat = CurveView()
@@ -798,8 +833,10 @@ class EffectsDialog(QDialog):
                 note.setWordWrap(True)
                 note.setObjectName("hint")
                 side.addWidget(note)
-                for key, why in (("noise_gate", "silences the room between your words"),
-                                 ("compressor", "evens out loud and quiet talking")):
+                for key, why in (
+                    ("noise_gate", "silences the room between your words"),
+                    ("compressor", "evens out loud and quiet talking"),
+                ):
                     button = QPushButton(f"Add {BUILTIN_NAMES[key]}")
                     button.setIcon(icons.themed_icon("plus", "text"))
                     button.setToolTip(f"The {BUILTIN_NAMES[key]} {why}.")
@@ -829,8 +866,10 @@ class EffectsDialog(QDialog):
         if definition is not None and definition.hint:
             layout.addSpacing(8)
             if not self.channel.devices:
-                warn = QLabel("This channel has no microphone. This effect is made for a voice and will make music or "
-                              "game sound worse: remove it here.")
+                warn = QLabel(
+                    "This channel has no microphone. This effect is made for a voice and will make music or "
+                    "game sound worse: remove it here."
+                )
                 warn.setWordWrap(True)
                 warn.setStyleSheet(f"color: {themes.color('warn')};")
                 layout.addWidget(warn)
@@ -853,7 +892,9 @@ class EffectsDialog(QDialog):
                 layout.addWidget(measure_echo, 0, Qt.AlignmentFlag.AlignLeft)
             compare = QPushButton("Compare: switch both reducers off / on")
             compare.setAutoDefault(False)
-            compare.setToolTip("Flips the Echo Reducer and Noise Reducer together, so you can hear the difference while you talk.")
+            compare.setToolTip(
+                "Flips the Echo Reducer and Noise Reducer together, so you can hear the difference while you talk."
+            )
             compare.clicked.connect(self._compare_reducers)
             layout.addWidget(compare, 0, Qt.AlignmentFlag.AlignLeft)
         if effect.kind == "builtin" and effect.type == "compressor" and instance.usable:
@@ -867,13 +908,17 @@ class EffectsDialog(QDialog):
             if self.channel.devices:
                 layout.addWidget(self._voice_button(), 0, Qt.AlignmentFlag.AlignLeft)
         if effect.kind == "builtin" and effect.type == "noise_gate" and instance.usable:
-            note = QLabel("Not sure what threshold suits your room? Sluice can listen to your microphone for a few "
-                          "quiet seconds and set it for you.")
+            note = QLabel(
+                "Not sure what threshold suits your room? Sluice can listen to your microphone for a few "
+                "quiet seconds and set it for you."
+            )
             note.setWordWrap(True)
             note.setObjectName("hint")
             measure = QPushButton("Measure my room…")
             measure.setAutoDefault(False)
-            measure.setToolTip("Stay quiet for 5 seconds with your usual background noise on; the threshold is set just above it.")
+            measure.setToolTip(
+                "Stay quiet for 5 seconds with your usual background noise on; the threshold is set just above it."
+            )
             measure.clicked.connect(partial(self._measure_room, effect))
             layout.addSpacing(12)
             layout.addWidget(note)
@@ -918,7 +963,8 @@ class EffectsDialog(QDialog):
         if peak < top - 0.5:  # the loudest recent sound is below where the compressor starts (plus its makeup gain)
             self.activity_label.setText(
                 "Not doing anything right now: the sound stays below the Threshold. Lower the Threshold, or raise the "
-                "microphone's level, so it evens out your voice.")
+                "microphone's level, so it evens out your voice."
+            )
         else:
             self.activity_label.setText("Working: turning down your loudest moments.")
 
@@ -929,8 +975,11 @@ class EffectsDialog(QDialog):
         if self.activity_label is None or self._activity_stage is None:
             return
         db = self._activity_stage.activity_db
-        self.activity_label.setText("Turning your voice's frequencies down by about %.0f dB right now." % -db if db < -0.5
-                                    else "Not doing anything right now (nothing to reduce, or no sound).")
+        self.activity_label.setText(
+            "Turning your voice's frequencies down by about %.0f dB right now." % -db
+            if db < -0.5
+            else "Not doing anything right now (nothing to reduce, or no sound)."
+        )
 
     def _compare_reducers(self) -> None:
         reducers = [e for e in self.channel.effects if e.kind == "builtin" and e.type in ("echo_reducer", "noise_reducer")]
@@ -962,8 +1011,10 @@ class EffectsDialog(QDialog):
         presets.apply(self.engine, self.channel.id, presets.ROOMS[name][1])
         self._reload(select=max(0, self.list.currentRow()))
         if getattr(result, "quiet_fallback", False):
-            self._tell(f"Room: {name}. Sluice heard no sound at all, so it used the quietest setting. If your microphone is "
-                       "working, that just means the room is very quiet.")
+            self._tell(
+                f"Room: {name}. Sluice heard no sound at all, so it used the quietest setting. If your microphone is "
+                "working, that just means the room is very quiet."
+            )
             return
         self._tell(f"Room: {name}, chosen to match what Sluice heard (about {result.noise_db:.0f} dB of background noise).")
 
@@ -1012,13 +1063,15 @@ class EffectsDialog(QDialog):
             count = len(scan_vst3([folder])) if folder.is_dir() else None
             lines.append(f"{logs.short_path(folder)}   ({'does not exist' if count is None else f'{count} plugin(s)'})")
         ui_dialog.information(
-            self, "Where Sluice looks for VST3 plugins",
+            self,
+            "Where Sluice looks for VST3 plugins",
             "\n".join(lines) + "\n\nThese are the folders Linux VST3 hosts normally use, so a plugin that REAPER or another "
             "Linux host can see in them is found here too. Add other folders with \u201cAdd a folder of plugins\u201d, or "
             "with the VST3_PATH environment variable.\n\n"
             "Only Linux VST3 plugins can be loaded. Windows plugins do not work directly (a tool such as yabridge "
             "can make Linux copies of them, usually in ~/.vst3/yabridge), and VST2, JSFX and plugins that exist only "
-            "inside another program cannot be loaded.")
+            "inside another program cannot be loaded.",
+        )
 
     def _add_builtin(self, key: str, name: str) -> None:
         effect = Effect(new_effect_id(), "builtin", name, type=key)
@@ -1044,7 +1097,9 @@ class EffectsDialog(QDialog):
             QApplication.restoreOverrideCursor()
         plugin_name = ""
         if len(names) > 1:
-            plugin_name, ok = QInputDialog.getItem(self, "Choose a plugin", "This file contains several plugins:", names, 0, False)
+            plugin_name, ok = QInputDialog.getItem(
+                self, "Choose a plugin", "This file contains several plugins:", names, 0, False
+            )
             if not ok:
                 return
         display = plugin_name or (names[0] if names else Path(path).stem)
@@ -1057,8 +1112,11 @@ class EffectsDialog(QDialog):
             QApplication.restoreOverrideCursor()
         if instance.error:
             self.engine.remove_effect(self.channel.id, effect.id)
-            extra = ("\n\nVST3 plugins need pedalboard: Settings > Setup check has the command that installs it."
-                     if "pedalboard" in instance.error.lower() else "")
+            extra = (
+                "\n\nVST3 plugins need pedalboard: Settings > Setup check has the command that installs it."
+                if "pedalboard" in instance.error.lower()
+                else ""
+            )
             ui_dialog.warning(self, "Could not load plugin", instance.error + extra)
             self._reload()
             return

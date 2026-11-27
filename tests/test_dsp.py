@@ -94,7 +94,7 @@ def test_mix_limiter_never_exceeds_the_ceiling():
     sig = sine_blocks(1.0, 16)
     ceiling = 10 ** (-1.0 / 20)
     for i in range(16):
-        out = g.process({"a": sig[:, i * N:(i + 1) * N]}, N)["monitor"]
+        out = g.process({"a": sig[:, i * N : (i + 1) * N]}, N)["monitor"]
         assert np.abs(out).max() <= ceiling + 1e-6
 
 
@@ -105,7 +105,7 @@ def test_peak_limiter_leaves_quiet_audio_untouched_and_recovers_after_overload()
     loud = limiter.process(sine_blocks(4.0, 8))
     assert np.abs(loud).max() <= 10 ** (-1.0 / 20) + 1e-6
     after = limiter.process(sine_blocks(0.3, 80, start=N * 8))  # about 0.85 s of quiet audio
-    assert np.abs(after[:, -N * 4:]).max() == pytest.approx(0.3, abs=0.01)  # back to unity gain
+    assert np.abs(after[:, -N * 4 :]).max() == pytest.approx(0.3, abs=0.01)  # back to unity gain
 
 
 def test_peak_limiter_handles_odd_block_sizes():

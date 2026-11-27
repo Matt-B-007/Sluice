@@ -12,6 +12,9 @@
 #   ... | bash -s -- --version 0.12.2 a particular version
 #   ... | bash -s -- --yes            do not ask before the package command
 #   ... | bash -s -- --no-system      skip the system packages (installed already)
+#   ... | bash -s -- --no-launch      do not start Sluice at the end
+#   ... | bash -s -- --from-source    the newest code on the main branch instead of a release (no checksum to check)
+#   ... | bash -s -- --uninstall      remove Sluice (runs its own uninstaller)
 #
 # Rather read it first? Download it, look, then run it:
 #   curl -fsSLO https://raw.githubusercontent.com/Matt-B-007/Sluice/main/get.sh && less get.sh && bash get.sh
@@ -22,14 +25,16 @@ main() {
     set -euo pipefail
     local repo="${SLUICE_REPO:-Matt-B-007/Sluice}"
     local api="${SLUICE_RELEASES_URL:-https://api.github.com/repos/$repo/releases?per_page=20}"
-    local channel="stable" want="" pass=()
+    local channel="stable" want="" pass=() from_source=0 uninstall=0
     while [ $# -gt 0 ]; do
         case "$1" in
+            --from-source) from_source=1 ;;
+            --uninstall) uninstall=1 ;;
             --beta) channel="beta" ;;
             --stable) channel="stable" ;;
             --version) shift; want="${1:-}" ;;
             --version=*) want="${1#--version=}" ;;
-            -h|--help) sed -n '3,18p' "${BASH_SOURCE[0]:-get.sh}" 2>/dev/null | sed 's/^# \{0,1\}//'; return 0 ;;
+            -h|--help) sed -n '3,21p' "${BASH_SOURCE[0]:-get.sh}" 2>/dev/null | sed 's/^# \{0,1\}//'; return 0 ;;
             *) pass+=("$1") ;;
         esac
         shift
@@ -37,6 +42,20 @@ main() {
 
     say() { printf '%s\n' "$*"; }
     fail() { printf 'Sluice could not be installed: %s\n' "$*" >&2; exit 1; }
+
+    if [ "$uninstall" = 1 ]; then  # 0.13.1: the installed Sluice removes itself (it lists what it removes and asks first)
+        local installed
+        installed="$(command -v sluice || true)"
+        [ -n "$installed" ] || [ ! -x "$HOME/.local/bin/sluice" ] || installed="$HOME/.local/bin/sluice"
+        if [ -z "$installed" ]; then
+            printf 'Sluice is not installed for this user, so there is nothing to remove.\n' >&2
+            exit 1
+        fi
+        if [ -r /dev/tty ]; then
+            exec "$installed" --uninstall "${pass[@]}" < /dev/tty
+        fi
+        exec "$installed" --uninstall --yes "${pass[@]}" < /dev/null
+    fi
 
     [ "$(id -u)" != 0 ] || [ -n "${SLUICE_ALLOW_ROOT:-}" ] || fail "run this as your normal user, not with sudo (Sluice installs for you, in your home folder; it asks for sudo only for the one package command)."
     local py
@@ -54,6 +73,13 @@ main() {
     trap 'rm -rf "${SLUICE_GET_TMP:-/nonexistent}"' EXIT
     local tmp="$SLUICE_GET_TMP"
 
+    local tag zip_url sum_url
+    if [ "$from_source" = 1 ]; then  # 0.13.1: the main branch, as it is now; there is no published checksum for it
+        tag="main (from source)"
+        zip_url="https://codeload.github.com/$repo/zip/refs/heads/main"
+        say "==> Downloading the newest code from the main branch (not a release: there is no checksum to check it against)"
+        fetch "$zip_url" "$tmp/sluice.zip" || fail "the download failed."
+    else
     say "==> Finding the ${want:+requested}${want:-latest $channel} Sluice release"
     fetch "$api" "$tmp/releases.json" || fail "could not reach GitHub ($api). Check your internet connection."
     local picked
@@ -89,7 +115,6 @@ if best is None:
 print(best[1], best[2], best[3])
 PY
 )" || fail "no ${want:+release $want}${want:-$channel release} with a downloadable zip and checksum was found on GitHub."
-    local tag zip_url sum_url
     read -r tag zip_url sum_url <<<"$picked"
     case "$zip_url$sum_url" in *[!A-Za-z0-9._~:/?#@%+=\&-]*) fail "the release's download address looks wrong." ;; esac
     case "$zip_url" in https://*) ;; file://*) [ -n "${SLUICE_RELEASES_URL:-}" ] || fail "the release's download address is not https." ;;
@@ -103,6 +128,7 @@ PY
     actual="$("$py" -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$tmp/sluice.zip")"
     [ -n "$expected" ] && [ "$expected" = "$actual" ] || fail "the download does not match its checksum (it may be damaged). Nothing was installed; try again."
     say "Checked: the download matches its checksum."
+    fi
 
     "$py" - "$tmp/sluice.zip" "$tmp/src" <<'PY' || fail "the zip could not be unpacked."
 import os, sys, zipfile

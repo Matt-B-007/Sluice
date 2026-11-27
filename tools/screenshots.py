@@ -2,12 +2,13 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Make the README screenshots and the theme pack's previews from the demo mixer, with the meters showing some sound.
 
-    QT_QPA_PLATFORM=offscreen python3 tools/screenshots.py            # both
-    QT_QPA_PLATFORM=offscreen python3 tools/screenshots.py docs       # only docs/screenshot*.png
-    QT_QPA_PLATFORM=offscreen python3 tools/screenshots.py previews   # only themes/previews/*.jpg
-    QT_QPA_PLATFORM=offscreen python3 tools/screenshots.py compare DIR          # every skin and theme at 1x
-    QT_QPA_PLATFORM=offscreen QT_SCALE_FACTOR=2 python3 tools/screenshots.py compare DIR   # ...and at 2x
+QT_QPA_PLATFORM=offscreen python3 tools/screenshots.py            # both
+QT_QPA_PLATFORM=offscreen python3 tools/screenshots.py docs       # only docs/screenshot*.png
+QT_QPA_PLATFORM=offscreen python3 tools/screenshots.py previews   # only themes/previews/*.jpg
+QT_QPA_PLATFORM=offscreen python3 tools/screenshots.py compare DIR          # every skin and theme at 1x
+QT_QPA_PLATFORM=offscreen QT_SCALE_FACTOR=2 python3 tools/screenshots.py compare DIR   # ...and at 2x
 """
+
 from __future__ import annotations
 
 import os
@@ -27,10 +28,8 @@ DOCS = (  # file, look, theme, layout, size
     ("screenshot-light.png", "calm", "light", "columns", (1680, 860)),
     ("screenshot-rows.png", "calm", "dark", "rows", (1680, 860)),
     ("screenshot-tile.png", "tile", "dark", "columns", (1680, 860)),
-    ("screenshot-nexus.png", "nexus", "dark", "columns", (1680, 860)),
-    ("screenshot-glass.png", "glass", "dark", "columns", (1680, 860)),
-)
-COMPARE = [(skin, theme) for skin in ("calm", "tile", "glass", "nexus") for theme in ("dark", "light")]  # 0.12.2: before and after
+)  # 0.13.1: Glass and Nexus were retired
+COMPARE = [(skin, theme) for skin in ("calm", "tile") for theme in ("dark", "light")]  # 0.12.2: before and after
 SOUND = {"game": 0.7, "chat": 0.45, "music": 0.55, "browser": 0.3, "mic": 0.6}
 
 
@@ -76,6 +75,9 @@ def shoot(app, skin: str, theme_id: str, layout: str, size: tuple, theme_file: P
 
 def main(which: str = "both", folder: str = "") -> None:
     app = QApplication.instance() or QApplication(sys.argv)
+    from sluice import fonts
+
+    fonts.install(app)  # as Sluice does at start-up (0.12.7)
     if which == "compare":
         out = Path(folder or "compare")
         out.mkdir(parents=True, exist_ok=True)

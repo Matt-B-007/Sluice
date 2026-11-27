@@ -1,6 +1,7 @@
 """The compact list: every channel on one line (its colour, name, a slider and a mute button) for a window too small for the cards.
 It is also the picture the desktop widgets use. It drives the same engine calls as the cards; the cards stay alive, hidden, so
 everything else in the window (the tray, the controllers, the bug report) keeps working."""
+
 from __future__ import annotations
 
 from functools import partial
@@ -18,6 +19,7 @@ from .ui_meters import Fader
 def _db_text(db: float) -> str:
     """0.12.3: in dB, percent or both, as Settings says (narrow: the compact list has little room)."""
     from .ui_base import format_level
+
     return "off" if db <= -60 else format_level(db, narrow=True)
 
 
@@ -49,8 +51,12 @@ class MiniStrip(QWidget):
             button.setObjectName("segment")
             button.setCheckable(True)
             button.setAccessibleName(f"Show the {mix.label} levels")
-            button.setToolTip({"monitor": "Listen: the levels of what you hear", "stream": "Broadcast: the levels of what your audience hears"}
-                              .get(mix.id, f"The levels of {mix.label}"))
+            button.setToolTip(
+                {
+                    "monitor": "Listen: the levels of what you hear",
+                    "stream": "Broadcast: the levels of what your audience hears",
+                }.get(mix.id, f"The levels of {mix.label}")
+            )
             button.setCursor(Qt.CursorShape.PointingHandCursor)
             button.clicked.connect(partial(self.choose_mix, mix.id))
             pick.addWidget(button)
@@ -80,6 +86,7 @@ class MiniStrip(QWidget):
         line.setSpacing(8)
         from . import skin_tile
         from .ui_tile_paint import IconWell
+
         color = channel.color if channel is not None else themes.color("accent")
         # 0.12.2: the same small-mixer line as the desktop widgets: the channel's drawing in a tinted tile, then the lane
         dot = IconWell(color, skin_tile.channel_icon(channel) if channel is not None else "speaker", text, 24)
@@ -143,8 +150,9 @@ class MiniStrip(QWidget):
             self.rows[channel.id] = row
         self.master_row.fader.setAccessibleName("Main level")
         self.master_row.mute.setAccessibleName("Mute main")
-        self.choose_mix(self.mix_id if any(m.id == self.mix_id for m in self.engine.mixer.mixes)
-                        else self.engine.mixer.mixes[0].id)
+        self.choose_mix(
+            self.mix_id if any(m.id == self.mix_id for m in self.engine.mixer.mixes) else self.engine.mixer.mixes[0].id
+        )
 
     # ---------------------------------------------------------------- doing
     def choose_mix(self, mix_id: str, _checked: bool = False) -> None:
@@ -202,7 +210,11 @@ class MiniStrip(QWidget):
                 row.readout.setProperty("muted", muted)
                 row.readout.style().unpolish(row.readout)
                 row.readout.style().polish(row.readout)
-            name = skin_tile.LANE_ICONS.get(self.mix_id, "speaker") if row.channel is not None else ("speaker_off" if muted else "speaker")
+            name = (
+                skin_tile.LANE_ICONS.get(self.mix_id, "speaker")
+                if row.channel is not None
+                else ("speaker_off" if muted else "speaker")
+            )
             row.mute.setIcon(icons.icon(name, themes.color("mute_fg" if muted else "text2"), 16))
         else:
             row.readout.setText(_db_text(db))
@@ -221,9 +233,12 @@ class MiniStrip(QWidget):
             return
         if self._tray is None:
             from .ui_tile_paint import TrayPainter
+
             self._tray = TrayPainter()  # the same tray as behind the big tiles
         p = QPainter(self)
-        p.setRenderHints(QPainter.RenderHint.Antialiasing | QPainter.RenderHint.SmoothPixmapTransform)  # 0.12.2: smooth edges everywhere
+        p.setRenderHints(
+            QPainter.RenderHint.Antialiasing | QPainter.RenderHint.SmoothPixmapTransform
+        )  # 0.12.2: smooth edges everywhere
         self._tray.draw(self, p)
         p.end()
 

@@ -2,6 +2,7 @@
 
 ```bash
 bash scripts/check.sh           # every check GitHub runs, in the same order (or only some: bash scripts/check.sh shell python)
+ruff format sluice tests tools  # lays the Python out the way the check expects (pinned version in scripts/tool-versions)
 ```
 
 `scripts/check.sh` is the only place checks live: GitHub's workflows call it and nothing else, so a run that passes here

@@ -29,7 +29,9 @@ def test_lutris_games_are_found_by_title_and_program_name(tmp_path):
 def test_epic_games_from_legendary_and_heroic(tmp_path):
     folder = tmp_path / ".config" / "heroic" / "legendaryConfig" / "legendary"
     folder.mkdir(parents=True)
-    (folder / "installed.json").write_text(json.dumps({"Sugar": {"title": "Rocket League", "executable": "Binaries/Win64/RocketLeague.exe"}}))
+    (folder / "installed.json").write_text(
+        json.dumps({"Sugar": {"title": "Rocket League", "executable": "Binaries/Win64/RocketLeague.exe"}})
+    )
     found = list(legendary_games(tmp_path))
     assert found[0].name == "Rocket League" and "rocketleague.exe" in found[0].aliases
 
@@ -38,7 +40,8 @@ def test_bottles_programs(tmp_path):
     bottle = tmp_path / ".local" / "share" / "bottles" / "bottles" / "Gaming"
     bottle.mkdir(parents=True)
     (bottle / "bottle.yml").write_text(
-        "Name: Gaming\nExternal_Programs:\n  abc:\n    name: Notepad++\n    executable: notepad++.exe\n    path: C:\\Program Files\\Notepad++\\notepad++.exe\n")
+        "Name: Gaming\nExternal_Programs:\n  abc:\n    name: Notepad++\n    executable: notepad++.exe\n    path: C:\\Program Files\\Notepad++\\notepad++.exe\n"
+    )
     found = list(bottles_programs(tmp_path))
     assert [e.name for e in found] == ["Notepad++"] and "notepad++.exe" in found[0].aliases
 

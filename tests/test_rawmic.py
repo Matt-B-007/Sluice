@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """0.9.6: a warning when an app listens to the raw microphone instead of the one with Sluice's effects."""
+
 import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -58,6 +59,7 @@ def test_the_message_says_which_device_to_choose(engine):
 
 def test_it_takes_a_while_before_an_app_is_reported_and_only_once(engine, caplog):
     import logging
+
     with caplog.at_level(logging.WARNING, logger="sluice.engine"):
         engine.linker.others = links_for("OBS")
         engine.check_raw_mic(100.0)

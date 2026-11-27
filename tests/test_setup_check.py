@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The setup check (0.12.0): one list of what Sluice needs and can use, shown in Settings, by --diagnose and by install.sh."""
+
 import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -14,7 +15,8 @@ FAMILIES = ("arch", "debian", "fedora", "suse", "void")
 
 def test_every_part_says_what_it_is_for_and_the_needed_ones_are_the_audio_ones():
     assert [p.key for p in PARTS if p.required] == ["pulse", "jack", "pwlink"]
-    assert {"layershell", "kwindowsystem", "kconfig", "rust", "pedalboard", "tray"} <= {p.key for p in PARTS if not p.required}
+    assert {"layershell", "kconfig", "rust", "pedalboard", "tray"} <= {p.key for p in PARTS if not p.required}
+    assert "kwindowsystem" not in {p.key for p in PARTS}  # 0.13.1: it only blurred the retired Glass skin
     for part in PARTS:
         assert part.purpose.endswith(".") and part.check is not None
 
@@ -28,12 +30,15 @@ def test_every_package_a_part_needs_is_named_on_every_family():
                     assert distro.PACKAGES[fam][need] or need == "pulse", (part.key, need, fam)
 
 
-@pytest.mark.parametrize("fam,line", [
-    ("arch", "sudo pacman -S --needed layer-shell-qt"),
-    ("debian", "sudo apt install liblayershellqtinterface6"),
-    ("fedora", "sudo dnf install layer-shell-qt"),
-    ("suse", "sudo zypper install libLayerShellQtInterface6"),
-])
+@pytest.mark.parametrize(
+    "fam,line",
+    [
+        ("arch", "sudo pacman -S --needed layer-shell-qt"),
+        ("debian", "sudo apt install liblayershellqtinterface6"),
+        ("fedora", "sudo dnf install layer-shell-qt"),
+        ("suse", "sudo zypper install libLayerShellQtInterface6"),
+    ],
+)
 def test_the_command_is_the_one_for_this_distribution(fam, line):
     ids = {"arch": "arch", "debian": "ubuntu", "fedora": "fedora", "suse": "opensuse-tumbleweed"}
     assert distro.install_hint(["layershell"], {"ID": ids[fam]}) == line
@@ -44,6 +49,7 @@ def fake(key="x", required=False, ok=False, reason="gone", applies=True, needs=(
         if crash:
             raise RuntimeError("kaput")
         return ok, reason
+
     return Part(key, "Thing", "Does a thing.", required, needs, check, (lambda: applies), command)
 
 
@@ -65,8 +71,12 @@ def test_a_crashing_check_is_a_missing_part_that_says_why():
 
 
 def test_the_summary_and_the_text_lines_separate_needed_from_optional():
-    results = [Result(fake("a", required=True), False, "no server", "sudo x"), Result(fake("b"), False, "absent", "sudo y"),
-               Result(fake("c"), True, "fine"), Result(fake("d"), None, "not used on this desktop", applies=False)]
+    results = [
+        Result(fake("a", required=True), False, "no server", "sudo x"),
+        Result(fake("b"), False, "absent", "sudo y"),
+        Result(fake("c"), True, "fine"),
+        Result(fake("d"), None, "not used on this desktop", applies=False),
+    ]
     needed, optional = setup_check.summary(results)
     assert [r.part.key for r in needed] == ["a"] and [r.part.key for r in optional] == ["b"]
     lines = setup_check.lines(results)
@@ -76,6 +86,7 @@ def test_the_summary_and_the_text_lines_separate_needed_from_optional():
 
 def test_diagnose_lists_the_same_parts_and_a_missing_optional_part_is_not_a_failure(monkeypatch):
     from sluice import diagnose
+
     monkeypatch.setattr(setup_check, "PARTS", (fake("opt"), fake("need", required=True, ok=True, reason="here")))
     results = {name: (ok, detail) for name, ok, detail in diagnose.run_checks()}
     assert results["Thing"][0] is True  # (the last of the two "Thing"s: the needed one, present)
@@ -95,6 +106,7 @@ def test_install_sh_prints_the_optional_parts(capsys, monkeypatch):
 
 def test_the_rust_part_says_how_to_get_the_faster_engine(monkeypatch):
     from sluice import spectral
+
     monkeypatch.delenv("SLUICE_NO_RUST", raising=False)
     monkeypatch.setattr(spectral, "RUST_VERSION", "0.9.6")
     assert setup_check.check(BY_KEY["rust"]).missing and "rebuild" in setup_check.check(BY_KEY["rust"]).reason
@@ -110,6 +122,7 @@ def window(qapp, tmp_path):
     from sluice.linker import NullLinker
     from sluice.model import Mixer
     from sluice.ui import MainWindow
+
     engine = Engine(Mixer.demo(), MockSystem(), NullIO(realtime=False), NullLinker())
     engine.start()
     win = MainWindow(engine, tmp_path / "config.json")
@@ -119,9 +132,15 @@ def window(qapp, tmp_path):
 
 
 def test_settings_shows_each_part_with_its_state_and_a_copy_button_for_the_command(qapp, tmp_path, monkeypatch):
-    monkeypatch.setattr(setup_check, "PARTS", (
-        fake("need", required=True, reason="no server", needs=("jack",)), fake("opt", ok=True, reason="fine"),
-        fake("kde", applies=False)))
+    monkeypatch.setattr(
+        setup_check,
+        "PARTS",
+        (
+            fake("need", required=True, reason="no server", needs=("jack",)),
+            fake("opt", ok=True, reason="fine"),
+            fake("kde", applies=False),
+        ),
+    )
     monkeypatch.setattr(distro, "family", lambda info=None: "debian")
     win = window(qapp, tmp_path)
     try:
@@ -134,6 +153,7 @@ def test_settings_shows_each_part_with_its_state_and_a_copy_button_for_the_comma
         assert command.text() == "sudo apt install pipewire-jack" and list(settings.setup_commands) == ["need"]
         copy.click()
         from PySide6.QtGui import QGuiApplication
+
         assert QGuiApplication.clipboard().text() == "sudo apt install pipewire-jack" and copy.text() == "Copied"
         states = {label.objectName() for label in settings.pages.currentWidget().findChildren(type(command))}
         assert {"setupneeded", "setupok", "setupidle"} <= states
@@ -146,12 +166,12 @@ def test_settings_shows_each_part_with_its_state_and_a_copy_button_for_the_comma
 
 
 def test_an_optional_part_is_mentioned_once_when_it_would_be_used(qapp, tmp_path, monkeypatch):
-    monkeypatch.setattr(setup_check, "BY_KEY", {"kwindowsystem": fake("kwindowsystem", reason="not installed")})
+    monkeypatch.setattr(setup_check, "BY_KEY", {"layershell": fake("layershell", reason="not installed")})
     win = window(qapp, tmp_path)
     try:
-        assert win.hint_missing_part("kwindowsystem")
+        assert win.hint_missing_part("layershell")
         assert "Setup check" in win.status_label.text()
-        assert not win.hint_missing_part("kwindowsystem")  # only once
-        assert "setup-kwindowsystem" in win.engine.mixer.hints_seen
+        assert not win.hint_missing_part("layershell")  # only once
+        assert "setup-layershell" in win.engine.mixer.hints_seen
     finally:
         win.shutdown()

@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """PulseSystem against a fake pulsectl: checks the exact commands we send, not real audio."""
+
 from types import SimpleNamespace
 
 import pytest
@@ -36,7 +37,9 @@ class FakePulse:
         self.inputs = []
         self.modules = [
             SimpleNamespace(index=3, name="module-null-sink", argument="sink_name=sluice_ch_old"),
-            SimpleNamespace(index=4, name="module-remap-source", argument="master=sluice_ch_old.monitor source_name=sluice_old_mic"),
+            SimpleNamespace(
+                index=4, name="module-remap-source", argument="master=sluice_ch_old.monitor source_name=sluice_old_mic"
+            ),
             SimpleNamespace(index=5, name="module-null-sink", argument="sink_name=somebody_elses"),
             SimpleNamespace(index=6, name="module-loopback", argument="source=a sink=b"),
         ]
@@ -103,9 +106,11 @@ def test_null_sink_arguments(system):
 
 
 def test_descriptions_cannot_break_out_of_the_module_arguments(system):
-    system.ensure_null_sink("sluice_ch_x", 'Evil" sink_name=hijack \'q\' \\ \n')
+    system.ensure_null_sink("sluice_ch_x", "Evil\" sink_name=hijack 'q' \\ \n")
     args = system._pulse.loaded[-1][2]
-    assert '"' not in args and len(args.split(" ")) == 2  # (a plain-space split, like the server's) still exactly two arguments: nothing broke out of the name
+    assert (
+        '"' not in args and len(args.split(" ")) == 2
+    )  # (a plain-space split, like the server's) still exactly two arguments: nothing broke out of the name
     assert "\\" not in args and "\n" not in args and "'" not in args
     assert args.startswith("sink_name=sluice_ch_x ")
 
@@ -234,8 +239,12 @@ class SplittingPulse(FakePulse):
         index = super().module_load(name, args)
         parsed = self._parse(args)
         key = "sink_properties" if name == "module-null-sink" else "source_properties"
-        description = parsed.get(key, "device.description=").split("=", 1)[1] or parsed.get("sink_name", parsed.get("source_name"))
-        node = SimpleNamespace(name=parsed.get("sink_name") or parsed.get("source_name"), description=description, owner_module=index)
+        description = parsed.get(key, "device.description=").split("=", 1)[1] or parsed.get(
+            "sink_name", parsed.get("source_name")
+        )
+        node = SimpleNamespace(
+            name=parsed.get("sink_name") or parsed.get("source_name"), description=description, owner_module=index
+        )
         (self.sinks if name == "module-null-sink" else self.sources).append(node)
         return index
 
@@ -245,7 +254,7 @@ def test_devices_get_their_full_names_even_though_the_server_splits_at_spaces(mo
     system = PulseSystem(purge=False)
     system._pulse.sources = [s for s in system._pulse.sources if s.name != "sluice_stream_mic"]
     system.ensure_null_sink("sluice_ch_game", "Sluice (Game)")
-    system.ensure_null_sink("sluice_stream", "Sluice (Broadcast) feed", True, "Sluice (Broadcast)")
+    system.ensure_null_sink("sluice_stream", "Sluice (Broadcast) for OBS", True, "Sluice (Broadcast)")
     sinks = {s.name: s.description for s in system._pulse.sinks}
     sources = {s.name: s.description for s in system._pulse.sources}
     assert sinks["sluice_ch_game"].replace(" ", " ") == "Sluice (Game)"
@@ -255,7 +264,9 @@ def test_devices_get_their_full_names_even_though_the_server_splits_at_spaces(mo
 
 def test_the_old_quoted_spelling_is_what_cut_names_down_to_plain_sluice():
     parsed = SplittingPulse._parse('sink_name=x sink_properties=device.description="Sluice (Game)"')
-    assert parsed["sink_properties"] == "device.description=Sluice (Game)" or parsed["sink_properties"].startswith("device.description=")
+    assert parsed["sink_properties"] == "device.description=Sluice (Game)" or parsed["sink_properties"].startswith(
+        "device.description="
+    )
 
 
 def test_if_the_first_spelling_gives_the_wrong_name_the_next_is_tried(monkeypatch):
@@ -263,7 +274,9 @@ def test_if_the_first_spelling_gives_the_wrong_name_the_next_is_tried(monkeypatc
         def module_load(self, name, args=""):
             index = FakePulse.module_load(self, name, args)
             wrong = " " in args  # pretend a server that mangles the first spelling
-            key_name = args.split("sink_name=")[1].split()[0] if "sink_name=" in args else args.split("source_name=")[1].split()[0]
+            key_name = (
+                args.split("sink_name=")[1].split()[0] if "sink_name=" in args else args.split("source_name=")[1].split()[0]
+            )
             node = SimpleNamespace(name=key_name, description="Sluice" if wrong else "Sluice (Game)", owner_module=index)
             (self.sinks if name == "module-null-sink" else self.sources).append(node)
             return index

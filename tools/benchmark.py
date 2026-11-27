@@ -5,6 +5,7 @@
 The audio callback figure is how much of the time budget one buffer uses; the window figures are the
 process's CPU use while idle and its resident memory.
 """
+
 from __future__ import annotations
 
 import os
@@ -58,7 +59,9 @@ def audio_callback(frames: int = 256, rate: int = 48000, loops: int = 1500) -> N
             graph.process(inputs, frames)
         per = (time.perf_counter() - start) / loops
         budget = frames / rate
-        print(f"audio callback, {name}: {per * 1e6:7.1f} us per buffer = {100 * per / budget:5.2f}% of the {budget * 1e3:.1f} ms budget")
+        print(
+            f"audio callback, {name}: {per * 1e6:7.1f} us per buffer = {100 * per / budget:5.2f}% of the {budget * 1e3:.1f} ms budget"
+        )
 
 
 def window(seconds: float = 6.0) -> None:

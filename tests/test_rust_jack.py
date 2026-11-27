@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The Rust JACK client against a real (dummy-driver) JACK server. Skipped when jackd or libjack is not around."""
+
 import gc
 import os
 import shutil
@@ -40,8 +41,11 @@ def make_io(*args, **kwargs):
 def server(monkeypatch):
     name = f"sluicetest{os.getpid()}"
     monkeypatch.setenv("JACK_DEFAULT_SERVER", name)
-    proc = subprocess.Popen(["jackd", "-n", name, "-r", "-d", "dummy", "-r", "48000", "-p", "512"],
-                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    proc = subprocess.Popen(
+        ["jackd", "-n", name, "-r", "-d", "dummy", "-r", "48000", "-p", "512"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
     deadline = time.time() + 20
     while time.time() < deadline:
         # Ask from a separate process: libjack can crash outright when it meets a server that is still starting,
@@ -107,7 +111,12 @@ def test_blocks_flow_through_and_ports_follow_the_mixer(server):
         names = {p.name for p in c.get_ports("sluice:")}
         assert {"sluice:in_chat_L", "sluice:out_alt_R"} <= names
         io.sync_ports(["mic"], ["main"])
-        assert {p.name for p in c.get_ports("sluice:")} == {"sluice:in_mic_L", "sluice:in_mic_R", "sluice:out_main_L", "sluice:out_main_R"}
+        assert {p.name for p in c.get_ports("sluice:")} == {
+            "sluice:in_mic_L",
+            "sluice:in_mic_R",
+            "sluice:out_main_L",
+            "sluice:out_main_R",
+        }
         average, worst = io.take_load()
         assert 0 <= average <= worst < 1
         assert io.xruns >= 0 and io.error == ""

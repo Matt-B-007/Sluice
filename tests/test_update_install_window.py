@@ -48,8 +48,9 @@ def make(qapp, tmp_path, monkeypatch):
 
 
 def offer(zip_url=ZIP, checksum=ZIP + ".sha256"):
-    return UpdateResult("available", __version__, "9.9.9", "https://example.com/r", notes="- **New.**",
-                        zip_url=zip_url, checksum_url=checksum)
+    return UpdateResult(
+        "available", __version__, "9.9.9", "https://example.com/r", notes="- **New.**", zip_url=zip_url, checksum_url=checksum
+    )
 
 
 def updatable(monkeypatch, tmp_path):

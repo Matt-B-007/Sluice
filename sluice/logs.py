@@ -9,6 +9,7 @@
 Normal runs log at INFO; ``sluice --debug`` adds DEBUG (every link and command).
 Nothing from the audio thread is ever logged: that could cause dropouts.
 """
+
 from __future__ import annotations
 
 import faulthandler
@@ -25,9 +26,9 @@ from typing import Optional
 LOG_NAME = "sluice.log"
 CRASH_NAME = "crash.log"
 CRASH_ARCHIVE_NAME = "crash-archive.log"
-CRASH_KEEP_SESSIONS = 10   # traces from sessions older than this move to the archive
+CRASH_KEEP_SESSIONS = 10  # traces from sessions older than this move to the archive
 CRASH_HEADERS = ("--- sluice session started", "--- sluice command started")
-RUNNING_NAME = "running"   # exists while a session is alive; its modified time is the last sign of life
+RUNNING_NAME = "running"  # exists while a session is alive; its modified time is the last sign of life
 HEARTBEAT_SECONDS = 5.0
 MAX_BYTES = 512 * 1024
 BACKUPS = 3
@@ -51,7 +52,7 @@ def short_path(path) -> str:
     text = str(path)
     home = str(Path.home()).rstrip("/")
     if home and home != "/" and (text == home or text.startswith(home + "/")):
-        return "~" + text[len(home):]
+        return "~" + text[len(home) :]
     return text
 
 
@@ -74,7 +75,7 @@ def rotate_crash_log(keep: int = CRASH_KEEP_SESSIONS) -> int:
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
         return 0
-    blocks: list = []   # [header or None, trace lines]
+    blocks: list = []  # [header or None, trace lines]
     for line in lines:
         if line.startswith(CRASH_HEADERS):
             blocks.append([line, []])
@@ -85,7 +86,7 @@ def rotate_crash_log(keep: int = CRASH_KEEP_SESSIONS) -> int:
     headers = [b for b in blocks if b[0] is not None]
     if len(headers) <= keep:
         return 0
-    cutoff = len(headers) - keep   # how many session headers are too old
+    cutoff = len(headers) - keep  # how many session headers are too old
     old: list = []
     seen = 0
     while blocks and (blocks[0][0] is None or seen < cutoff):
@@ -93,7 +94,7 @@ def rotate_crash_log(keep: int = CRASH_KEEP_SESSIONS) -> int:
         if block[0] is not None:
             seen += 1
         old.append(block)
-    moved = [b for b in old if b[1]]   # sessions with nothing recorded need no archive entry
+    moved = [b for b in old if b[1]]  # sessions with nothing recorded need no archive entry
     try:
         if moved:
             with open(crash_archive_path(), "a", encoding="utf-8") as archive:
@@ -163,8 +164,10 @@ def previous_session_notice() -> Optional[str]:
     if pid and pid != os.getpid() and _pid_alive(pid):
         return None  # another Sluice is running right now: its marker is not a crash
     started = lines[1] if len(lines) > 1 else "an unknown time"
-    return (f"the previous Sluice session (started {started}, last seen running at {seen}) did not end normally: "
-            f"it crashed, was stopped, or the computer lost power. If it crashed, {crash_path().name} has the details")
+    return (
+        f"the previous Sluice session (started {started}, last seen running at {seen}) did not end normally: "
+        f"it crashed, was stopped, or the computer lost power. If it crashed, {crash_path().name} has the details"
+    )
 
 
 def mark_running() -> None:
@@ -298,12 +301,14 @@ def _enable_faulthandler(session: bool = True) -> None:
         if _fault_file is not None:
             _fault_file.close()
         if session:
-            rotate_crash_log()   # only when a window starts: no other Sluice is running then
+            rotate_crash_log()  # only when a window starts: no other Sluice is running then
         from . import __version__
 
         _fault_file = open(crash_path(), "a", encoding="utf-8")
         kind = "session" if session else "command"
-        _fault_file.write(f"--- sluice {kind} started {time.strftime('%Y-%m-%d %H:%M:%S')} (pid {os.getpid()}, Sluice {__version__}) ---\n")
+        _fault_file.write(
+            f"--- sluice {kind} started {time.strftime('%Y-%m-%d %H:%M:%S')} (pid {os.getpid()}, Sluice {__version__}) ---\n"
+        )
         _fault_file.flush()
         faulthandler.enable(file=_fault_file, all_threads=True)
     except OSError:

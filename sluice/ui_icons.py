@@ -6,6 +6,7 @@ for the exact pixel size asked for, whatever the screen's scale (100%, 125%, 150
 pixels wide and straight lines sit on pixel boundaries, so they stay sharp instead of blurred by a fractional scale.
 ``icon(name, color)`` returns a QIcon; nothing is read from disk.
 """
+
 from __future__ import annotations
 
 import math
@@ -16,15 +17,56 @@ from typing import Optional
 from PySide6.QtCore import QPointF, QRectF, QSize, Qt
 from PySide6.QtGui import QColor, QIcon, QIconEngine, QPainter, QPainterPath, QPen, QPixmap
 
-NAMES = ("speaker", "speaker_off", "mic", "mic_off", "link", "sliders", "plus", "menu", "gear", "more", "chevron_down", "headphones",
-         "broadcast", "chevron_up", "gamepad", "chat", "globe", "note", "bell",
-         # 0.11.7: the ☰ panel and the Settings window
-         "refresh", "columns", "rows", "widgets", "eye", "record", "camera", "fullscreen", "tray", "keyboard", "star", "pulse", "bug",
-         "palette", "power", "save", "close", "chevron_right", "wave", "folder", "info", "quit",
-         # 0.12.0: the setup check
-         "checklist",
-         # 0.12.2: drawn instead of typed characters (▾ ◀ ▶ ✓ ×)
-         "chevron_left", "check", "x")
+NAMES = (
+    "speaker",
+    "speaker_off",
+    "mic",
+    "mic_off",
+    "link",
+    "sliders",
+    "plus",
+    "menu",
+    "gear",
+    "more",
+    "chevron_down",
+    "headphones",
+    "broadcast",
+    "chevron_up",
+    "gamepad",
+    "chat",
+    "globe",
+    "note",
+    "bell",
+    # 0.11.7: the ☰ panel and the Settings window
+    "refresh",
+    "columns",
+    "rows",
+    "widgets",
+    "eye",
+    "record",
+    "camera",
+    "fullscreen",
+    "tray",
+    "keyboard",
+    "star",
+    "pulse",
+    "bug",
+    "palette",
+    "power",
+    "save",
+    "close",
+    "chevron_right",
+    "wave",
+    "folder",
+    "info",
+    "quit",
+    # 0.12.0: the setup check
+    "checklist",
+    # 0.12.2: drawn instead of typed characters (▾ ◀ ▶ ✓ ×)
+    "chevron_left",
+    "check",
+    "x",
+)
 
 
 class _Grid:
@@ -33,7 +75,7 @@ class _Grid:
     def __init__(self, painter: QPainter, k: float, color: QColor) -> None:
         self.p, self.k = painter, k
         self.w = max(1, round(2.4 * k))  # 0.12.2: a little bolder: 2 px at 16 px, where it was 1
-        self.off = 0.5 if self.w % 2 else 0.0   # an odd pen is centred on a pixel's middle, an even one on its edge
+        self.off = 0.5 if self.w % 2 else 0.0  # an odd pen is centred on a pixel's middle, an even one on its edge
         pen = QPen(color, self.w)
         pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
@@ -247,6 +289,81 @@ def _draw(name: str, g: _Grid) -> None:
         raise ValueError(f"no icon called {name}")
 
 
+# 0.13.1 (House Standard): the icons are Lucide's (ISC licence, sluice/data/icons). Sluice's own name -> Lucide's file. The
+# drawings above stay as the fallback for a copy whose icon files are missing, and for the few icons Lucide has no match for.
+LUCIDE = {
+    "speaker": "volume-2",
+    "speaker_off": "volume-x",
+    "mic": "mic",
+    "mic_off": "mic-off",
+    "link": "link",
+    "sliders": "sliders-horizontal",
+    "plus": "plus",
+    "menu": "menu",
+    "gear": "settings",
+    "more": "ellipsis",
+    "chevron_down": "chevron-down",
+    "chevron_up": "chevron-up",
+    "chevron_right": "chevron-right",
+    "chevron_left": "chevron-left",
+    "gamepad": "gamepad-2",
+    "chat": "message-circle",
+    "globe": "globe",
+    "note": "music",
+    "bell": "bell",
+    "headphones": "headphones",
+    "broadcast": "radio",
+    "refresh": "refresh-cw",
+    "columns": "columns-2",
+    "rows": "rows-2",
+    "widgets": "layout-grid",
+    "eye": "eye",
+    "record": "circle-dot",
+    "camera": "camera",
+    "fullscreen": "maximize",
+    "tray": "panel-bottom",
+    "keyboard": "keyboard",
+    "star": "star",
+    "pulse": "activity",
+    "bug": "bug",
+    "palette": "palette",
+    "power": "power",
+    "save": "save",
+    "close": "x",
+    "check": "check",
+    "x": "x",
+    "wave": "audio-waveform",
+    "folder": "folder",
+    "info": "info",
+    "checklist": "list-checks",
+    "quit": "log-out",
+}
+ICON_DIR = Path(__file__).resolve().parent / "data" / "icons"
+
+
+@lru_cache(maxsize=64)
+def _lucide_svg(name: str) -> Optional[bytes]:
+    file = LUCIDE.get(name)
+    if not file:
+        return None
+    try:
+        return (ICON_DIR / f"{file}.svg").read_bytes()
+    except OSError:
+        return None
+
+
+def stroke_pixels(px: int) -> int:
+    """How many whole device pixels wide a Lucide stroke is at ``px``: Lucide's 2 units, rounded so a line on its grid covers
+    whole pixel rows (an even width when the icon's middle falls between pixels, an odd one when it falls on one); never
+    blurred across half-covered rows (0.12.2), and never thinner than Lucide's own weight by more than half a pixel."""
+    want = 2.0 * px / 24.0
+    parity = 0 if px % 2 == 0 else 1
+    best = max(1, round(want))
+    if best % 2 != parity:
+        best = best + 1 if best + 1 - want <= want - (best - 1) or best == 1 else best - 1
+    return max(1, best)
+
+
 def render(name: str, color: str, px: int) -> QPixmap:
     """The icon as a pixmap exactly ``px`` x ``px`` device pixels."""
     px = max(8, int(px))
@@ -254,7 +371,19 @@ def render(name: str, color: str, px: int) -> QPixmap:
     pixmap.fill(Qt.GlobalColor.transparent)
     p = QPainter(pixmap)
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
-    _draw(name, _Grid(p, px / 24.0, QColor(color)))
+    svg = _lucide_svg(name)
+    drawn = False
+    if svg is not None:
+        from PySide6.QtSvg import QSvgRenderer
+
+        width = stroke_pixels(px) * 24.0 / px  # in Lucide's units
+        svg = svg.replace(b'stroke-width="2"', f'stroke-width="{width:.4f}"'.encode())
+        renderer = QSvgRenderer(svg.replace(b"currentColor", QColor(color).name().encode()))
+        if renderer.isValid():
+            renderer.render(p, QRectF(0, 0, px, px))
+            drawn = True
+    if not drawn:
+        _draw(name, _Grid(p, px / 24.0, QColor(color)))
     p.end()
     return pixmap
 
@@ -280,8 +409,11 @@ class _Engine(QIconEngine):
         ratio = painter.device().devicePixelRatioF() if painter.device() is not None else 1.0
         side = min(rect.width(), rect.height())
         pixmap = _cached(self.name, self.color, round(side * ratio))  # device pixels: drawn 1:1, never stretched
-        painter.drawPixmap(QRectF(rect.x() + (rect.width() - side) / 2.0, rect.y() + (rect.height() - side) / 2.0, side, side),
-                           pixmap, QRectF(pixmap.rect()))
+        painter.drawPixmap(
+            QRectF(rect.x() + (rect.width() - side) / 2.0, rect.y() + (rect.height() - side) / 2.0, side, side),
+            pixmap,
+            QRectF(pixmap.rect()),
+        )
 
 
 class _ThemedEngine(_Engine):
@@ -297,6 +429,7 @@ class _ThemedEngine(_Engine):
 
     def _now(self) -> None:
         from . import themes
+
         self.color = themes.color(self.token)
 
     def pixmap(self, size: QSize, mode, state) -> QPixmap:
@@ -377,7 +510,7 @@ def _source_image(spec: str):
     if spec and os.path.isabs(spec):
         candidates.append(spec)
     if spec.startswith("steam_icon_"):
-        art = _steam_art(spec[len("steam_icon_"):])
+        art = _steam_art(spec[len("steam_icon_") :])
         if art:
             candidates.append(art)
     for path in candidates:
@@ -393,9 +526,14 @@ def _source_image(spec: str):
     return None
 
 
-APP_DIRS = ("~/.local/share/applications", "/usr/share/applications", "/usr/local/share/applications",
-            "/var/lib/flatpak/exports/share/applications", "~/.local/share/flatpak/exports/share/applications",
-            "/var/lib/snapd/desktop/applications")
+APP_DIRS = (
+    "~/.local/share/applications",
+    "/usr/share/applications",
+    "/usr/local/share/applications",
+    "/var/lib/flatpak/exports/share/applications",
+    "~/.local/share/flatpak/exports/share/applications",
+    "/var/lib/snapd/desktop/applications",
+)
 
 
 @lru_cache(maxsize=256)
@@ -403,6 +541,7 @@ def guess_icon(name: str) -> str:
     """0.12.2: the icon name for an app Sluice only knows by name (``spotify``, ``Discord``, ``firefox``): the name itself if the icon
     theme has it, else the Icon= line of a matching desktop entry (com.spotify.Client.desktop and the like), else ""."""
     import os
+
     name = (name or "").strip()
     if not name or os.path.isabs(name):
         return ""
@@ -472,35 +611,44 @@ def app_pixmap(spec: str, label: str, size: int = 20, ratio: float = 1.0, key: s
 
 
 # ------------------------------------------------------------------------------------------ the system tray icon
-TRAY_STATES = ("idle", "talking", "muted")
+TRAY_STATES = ("idle", "talking", "muted", "disconnected")
+TRAY_DOTS = {"warning": "#fbbf24", "problem": "#f87171"}  # 0.13.1: the House Standard's amber and red status colours
 _TRAY_SIZES = (16, 22, 24, 32, 48, 64)
 
 
 @lru_cache(maxsize=32)
 def _logo_svg(ring: Optional[str] = None) -> Optional[bytes]:
     """The bundled logo as SVG text, optionally with the ring in another colour (None if the file is missing)."""
-    from .launcher import bundled_icon
+    from .launcher import bundled_logo
 
     try:
-        text = Path(bundled_icon()).read_text(encoding="utf-8")
+        text = Path(bundled_logo()).read_text(encoding="utf-8")
     except OSError:
         return None
-    return (text.replace(RING_COLOUR, ring) if ring else text).encode("utf-8")
+    return (text.replace(f'stroke="{RING_COLOUR}"', f'stroke="{ring}"') if ring else text).encode("utf-8")  # (the ring only)
 
 
-RING_COLOUR = "#0d9488"   # the teal of the logo's ring
-TALKING_RING = "#4fb5aa"  # the ring colour about 35% lighter, for the closed ring while you talk
+RING_COLOUR = "#3b82f6"  # 0.13.1: the logo's blue (the whole symbol is this colour now; it was a teal ring and a coral S)
+TALKING_DARK, TALKING_LIGHT = "#60a5fa", "#1d4ed8"  # the talking light: Sluice's blue for a dark panel, and for a light one
 MUTED_RED = "#ef4444"
+DISCONNECTED_GREY = "#8a94a3"
 
 
-TRAY_CROP = (20.5, 87.0)   # the logo file is cropped to the part that has ink: from 20.5, 87 units wide (the same as its viewBox)
+TRAY_CROP = (20.5, 87.0)  # the logo file is cropped to the part that has ink: from 20.5, 87 units wide (the same as its viewBox)
 
 
-def tray_pixmap(state: str, px: int) -> QPixmap:
-    """The logo for the system tray, on a transparent background like the logo itself: plain; while you talk the ring closes
-    and gets heavier and lighter; while your microphone is muted the whole logo fades, the ring turns red, and a red badge
-    sits in the corner. The picture is cropped to the logo so it fills the tray slot like the other icons there, and drawn
-    at the exact pixel size so it stays sharp."""
+def tray_pixmap(state: str, px: int, dot: Optional[str] = None, dark_panel: bool = True) -> QPixmap:
+    """The logo for the system tray, on a transparent background like the logo itself (Sluice's tray is the House Standard's
+    reference):
+
+    - idle: plain; talking: the ring closes and lights up in Sluice's blue (the dark or light variant, to suit the panel);
+    - muted (on purpose): the whole logo fades, the ring turns red, and a red badge sits in the bottom-right corner;
+    - disconnected (0.13.1): the whole logo in grey, faded (the microphone cannot be read, so it never shows talking);
+    - ``dot`` (0.13.1): "warning" (amber) or "problem" (red), a small dot in the bottom-right corner, or the top-right while
+      the mute badge has the bottom-right.
+
+    The picture is cropped to the logo so it fills the tray slot like the other icons there, and drawn at the exact pixel
+    size so it stays sharp."""
     from PySide6.QtSvg import QSvgRenderer
 
     pixmap = QPixmap(px, px)
@@ -510,38 +658,49 @@ def tray_pixmap(state: str, px: int) -> QPixmap:
     origin, size = TRAY_CROP
     k = px / size
     painter.scale(k, k)
-    painter.translate(-origin, -origin)   # from here on everything is drawn in the logo's own 128-unit picture
-    ring = {"muted": MUTED_RED, "talking": TALKING_RING}.get(state)
-    renderer = QSvgRenderer(_logo_svg(ring) or b"")
+    painter.translate(-origin, -origin)  # from here on everything is drawn in the logo's own 128-unit picture
+    talking = TALKING_DARK if dark_panel else TALKING_LIGHT
+    ring = {"muted": MUTED_RED, "talking": talking}.get(state)
+    svg = _logo_svg(ring) or b""
+    if state == "disconnected":
+        svg = svg.replace(RING_COLOUR.encode(), DISCONNECTED_GREY.encode())
+    renderer = QSvgRenderer(svg)
     if state == "talking":
         painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.setPen(QPen(QColor(TALKING_RING), max(1.5 / k, 10.0)))
-        painter.drawEllipse(QPointF(64, 64), 38, 38)   # the two gaps fill in: a closed ring
-    if state == "muted":
+        painter.setPen(QPen(QColor(talking), max(1.5 / k, 10.0)))
+        painter.drawEllipse(QPointF(64, 64), 38, 38)  # the two gaps fill in: a closed ring
+    if state in ("muted", "disconnected"):
         painter.setOpacity(0.45)
     if renderer.isValid():
-        renderer.render(painter, QRectF(origin, origin, size, size))   # the logo (for "talking" with the ring in the lighter colour)
+        renderer.render(painter, QRectF(origin, origin, size, size))
     painter.setOpacity(1.0)
+    end = origin + size
     if state == "muted":
-        end = origin + size
-        radius = 0.234 * size   # the badge keeps its share of the icon
+        radius = 0.234 * size  # the badge keeps its share of the icon
         centre = QPointF(end - radius - 1.0, end - radius - 1.0)
-        painter.setPen(QPen(QColor("#10131a"), max(1.0 / k, 3.0)))   # a dark rim so the badge stands out on any tray
+        painter.setPen(QPen(QColor("#10131a"), max(1.0 / k, 3.0)))  # a dark rim so the badge stands out on any tray
         painter.setBrush(QColor(MUTED_RED))
         painter.drawEllipse(centre, radius, radius)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor("#ffffff"))
         bar_w, bar_h = radius * 1.0, radius * 0.3
         painter.drawRoundedRect(QRectF(centre.x() - bar_w / 2, centre.y() - bar_h / 2, bar_w, bar_h), bar_h / 2, bar_h / 2)
+    if dot in TRAY_DOTS:
+        radius = 0.17 * size
+        y = origin + radius + 1.0 if state == "muted" else end - radius - 1.0  # the badge keeps the bottom-right
+        centre = QPointF(end - radius - 1.0, y)
+        painter.setPen(QPen(QColor("#10131a"), max(1.0 / k, 3.0)))
+        painter.setBrush(QColor(TRAY_DOTS[dot]))
+        painter.drawEllipse(centre, radius, radius)
     painter.end()
     return pixmap
 
 
-def tray_icon(state: str) -> QIcon:
-    """The tray icon for ``state`` (idle, talking or muted) at every size a tray might ask for."""
+def tray_icon(state: str, dot: Optional[str] = None, dark_panel: bool = True) -> QIcon:
+    """The tray icon for ``state`` (idle, talking, muted or disconnected) and ``dot`` at every size a tray might ask for."""
     if state not in TRAY_STATES:
         raise ValueError(f"no tray state called {state}")
     result = QIcon()
     for px in _TRAY_SIZES:
-        result.addPixmap(tray_pixmap(state, px))
+        result.addPixmap(tray_pixmap(state, px, dot, dark_panel))
     return result

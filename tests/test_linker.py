@@ -123,6 +123,7 @@ def test_null_linker_records_links_and_invents_ports():
 class _FakeProcess:
     def __init__(self, lines):
         import io
+
         self.stdout = io.StringIO("".join(line + "\n" for line in lines))
         self.alive = True
 
@@ -143,6 +144,7 @@ def test_the_graph_watcher_raises_its_flag_when_pipewire_prints_a_change():
     import time as _time
 
     from sluice.linker import GraphWatcher
+
     started = []
     clock = [100.0]
 
@@ -166,6 +168,7 @@ def test_the_watcher_waits_for_quiet_and_ignores_what_sluice_did_itself(caplog):
     import logging
 
     from sluice.linker import GraphWatcher
+
     clock = [0.0]
     watcher = GraphWatcher(clock=lambda: clock[0])
     clock[0] = 5.0
@@ -225,6 +228,7 @@ def test_with_a_watcher_the_engine_checks_links_only_when_the_graph_changed():
     engine.apply_links = lambda: calls.append(1)
     engine._link_retry = False
     import time as _time
+
     now = _time.monotonic() + 1000.0  # the engine stamps its refreshes with the real clock
     for step in range(10):  # ten device refreshes, nothing changed: no look at the links
         now += engine.refresh_seconds
@@ -241,6 +245,7 @@ def test_with_a_watcher_the_engine_checks_links_only_when_the_graph_changed():
 
 def test_linking_tells_the_watcher_which_ports_are_sluices_own_doing():
     from sluice.linker import GraphWatcher, PwLinker
+
     calls = []
 
     def run(args):

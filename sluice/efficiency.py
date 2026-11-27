@@ -11,6 +11,7 @@ own: ``Tracker.sample`` is called from the window's existing half-second tick an
 
 A running Sluice writes a small snapshot file once a minute (and when it quits), so ``sluice --report`` from a terminal can show it.
 """
+
 from __future__ import annotations
 
 import json
@@ -120,7 +121,7 @@ def thread_table(audio_thread: Optional[int] = None, main_thread_before: float =
         try:
             raw = Path(f"/proc/self/task/{tid}/stat").read_text(encoding="utf-8")
             comm = Path(f"/proc/self/task/{tid}/comm").read_text(encoding="utf-8").strip()
-            rest = raw[raw.rindex(")") + 2:].split()
+            rest = raw[raw.rindex(")") + 2 :].split()
             cpu = (int(rest[11]) + int(rest[12])) / _CLOCK_TICKS  # utime + stime
         except (OSError, ValueError, IndexError):
             continue
@@ -154,7 +155,7 @@ def _thread_cpu(tid: int) -> float:
     """CPU seconds one thread of this process has used so far (0 when it is gone)."""
     try:
         raw = Path(f"/proc/self/task/{tid}/stat").read_text(encoding="utf-8")
-        rest = raw[raw.rindex(")") + 2:].split()
+        rest = raw[raw.rindex(")") + 2 :].split()
         return (int(rest[11]) + int(rest[12])) / _CLOCK_TICKS
     except (OSError, ValueError, IndexError):
         return 0.0
@@ -169,8 +170,13 @@ def cpu_split(table: list, helper_cpu: float, total_cpu: Optional[float] = None)
     audio = sum(r[2] for r in table if r[4])
     other = sum(r[2] for r in table if not r[3] and not r[4])
     ended = max(0.0, own - gui - audio - other)
-    return {"window": round(gui, 2), "audio": round(audio, 2), "other_threads": round(other, 2), "ended_threads": round(ended, 2),
-            "helpers": round(helper_cpu, 2)}
+    return {
+        "window": round(gui, 2),
+        "audio": round(audio, 2),
+        "other_threads": round(other, 2),
+        "ended_threads": round(ended, 2),
+        "helpers": round(helper_cpu, 2),
+    }
 
 
 class Tracker:
@@ -190,12 +196,14 @@ class Tracker:
         self.base_total_cpu = times.user + times.system
         self.base_helper_cpu = times.children_user + times.children_system
         self.base_main_cpu = _main_thread_cpu()
-        self.base_thread_cpu = _all_thread_cpu()   # every thread alive now: whatever it used so far is not this run's
+        self.base_thread_cpu = _all_thread_cpu()  # every thread alive now: whatever it used so far is not this run's
         self.state = "open"
         self.seconds = {s: 0.0 for s in STATES}
         self.cpu = {s: 0.0 for s in STATES}
         self.ticks = {s: 0 for s in STATES}  # meter updates
-        self.audio_cpu = {s: 0.0 for s in STATES}  # of the CPU above, what the audio callback thread used (the work being asked for)
+        self.audio_cpu = {
+            s: 0.0 for s in STATES
+        }  # of the CPU above, what the audio callback thread used (the work being asked for)
         self.audio_cpu_last = 0.0
         self.audio_read_at = 0.0
         self.rss_baseline: Optional[float] = None
@@ -225,7 +233,9 @@ class Tracker:
             self.audio_cpu_last = used
         if self.rss_baseline is None and now - self.started >= BASELINE_SECONDS:
             self.rss_baseline = _status("VmRSS")
-        if self.rss_baseline is not None and (not self.rss_samples or now - self.started - self.rss_samples[-1][0] >= MEMORY_EVERY):
+        if self.rss_baseline is not None and (
+            not self.rss_samples or now - self.started - self.rss_samples[-1][0] >= MEMORY_EVERY
+        ):
             mb = _mb(_status("VmRSS"))
             if mb is not None:
                 self.rss_samples.append((round(now - self.started, 1), mb))
@@ -244,9 +254,15 @@ class Tracker:
             "taken": time.time(),
             "seconds": round(total, 1),
             "state": self.state,
-            "by_state": {s: {"seconds": round(self.seconds[s], 1), "cpu_seconds": round(self.cpu[s], 2), "meter_updates": self.ticks[s],
-                             "audio_cpu_seconds": round(self.audio_cpu[s], 2)}
-                         for s in STATES},
+            "by_state": {
+                s: {
+                    "seconds": round(self.seconds[s], 1),
+                    "cpu_seconds": round(self.cpu[s], 2),
+                    "meter_updates": self.ticks[s],
+                    "audio_cpu_seconds": round(self.audio_cpu[s], 2),
+                }
+                for s in STATES
+            },
             "cpu_seconds": round(sum(self.cpu.values()), 2),
             "rss_mb": _mb(_status("VmRSS")),
             "rss_peak_mb": _mb(_status("VmHWM")),
@@ -256,15 +272,19 @@ class Tracker:
             "threads": _status("Threads"),
             "helper_cpu_seconds": round(max(0.0, _helper_cpu_seconds() - self.helper_cpu_start), 3),
         }
-        table = thread_table(getattr(getattr(engine, "graph", None), "audio_thread_id", None), main_thread_before=self.base_main_cpu,
-                             before=self.base_thread_cpu)
+        table = thread_table(
+            getattr(getattr(engine, "graph", None), "audio_thread_id", None),
+            main_thread_before=self.base_main_cpu,
+            before=self.base_thread_cpu,
+        )
         data["thread_groups"] = [{"name": n, "count": c, "cpu_seconds": round(cpu, 2)} for n, c, cpu, _g, _a in table[:25]]
         data["thread_groups_more"] = max(0, len(table) - 25)
         data["math_libraries"] = math_libraries()
         data["processor_threads"] = os.cpu_count()
         t = os.times()
-        data["cpu_split"] = cpu_split(table, t.children_user + t.children_system - self.base_helper_cpu,
-                                      t.user + t.system - self.base_total_cpu)
+        data["cpu_split"] = cpu_split(
+            table, t.children_user + t.children_system - self.base_helper_cpu, t.user + t.system - self.base_total_cpu
+        )
         data["process_seconds"] = round(max(0.0, time.monotonic() - self.started), 1)
         try:
             from . import backend
@@ -330,9 +350,25 @@ def _engine_facts(engine) -> dict:
         "live_voice_display": bool(getattr(engine, "tap_open", False)),
         "buffer_frames": int(getattr(engine.io, "blocksize", 0) or 0),
         "sample_rate": int(getattr(engine.io, "sample_rate", 0) or 0),
-        "dsp": f"{dsp.MIX_BACKEND}" + (f" (Rust engine version {spectral.RUST_VERSION}, numbered apart from Sluice)" if spectral.RUST_VERSION else ""),
+        "dsp": f"{dsp.MIX_BACKEND}"
+        + (f" (Rust engine version {spectral.RUST_VERSION}, numbered apart from Sluice)" if spectral.RUST_VERSION else ""),
         "audio_client": type(engine.io).__name__,
+        "audio_path": audio_path(engine),
     }
+
+
+def audio_path(engine) -> str:
+    """0.13.1: who mixes the blocks now (the Rust graph without Python, or Python), why, and how many the Rust graph mixed."""
+    graph = getattr(engine, "graph", None)
+    if graph is None or getattr(graph, "native", None) is None:
+        reason = getattr(graph, "native_reason", "") if graph is not None else ""
+        return "Python (the Rust graph is not in use" + (f": {reason})" if reason else ")")
+    host = getattr(graph, "native_host", None)
+    count = getattr(host, "native_blocks", None)
+    done = f"; {int(count)} blocks mixed in Rust so far" if isinstance(count, int) else ""
+    if graph.native_active:
+        return f"Rust graph, no Python in the audio path{done}"
+    return f"Python, because {graph.native_reason or 'a change is being applied'}{done}"
 
 
 # ------------------------------------------------------------------------------------------ reading it back
@@ -344,7 +380,9 @@ def cpu_percent(data: dict) -> dict:
     """Average CPU as a percent of one core: overall and for each window state that lasted long enough to mean something."""
     result = {"all": _percent(data.get("cpu_seconds", 0.0), data.get("seconds", 0.0))}
     for state, values in data.get("by_state", {}).items():
-        result[state] = _percent(values.get("cpu_seconds", 0.0), values.get("seconds", 0.0)) if values.get("seconds", 0.0) >= 1 else None
+        result[state] = (
+            _percent(values.get("cpu_seconds", 0.0), values.get("seconds", 0.0)) if values.get("seconds", 0.0) >= 1 else None
+        )
     return result
 
 
@@ -359,8 +397,10 @@ def flags(data: dict) -> list:
 
     if data.get("audio_load_samples", 0) >= 20:
         if data.get("audio_load_average", 0.0) > FLAG_AUDIO_AVERAGE:
-            notes.append(f"Sluice's audio work uses {data['audio_load_average']:.0%} of each block on average: heavy "
-                         "(a bigger audio buffer, fewer effects or the Rust engine would lower it).")
+            notes.append(
+                f"Sluice's audio work uses {data['audio_load_average']:.0%} of each block on average: heavy "
+                "(a bigger audio buffer, fewer effects or the Rust engine would lower it)."
+            )
         if data.get("audio_load_worst", 0.0) > FLAG_AUDIO_WORST:
             notes.append(f"A block took {data['audio_load_worst']:.0%} of its time at worst: close to a dropout.")
     if cpu.get("open") is not None and seconds("open") >= MIN_SECONDS and cpu["open"] > FLAG_CPU_OPEN:
@@ -368,14 +408,20 @@ def flags(data: dict) -> list:
     for state in ("tray", "background"):
         # The audio work (the effects on your microphone, the mixing) is what Sluice is there to do: it runs the same with the window
         # hidden. Only the rest, which is what hiding the window should have removed, is held against the program.
-        rest = _percent(max(0.0, by_state.get(state, {}).get("cpu_seconds", 0.0) - by_state.get(state, {}).get("audio_cpu_seconds", 0.0)),
-                        by_state.get(state, {}).get("seconds", 0.0))
+        rest = _percent(
+            max(0.0, by_state.get(state, {}).get("cpu_seconds", 0.0) - by_state.get(state, {}).get("audio_cpu_seconds", 0.0)),
+            by_state.get(state, {}).get("seconds", 0.0),
+        )
         if rest is not None and seconds(state) >= MIN_SECONDS and rest > FLAG_CPU_HIDDEN:
-            notes.append(f"{rest:.1f}% of a core while the window was hidden ({state}), not counting the audio work: "
-                         "it should be close to idle.")
+            notes.append(
+                f"{rest:.1f}% of a core while the window was hidden ({state}), not counting the audio work: "
+                "it should be close to idle."
+            )
         ticks = by_state.get(state, {}).get("meter_updates", 0)
         if seconds(state) >= MIN_SECONDS and ticks / seconds(state) > FLAG_WAKEUPS_HIDDEN:
-            notes.append(f"{ticks / seconds(state):.0f} meter updates a second while the window was hidden: nobody could see them.")
+            notes.append(
+                f"{ticks / seconds(state):.0f} meter updates a second while the window was hidden: nobody could see them."
+            )
     rss = data.get("rss_mb")
     if rss is not None and rss > FLAG_RAM_MB:
         notes.append(f"{rss:.0f} MB of memory in use: more than expected.")
@@ -385,8 +431,10 @@ def flags(data: dict) -> list:
     seconds_all = data.get("seconds", 0.0)
     launches = data.get("helper_launches", 0)
     if seconds_all >= MIN_SECONDS and launches * 60.0 / seconds_all > FLAG_HELPERS_PER_MINUTE:
-        notes.append(f"{launches * 60.0 / seconds_all:.0f} helper programs (pw-link) started a minute: polling like this costs more "
-                     "than the work itself.")
+        notes.append(
+            f"{launches * 60.0 / seconds_all:.0f} helper programs (pw-link) started a minute: polling like this costs more "
+            "than the work itself."
+        )
     if seconds_all >= MIN_SECONDS and data.get("cpu_seconds", 0.0) > 0:
         share = data.get("helper_cpu_seconds", 0.0) / data["cpu_seconds"]
         if share > FLAG_HELPER_SHARE and 100.0 * data["cpu_seconds"] / seconds_all > 0.5:
@@ -436,7 +484,9 @@ def wait_line(wait) -> str:
     if not wait:
         return "waiting for the window (Python's lock): not measured (only the Rust audio client 0.11.1 and later measures it)"
     average, worst, in_worst = (list(wait) + [None, None, None])[:3]
-    text = f"of that, waiting for the window (Python's lock) before the work could start: average {average:.1%}, worst {worst:.1%}"
+    text = (
+        f"of that, waiting for the window (Python's lock) before the work could start: average {average:.1%}, worst {worst:.1%}"
+    )
     if in_worst is not None:
         text += f"; the worst block spent {in_worst:.1%} of a block's time waiting"
     return text
@@ -479,10 +529,15 @@ def _duration(seconds: float) -> str:
     return f"{seconds / 3600:.1f} h"
 
 
-_MATH_LIBRARIES = (("OpenBLAS", re.compile(r"libopenblas|libscipy_openblas")), ("Intel MKL", re.compile(r"libmkl_")),
-                   ("BLIS", re.compile(r"libblis")), ("ATLAS", re.compile(r"libatlas")),
-                   ("OpenMP (GNU)", re.compile(r"libgomp")), ("OpenMP (LLVM)", re.compile(r"libomp|libiomp")),
-                   ("FFTW", re.compile(r"libfftw3")))
+_MATH_LIBRARIES = (
+    ("OpenBLAS", re.compile(r"libopenblas|libscipy_openblas")),
+    ("Intel MKL", re.compile(r"libmkl_")),
+    ("BLIS", re.compile(r"libblis")),
+    ("ATLAS", re.compile(r"libatlas")),
+    ("OpenMP (GNU)", re.compile(r"libgomp")),
+    ("OpenMP (LLVM)", re.compile(r"libomp|libiomp")),
+    ("FFTW", re.compile(r"libfftw3")),
+)
 
 
 def math_libraries(maps_text: Optional[str] = None) -> list:
@@ -508,7 +563,9 @@ def format_section(data: Optional[dict], source: str = "") -> str:
         return "(no measurements: Sluice has not run long enough to write them)"
     cpu = cpu_percent(data)
     lines = [source] if source else []
-    lines.append(f"Measured over {_duration(data.get('seconds', 0.0))}. CPU is a percent of ONE core (the audio thread and the helper programs included).")
+    lines.append(
+        f"Measured over {_duration(data.get('seconds', 0.0))}. CPU is a percent of ONE core (the audio thread and the helper programs included)."
+    )
     lines.append("")
     lines.append("CPU")
     names = {"open": "window open", "tray": "hidden in the tray", "background": "minimized or hidden"}
@@ -519,16 +576,24 @@ def format_section(data: Optional[dict], source: str = "") -> str:
         value = cpu.get(state)
         rate = values.get("meter_updates", 0) / values["seconds"]
         audio = _percent(values.get("audio_cpu_seconds", 0.0), values["seconds"])
-        part = f"   (audio callback {audio:.2f}%, the rest {max(0.0, (value or 0.0) - audio):.2f}%)" if audio is not None and value is not None else ""
-        lines.append(f"  {names[state]:<20} {_duration(values['seconds']):>8}   "
-                     f"{'-' if value is None else format(value, '.2f') + '%':>8}   {rate:.1f} meter updates/s{part}")
+        part = (
+            f"   (audio callback {audio:.2f}%, the rest {max(0.0, (value or 0.0) - audio):.2f}%)"
+            if audio is not None and value is not None
+            else ""
+        )
+        lines.append(
+            f"  {names[state]:<20} {_duration(values['seconds']):>8}   "
+            f"{'-' if value is None else format(value, '.2f') + '%':>8}   {rate:.1f} meter updates/s{part}"
+        )
     if cpu.get("all") is not None:
         lines.append(f"  {'all together':<20} {_duration(data.get('seconds', 0.0)):>8}   {cpu['all']:.2f}%")
         if "helper_launches" in data:
             helper = _percent(data.get("helper_cpu_seconds", 0.0), data.get("seconds", 0.0)) or 0.0
             per_minute = data["helper_launches"] * 60.0 / data["seconds"] if data.get("seconds") else 0.0
-            lines.append(f"  of which helper programs (pw-link): {helper:.2f}%; started {data['helper_launches']} times "
-                         f"({per_minute:.1f} a minute, {data.get('helper_seconds', 0.0):.1f} s waiting for them)")
+            lines.append(
+                f"  of which helper programs (pw-link): {helper:.2f}%; started {data['helper_launches']} times "
+                f"({per_minute:.1f} a minute, {data.get('helper_seconds', 0.0):.1f} s waiting for them)"
+            )
     lines.append("")
     lines.append("Memory")
     if data.get("rss_mb") is not None:
@@ -551,9 +616,13 @@ def format_section(data: Optional[dict], source: str = "") -> str:
         total = sum(split.values()) or 0.0
         lines.append("")
         lines.append(f"Where the CPU went (since this run of Sluice started, {_duration(age)}; a percent of ONE core)")
-        names = (("window", "window and engine timers (main thread)"), ("audio", "audio callback"),
-                 ("other_threads", "all other threads"), ("ended_threads", "threads that have ended"),
-                 ("helpers", "helper programs (pw-link)"))
+        names = (
+            ("window", "window and engine timers (main thread)"),
+            ("audio", "audio callback"),
+            ("other_threads", "all other threads"),
+            ("ended_threads", "threads that have ended"),
+            ("helpers", "helper programs (pw-link)"),
+        )
         for key, text in names:
             share = split.get(key, 0.0)
             pct = f"{100.0 * share / age:6.2f}%" if age else "     -"
@@ -562,7 +631,9 @@ def format_section(data: Optional[dict], source: str = "") -> str:
     groups = data.get("thread_groups")
     if groups:
         lines.append("")
-        lines.append("Threads by name (a thread's CPU counts from when it started; names come from Python or from the library that made them)")
+        lines.append(
+            "Threads by name (a thread's CPU counts from when it started; names come from Python or from the library that made them)"
+        )
         for g in groups:
             lines.append(f"  {g['count']:>3} x {g['name']:<46} {g['cpu_seconds']:7.1f} s")
         if data.get("thread_groups_more"):
@@ -570,36 +641,59 @@ def format_section(data: Optional[dict], source: str = "") -> str:
     if "math_libraries" in data:
         libs = data["math_libraries"]
         lines.append("")
-        lines.append(f"Maths libraries loaded (they start worker threads of their own; this computer has {data.get('processor_threads') or '?'} processor threads)")
-        lines.append("  " + ("; ".join(libs) if libs else "none found") +
-                     (f"\n  Their worker threads: OPENBLAS_NUM_THREADS={os.environ.get('OPENBLAS_NUM_THREADS', 'not set')} "
-                      "(Sluice sets 1 unless you set it yourself)" if libs else ""))
+        lines.append(
+            f"Maths libraries loaded (they start worker threads of their own; this computer has {data.get('processor_threads') or '?'} processor threads)"
+        )
+        lines.append(
+            "  "
+            + ("; ".join(libs) if libs else "none found")
+            + (
+                f"\n  Their worker threads: OPENBLAS_NUM_THREADS={os.environ.get('OPENBLAS_NUM_THREADS', 'not set')} "
+                "(Sluice sets 1 unless you set it yourself)"
+                if libs
+                else ""
+            )
+        )
     recent = data.get("pulse_recent")
     if recent:
         lines.append("")
-        lines.append("Last calls to the audio server (newest last; 'closed' means the connection was found dead and the call was not made)")
+        lines.append(
+            "Last calls to the audio server (newest last; 'closed' means the connection was found dead and the call was not made)"
+        )
         lines.append("  " + ", ".join(f"{name} {ago:g}s before this ({outcome})" for name, ago, outcome in recent))
     lines.append("")
     lines.append("Audio work (share of each block's time that Sluice's own processing used)")
     if data.get("audio_load_samples", 0):
-        lines.append(f"  average {data['audio_load_average']:.1%}, worst block {data['audio_load_worst']:.1%}, "
-                     f"dropouts {data.get('dropouts', 0)}")
+        lines.append(
+            f"  average {data['audio_load_average']:.1%}, worst block {data['audio_load_worst']:.1%}, "
+            f"dropouts {data.get('dropouts', 0)}"
+        )
         if data.get("audio_load_worst_at"):  # 0.11.7: when it was, so a one-off at start-up is told apart from one mid-session
             after = data.get("audio_load_worst_after", 0.0)
             when = time.strftime("%H:%M:%S", time.localtime(data["audio_load_worst_at"]))
-            lines.append(f"  the worst block was at {when}, {after:g} s after Sluice started"
-                         + (" (during start-up)" if after < 10 else ""))
+            lines.append(
+                f"  the worst block was at {when}, {after:g} s after Sluice started"
+                + (" (during start-up)" if after < 10 else "")
+            )
         lines.append("  " + wait_line(data.get("audio_wait")))
     else:
         lines.append("  (not measured by this audio backend)")
     if "channels" in data:
         lines.append("")
         lines.append("What was switched on (counts only)")
-        lines.append(f"  {data['channels']} channels, {data['mixes']} mixes, {data['mic_channels']} with a microphone; "
-                     f"{data['effects_on']} effects on ({data['vst3_plugins']} VST3), {data['effects_bypassed']} bypassed")
-        lines.append(f"  recording mix {'on' if data['recording_mix'] else 'off'}, live voice display "
-                     f"{'open' if data['live_voice_display'] else 'closed'}")
-        lines.append(f"  {data['sample_rate']} Hz, {data['buffer_frames']} frames; audio work in {data['dsp']}; client {data['audio_client']}")
+        lines.append(
+            f"  {data['channels']} channels, {data['mixes']} mixes, {data['mic_channels']} with a microphone; "
+            f"{data['effects_on']} effects on ({data['vst3_plugins']} VST3), {data['effects_bypassed']} bypassed"
+        )
+        lines.append(
+            f"  recording mix {'on' if data['recording_mix'] else 'off'}, live voice display "
+            f"{'open' if data['live_voice_display'] else 'closed'}"
+        )
+        lines.append(
+            f"  {data['sample_rate']} Hz, {data['buffer_frames']} frames; audio work in {data['dsp']}; client {data['audio_client']}"
+        )
+        if data.get("audio_path"):
+            lines.append(f"  blocks mixed by: {data['audio_path']}")
         lines.append("  (the time each effect takes is not measured: that would put a clock on the audio thread)")
     lines.append("")
     notes = flags(data)
@@ -632,5 +726,9 @@ def for_report() -> tuple:
         alive = logs._pid_alive(int(data.get("pid", 0))) and logs.running_path().exists()
     except (OSError, ValueError):
         pass
-    where = f"The running Sluice, as of {_duration(age)} ago." if alive else f"The last Sluice session, which ended {_duration(age)} ago or earlier."
+    where = (
+        f"The running Sluice, as of {_duration(age)} ago."
+        if alive
+        else f"The last Sluice session, which ended {_duration(age)} ago or earlier."
+    )
     return data, where

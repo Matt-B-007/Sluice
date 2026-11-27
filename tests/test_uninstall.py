@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Uninstall: lists exactly what it removes, never removes what it should not, and removes everything it lists."""
+
 from pathlib import Path
 
 import pytest
@@ -10,10 +11,17 @@ from sluice.model import config_path
 
 @pytest.fixture
 def home(tmp_path, monkeypatch):
-    for name, sub in (("HOME", ""), ("XDG_CONFIG_HOME", ".config"), ("XDG_DATA_HOME", ".local/share"),
-                      ("XDG_STATE_HOME", ".local/state")):
+    for name, sub in (
+        ("HOME", ""),
+        ("XDG_CONFIG_HOME", ".config"),
+        ("XDG_DATA_HOME", ".local/share"),
+        ("XDG_STATE_HOME", ".local/state"),
+    ):
         monkeypatch.setenv(name, str(tmp_path / sub))
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    # 0.13.1: no Sluice running, whatever runs on the computer (the final check reads the real process list: an open Sluice
+    # made these tests fail on the developer's computer only)
+    monkeypatch.setattr(uninstall, "running_processes", lambda exclude=None: [])
     return tmp_path
 
 
@@ -240,3 +248,16 @@ def test_the_command_the_menu_runs(home):
     full = uninstall.command_for_gui(False, clear_caches=True, remove_git=True)
     assert "--clear-caches" in full and "--remove-git-folder" in full
     assert "--remove-git-folder" not in uninstall.command_for_gui(True, remove_git=True)
+
+
+def test_a_sluice_still_running_is_named_in_the_final_check(home, monkeypatch):
+    """The real behaviour the fake list above hides: uninstalling while Sluice is open says so."""
+    monkeypatch.setattr(uninstall, "running_processes", lambda exclude=None: [(4242, "python -m sluice")])
+    result = uninstall.plan(keep_settings=False, root=make_folder(home))
+    left = uninstall.leftovers(result)
+    assert "a Sluice program is still running (process 4242: python -m sluice)" in left
+
+
+def test_the_real_process_list_finds_a_running_sluice(a_sluice_is_running):
+    """The pretend Sluice the whole test run has open is what the real check finds."""
+    assert any(pid == a_sluice_is_running.pid for pid, _command in uninstall.running_processes())

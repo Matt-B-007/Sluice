@@ -6,6 +6,7 @@ does not list every library the loader can find (other distributions, libraries 
 runs fine the old check said libraries were missing. It also blamed Ubuntu's package servers wherever it ran; that is only
 true on GitHub's machine, after the install step before it.
 """
+
 import ctypes
 import os
 import sys
@@ -26,11 +27,15 @@ def missing(libraries=LIBRARIES, load=ctypes.CDLL) -> list:
 def message(gone: list, on_github: bool) -> str:
     names = " ".join(gone)
     if on_github:
-        return ("::error title=The test machine is missing libraries (not a Sluice bug)::GitHub's Ubuntu machine could not "
-                f"install {names} because Ubuntu's package servers did not answer. Nothing in Sluice is wrong: re-run the job "
-                "(Re-run failed jobs).")
-    return (f"This computer cannot load {names}, which Qt needs to run the tests. Install them with your system's package "
-            "manager (on Debian or Ubuntu: libegl1 libgl1 libxkbcommon0 libfontconfig1).")
+        return (
+            "::error title=The test machine is missing libraries (not a Sluice bug)::GitHub's Ubuntu machine could not "
+            f"install {names} because Ubuntu's package servers did not answer. Nothing in Sluice is wrong: re-run the job "
+            "(Re-run failed jobs)."
+        )
+    return (
+        f"This computer cannot load {names}, which Qt needs to run the tests. Install them with your system's package "
+        "manager (on Debian or Ubuntu: libegl1 libgl1 libxkbcommon0 libfontconfig1)."
+    )
 
 
 def main() -> int:

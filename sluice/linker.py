@@ -4,6 +4,7 @@
 sluice decides *which* ports should be linked; this module makes it so, and only ever
 removes links that sluice itself created.
 """
+
 from __future__ import annotations
 
 import logging
@@ -121,8 +122,8 @@ class GraphWatcher:
 
     COMMANDS = (["--monitor", "--links"], ["--monitor", "--output", "--input"])
 
-    QUIET = 0.5    # 0.11.6: check once the graph has been quiet this long (an app starting makes a burst of ports and links)
-    EXPECT = 1.0   # how long changes to the ports Sluice itself just linked or unlinked are taken as its own
+    QUIET = 0.5  # 0.11.6: check once the graph has been quiet this long (an app starting makes a burst of ports and links)
+    EXPECT = 1.0  # how long changes to the ports Sluice itself just linked or unlinked are taken as its own
 
     def __init__(self, binary: str = "pw-link", popen: Optional[Callable] = None, clock: Callable = time.monotonic) -> None:
         self._binary = binary
@@ -142,7 +143,9 @@ class GraphWatcher:
     def start(self) -> bool:
         for args in self.COMMANDS:
             try:
-                process = self._popen([self._binary, *args], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1)
+                process = self._popen(
+                    [self._binary, *args], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1
+                )
             except (OSError, ValueError) as exc:
                 log.info("cannot watch the PipeWire graph (%s); connections are checked every few seconds instead", exc)
                 self.stop()

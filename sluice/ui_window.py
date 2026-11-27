@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The main window: the top bar, the layouts, the meters' timer, saving, and everything that ties the cards together."""
+
 from __future__ import annotations
 
 import json
@@ -14,19 +15,62 @@ from typing import Optional
 from PySide6.QtCore import QEvent, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import QAction, QDesktopServices, QGuiApplication
 from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QFileDialog, QFrame, QHBoxLayout, QInputDialog, QLabel, QMainWindow, QMessageBox, QPushButton, QScrollArea,
-    QVBoxLayout, QWidget,
+    QApplication,
+    QCheckBox,
+    QFileDialog,
+    QFrame,
+    QHBoxLayout,
+    QInputDialog,
+    QLabel,
+    QMainWindow,
+    QMessageBox,
+    QPushButton,
+    QScrollArea,
+    QVBoxLayout,
+    QWidget,
 )
 
 from . import ui_dialog
-from . import __version__, efficiency, logs, rawmic, report, update_install, sizing, themes, ui_icons as icons, update_check, whatsnew
+from . import (
+    __version__,
+    efficiency,
+    logs,
+    rawmic,
+    report,
+    update_install,
+    sizing,
+    themes,
+    ui_icons as icons,
+    update_check,
+    whatsnew,
+)
 from .engine import Engine
 from .flow import FlowLayout, OverlapLayout
 from .model import Channel, list_backups, Mixer, RECORDING, STREAM
 from .ui_base import (
-    _icon_button, _is_nexus, _is_tile, _label, AUTO_UPDATE_DELAY_MS, AUTOSAVE_MS, CLOSE_HINT, DEFAULT_SIZE, default_size,
-    DISCORD_URL, ElidedLabel, FIRST_RUN_WIDTH, ISSUES_URL, LAYOUTS, MIX_HEADINGS, MIX_TAGS, PROJECT_URL, ROW_CELL_MIN, ROW_NAME_WIDTH,
-    ROW_TOOLS_WIDTH, TILE_GAP, TOP_BAR_GAP, TOP_BAR_HEIGHT,
+    _icon_button,
+    _is_nexus,
+    _is_tile,
+    _label,
+    AUTO_UPDATE_DELAY_MS,
+    AUTOSAVE_MS,
+    CLOSE_HINT,
+    DEFAULT_SIZE,
+    default_size,
+    DISCORD_URL,
+    ElidedLabel,
+    FIRST_RUN_WIDTH,
+    ISSUES_URL,
+    LAYOUTS,
+    MIX_HEADINGS,
+    MIX_TAGS,
+    PROJECT_URL,
+    ROW_CELL_MIN,
+    ROW_NAME_WIDTH,
+    ROW_TOOLS_WIDTH,
+    TILE_GAP,
+    TOP_BAR_GAP,
+    TOP_BAR_HEIGHT,
 )
 from .ui_channel import AppsBar, ChannelStrip
 from .ui_widgets import DesktopWidgetManager
@@ -63,14 +107,39 @@ class FirstRun(QFrame):
         layout.addLayout(head)
         self.buttons = []
         steps = (
-            ("1", "Choose your microphone", "Pick the one you speak into and it goes on the Mic channel.", "Choose microphone", True,
-             window.first_run_microphone),
-            ("2", "Add your apps", "Games, Discord, your browser and music players each get a channel, so you can balance them "
-             "separately.", "Add apps", False, window.first_run_apps),
-            ("3", "Pick Sluice in your streaming app", "In OBS or Discord, choose “Sluice (Broadcast)” as the microphone. "
-             "That is the processed sound.", "Show me how", False, window.first_run_streaming),
-            ("4", "Make it look like yours", "Four skins (Calm, Tile, Glass and Nexus) and a choice of colours. See them side by side "
-             "in Settings, now or later.", "See the skins", False, window.compare_skins),
+            (
+                "1",
+                "Choose your microphone",
+                "Pick the one you speak into and it goes on the Mic channel.",
+                "Choose microphone",
+                True,
+                window.first_run_microphone,
+            ),
+            (
+                "2",
+                "Add your apps",
+                "Games, Discord, your browser and music players each get a channel, so you can balance them separately.",
+                "Add apps",
+                False,
+                window.first_run_apps,
+            ),
+            (
+                "3",
+                "Pick Sluice in your streaming app",
+                "In OBS or Discord, choose “Sluice (Broadcast)” as the microphone. That is the processed sound.",
+                "Show me how",
+                False,
+                window.first_run_streaming,
+            ),
+            (
+                "4",
+                "Make it look like yours",
+                "Four skins (Calm, Tile, Glass and Nexus) and a choice of colours. See them side by side "
+                "in Settings, now or later.",
+                "See the skins",
+                False,
+                window.compare_skins,
+            ),
         )
         for number, name, text, button_text, primary, slot in steps:
             row = QHBoxLayout()
@@ -99,8 +168,9 @@ class FirstRun(QFrame):
             layout.addLayout(row)
             self.buttons.append(button)
         layout.addStretch(1)
-        self.demo_link = QLabel("Prefer to look around first? <a href=\"demo\">Try the demo</a>. "
-                                "It changes nothing on your computer.")
+        self.demo_link = QLabel(
+            'Prefer to look around first? <a href="demo">Try the demo</a>. It changes nothing on your computer.'
+        )
         self.demo_link.setObjectName("hint")
         self.demo_link.setWordWrap(True)
         self.demo_link.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
@@ -113,6 +183,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         super().__init__()
         self.engine = engine
         from . import ui_base
+
         ui_base.UNITS = engine.mixer.level_units  # 0.12.3: levels in dB, percent or both
         self.config_file = config_file
         self._closed = False
@@ -132,12 +203,9 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         self.controls = None  # set by attach_controls()
         self.setWindowTitle("Sluice")  # 0.12.0: the version is shown in About and at the foot of Settings only
         from . import fonts
+
         fonts.load()  # Inter and JetBrains Mono, for the Tile look (added for Sluice alone; nothing is installed)
-        from . import ui_glass
-        themes.set_see_through(False)
         themes.set_reduce_effects(self.engine.mixer.reduce_effects)
-        if ui_glass.wants_see_through(self.engine.mixer):  # 0.11.7: Glass on KDE: decided before the window first appears
-            ui_glass.make_see_through(self)
         self.apply_theme()  # before anything is built, so every widget (and the meters) starts in the chosen colours
         hints = QGuiApplication.styleHints()
         if hasattr(hints, "colorSchemeChanged"):  # "Match my system" follows the desktop while Sluice is running
@@ -151,20 +219,24 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         self._update_bridge.staged.connect(self._update_staged)
         self._update_bridge.quiet.connect(self._auto_update_staged)
         self._update_bridge.engine_rebuilt.connect(self._engine_rebuilt)
+        self._update_bridge.daily.connect(self._daily_result)
         self._stage_update = update_install.stage  # replaced in tests
         self._update_progress_dialog = None
         self._auto_update_started = False
         QTimer.singleShot(AUTO_UPDATE_DELAY_MS, self._auto_update_check)
         QTimer.singleShot(AUTO_UPDATE_DELAY_MS + 2000, self.offer_move_once)  # 0.12.0: once, for a copy in its download folder
+        self._daily_timer = QTimer(self)  # 0.13.1 (House Standard): a look for a new version once a day (on by default)
+        self._daily_timer.timeout.connect(self._daily_check)
+        self._daily_timer.start(60 * 60 * 1000)
+        QTimer.singleShot(AUTO_UPDATE_DELAY_MS + 4000, self._daily_check)
 
         root = QWidget()
         root.setObjectName("root")
-        root.setProperty("seethrough", themes.see_through())
-        self.statusBar().setProperty("seethrough", themes.see_through())
-        self.glass_backdrop = ui_glass.GlassBackdrop(self, root, self.statusBar())  # Glass: soft shapes behind the panes
         self.setCentralWidget(root)
         self.dress_skin()  # the theme was chosen before the content existed: the skin's sheet goes on it now
-        root.setFocusPolicy(Qt.FocusPolicy.ClickFocus)  # the window starts with nothing highlighted; Tab moves to the first control
+        root.setFocusPolicy(
+            Qt.FocusPolicy.ClickFocus
+        )  # the window starts with nothing highlighted; Tab moves to the first control
         outer = QVBoxLayout(root)
         outer.setContentsMargins(24, 24, 24, 8)
         outer.setSpacing(24)
@@ -223,6 +295,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         self.tray_timer = QTimer(self)  # watches the microphone for the tray icon, only while the window is hidden in the tray
         self.tray_timer.timeout.connect(self._tray_tick)
         from .ui_tray import SuspendWatcher, is_wayland
+
         self.suspend_watcher = SuspendWatcher(self) if is_wayland() else None  # 0.11.7: minimize into the tray on Wayland too
         self._update_tray()  # the tray icon is there from the start if Sluice is set to run in the tray
         self.setMinimumSize(360, 300)  # smaller than the cards need: the compact list takes over below that (see sizing.py)
@@ -257,14 +330,12 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         row = QHBoxLayout(bar)
         row.setContentsMargins(0, 0, 0, TOP_BAR_GAP)  # room between the buttons and the line under the bar (0.11.5)
         row.setSpacing(16)
-        self.menu_button = _icon_button("menu", "Menu: mutes, layout, desktop widgets and help", 40)
+        self.menu_button = _icon_button("menu", "Menu: mutes, layout, desktop widgets and help. Ctrl+K searches everything.", 40)
         self.menu_button.clicked.connect(self.show_panel)  # 0.11.7: the ☰ panel (ui_panel.py), not the old nested menus
         row.addWidget(self.menu_button)
-        self.settings_button = _icon_button("gear", "Settings: themes and skins, audio, startup, controllers and updates", 40)
+        self.settings_button = _icon_button("gear", "Settings (Ctrl+,)", 40)  # 0.13.1: at the top right (House Standard)
         self.settings_button.setAccessibleName("Settings")
         self.settings_button.clicked.connect(lambda _c=False: self.open_settings())
-        row.addSpacing(-8)  # the two buttons sit together
-        row.addWidget(self.settings_button)
         name = QLabel("Sluice")
         name.setObjectName("appname")
         self.app_name = name
@@ -282,8 +353,10 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         segments.setContentsMargins(4, 4, 4, 4)
         segments.setSpacing(4)
         self.layout_buttons = {}
-        for key, text, tip in (("columns", "Columns", "A card for each channel, faders standing up"),
-                               ("rows", "Rows", "A line for each channel, sliders lying down")):
+        for key, text, tip in (
+            ("columns", "Columns", "A card for each channel, faders standing up (Ctrl+1)"),
+            ("rows", "Rows", "A line for each channel, sliders lying down (Ctrl+2)"),
+        ):
             button = QPushButton(text)
             button.setObjectName("segment")
             button.setCheckable(True)
@@ -324,6 +397,28 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         self.status_divider = divider
         self._show_perf()
         row.addWidget(self.status_chip)
+        # 0.13.1 (House Standard): top right, in this order: the update pill (only when there is an update), Help, Settings
+        self.update_pill = QPushButton("")
+        self.update_pill.setObjectName("updatepill")
+        self.update_pill.setAccessibleName("An update is available")
+        self.update_pill.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.update_pill.clicked.connect(
+            lambda _c=False: self._pill_result is not None and self._show_update_result(self._pill_result)
+        )
+        self.update_pill.hide()
+        self._pill_result = None
+        row.addWidget(self.update_pill)
+        self.help_button = QPushButton("?")
+        self.help_button.setObjectName("helpbutton")
+        self.help_button.setFixedSize(40, 40)
+        self.help_button.setAccessibleName("Help")
+        self.help_button.setToolTip("Help: report a problem, what's new, keyboard shortcuts (F1 or ?), the tour, about")
+        self.help_button.clicked.connect(
+            lambda _c=False: self.help_menu.exec(self.help_button.mapToGlobal(self.help_button.rect().bottomLeft()))
+        )
+        row.addWidget(self.help_button)
+        row.addSpacing(-8)  # Help and Settings sit together
+        row.addWidget(self.settings_button)
         return bar
 
     def _show_perf(self) -> None:
@@ -331,8 +426,10 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         text = self.engine.dropout_text()
         self.perf_label.setText(text)
         self.rate_label.setText(self.engine.rate_text())
-        tip = (self.engine.dropout_tooltip() + "\n\n" + "Sample rate and buffer size: a smaller buffer means less delay, a "
-               "larger one means fewer dropouts. Change it in Settings > Audio.")
+        tip = (
+            self.engine.dropout_tooltip() + "\n\n" + "Sample rate and buffer size: a smaller buffer means less delay, a "
+            "larger one means fewer dropouts. Change it in Settings > Audio."
+        )
         for widget in (self.status_chip, self.perf_label, self.rate_label):
             widget.setToolTip(tip)
         total, _ours = self.engine.dropout_counts()
@@ -363,8 +460,14 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
     def _refresh_plan(self) -> bool:
         """Work out how the window should be arranged at its size now; True when the cards have to be rebuilt for it."""
         size = self._plan_size
-        plan = sizing.plan_for(size.width(), size.height(), self.engine.mixer.layout, themes.current_skin(), self._plan,
-                               mixes=len(self.engine.mixer.mixes))
+        plan = sizing.plan_for(
+            size.width(),
+            size.height(),
+            self.engine.mixer.layout,
+            themes.current_skin(),
+            self._plan,
+            mixes=len(self.engine.mixer.mixes),
+        )
         changed = self._plan is None or (plan.mode, plan.dock) != (self._plan.mode, self._plan.dock)
         self._plan = plan
         self.layout_mode, self._dock = plan.mode, plan.dock
@@ -411,8 +514,10 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         where("channel area", scroll)
         if scroll is not None and scroll.isVisible():
             vertical, sideways = scroll.verticalScrollBar(), scroll.horizontalScrollBar()
-            parts.append(f"{'':<18}content {scroll.widget().width()}x{scroll.widget().height()}; scrolls "
-                         f"{vertical.maximum()} px down, {sideways.maximum()} px across")
+            parts.append(
+                f"{'':<18}content {scroll.widget().width()}x{scroll.widget().height()}; scrolls "
+                f"{vertical.maximum()} px down, {sideways.maximum()} px across"
+            )
         for strip in self.strips[:12]:
             where(f"card {strip.channel.id}", strip)
         for strip in self.mix_strips:
@@ -420,11 +525,16 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         if getattr(self, "mini", None) is not None:
             where("compact list", self.mini)
         return {
-            "width": self.width(), "height": self.height(), "fullscreen": self.isFullScreen(),
+            "width": self.width(),
+            "height": self.height(),
+            "fullscreen": self.isFullScreen(),
             "screen": f"{geometry.width()}x{geometry.height()}" if geometry is not None else "unknown",
             "scale": f"{screen.devicePixelRatio():g}" if screen is not None else "?",
-            "step": plan.step if plan else "?", "mode": plan.mode if plan else "?", "dock": plan.dock if plan else "?",
-            "chosen": self._chosen_layout(), "relayouts": self._relayouts,
+            "step": plan.step if plan else "?",
+            "mode": plan.mode if plan else "?",
+            "dock": plan.dock if plan else "?",
+            "chosen": self._chosen_layout(),
+            "relayouts": self._relayouts,
             "skin_colors": bool(self.engine.mixer.skin_colors),
             "widgets": self._widgets_summary(),
             "minimize": self.minimize_detection(),
@@ -450,9 +560,15 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         tray, the controllers and the bug report see the same window; the list drives the same engine calls."""
         engine = self.engine
         self.mix_strips = [
-            MixStrip(m, engine, self.toggle_recording_mix if m.id == RECORDING else None,
-                     self.toggle_recording_mix if m.id == STREAM and not engine.mixer.has_recording_mix else None, rows=False)
-            for m in engine.mixer.mixes]
+            MixStrip(
+                m,
+                engine,
+                self.toggle_recording_mix if m.id == RECORDING else None,
+                self.toggle_recording_mix if m.id == STREAM and not engine.mixer.has_recording_mix else None,
+                rows=False,
+            )
+            for m in engine.mixer.mixes
+        ]
         self.add_mix_button = next((s.add_button for s in self.mix_strips if s.add_button is not None), None)
         for strip in self.mix_strips:
             if strip.combo:
@@ -499,14 +615,21 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         rows = self.layout_mode == "rows"
         tray = _is_tile() and not rows
         bottom = self._dock == "bottom"
-        tile_keys = _is_tile() and not rows  # Listen and Broadcast as short keys, stacked beside the tiles or side by side below them
+        tile_keys = (
+            _is_tile() and not rows
+        )  # Listen and Broadcast as short keys, stacked beside the tiles or side by side below them
         if tile_keys:
             from .ui_tile import MIX_KEY_OVERLAP  # here: ui_tile imports the channel cards, which import this module
         self.mix_strips = [
-            MixStrip(m, self.engine, self.toggle_recording_mix if m.id == RECORDING else None,
-                     self.toggle_recording_mix if m.id == STREAM and not self.engine.mixer.has_recording_mix else None,
-                     rows=rows or (bottom and not tile_keys))
-            for m in self.engine.mixer.mixes]
+            MixStrip(
+                m,
+                self.engine,
+                self.toggle_recording_mix if m.id == RECORDING else None,
+                self.toggle_recording_mix if m.id == STREAM and not self.engine.mixer.has_recording_mix else None,
+                rows=rows or (bottom and not tile_keys),
+            )
+            for m in self.engine.mixer.mixes
+        ]
         self.add_mix_button = next((s.add_button for s in self.mix_strips if s.add_button is not None), None)
         for strip in self.mix_strips:
             if strip.combo:
@@ -515,9 +638,11 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         floored = (_is_nexus(rows) or themes.current_skin() == "calm") and not rows  # the cards sit on a CardFloor
         if tray:  # the Tile look's keys sit in a tray
             from .ui_tile_paint import TileTray
+
             self.channels_widget = TileTray()
         elif floored:
             from .ui_nexus import CardFloor
+
             self.channels_widget = CardFloor(soft=not _is_nexus(rows))
         else:
             self.channels_widget = QWidget()
@@ -590,6 +715,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
                 masters.addWidget(strip)
             if floored:
                 from .ui_nexus import CardFloor
+
                 holder = CardFloor("masters", soft=not _is_nexus(rows))
                 masters.setContentsMargins(14, 14, 14, 26)
             else:
@@ -628,6 +754,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
     def _widgets_summary(self) -> str:
         """For the bug report: how many desktop widgets are open and how they are shown (KDE layer-shell, or why not)."""
         from . import desktop_place
+
         desktop = getattr(self, "desktop", None)
         count = len(desktop.open_widgets) if desktop is not None else 0
         if not count:
@@ -636,14 +763,17 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         each = []
         for (kind, mix, channel), widget in desktop.open_widgets.items():
             name = "/".join(filter(None, [kind, mix, channel]))
-            each.append(f"{name} ({'layer-shell' if widget.layered else 'window'}"
-                        f"{', blur on' if getattr(widget, '_blurred', False) else ''})")
+            each.append(
+                f"{name} ({'layer-shell' if widget.layered else 'window'}"
+                f"{', blur on' if getattr(widget, '_blurred', False) else ''})"
+            )
         own = f"; their own skin: {skin}" if skin else ""
         return f"{count} open, shown as {desktop_place.status()}{own}. Each: {', '.join(each)}"
 
     def _floor_mixes(self, holder) -> None:
         """The Nexus look: Listen and Broadcast glow on their floor with their sound, as the channel cards do."""
         from .ui_nexus import CardFloor
+
         if not isinstance(holder, CardFloor):
             return
         for strip in self.mix_strips:
@@ -653,6 +783,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
 
     def _floor_channels(self) -> None:
         from .ui_nexus import CardFloor
+
         floor = self.channels_widget
         if not isinstance(floor, CardFloor):
             return
@@ -671,7 +802,9 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         first.setFixedWidth(8 + ROW_NAME_WIDTH + 32 + 32 + 16 + 16 + ROW_TOOLS_WIDTH - 24)
         row.addWidget(first)
         for mix in self.engine.mixer.mixes:
-            heading = MixHeading(mix.id, f"{MIX_TAGS.get(mix.id, mix.label.upper())} \u00b7 {MIX_HEADINGS.get(mix.id, mix.label.lower())}")
+            heading = MixHeading(
+                mix.id, f"{MIX_TAGS.get(mix.id, mix.label.upper())} \u00b7 {MIX_HEADINGS.get(mix.id, mix.label.lower())}"
+            )
             heading.setMinimumWidth(ROW_CELL_MIN)
             row.addWidget(heading, 1)
         return box
@@ -743,16 +876,20 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
 
     def first_run_streaming(self) -> None:
         ui_dialog.information(
-            self, "Pick Sluice in your streaming app",
+            self,
+            "Pick Sluice in your streaming app",
             "In OBS, add an Audio Input Capture and choose \u201cSluice (Broadcast)\u201d. In Discord, open Voice & Video and "
             "choose it as the microphone. That is your mic and your apps together, after the effects you set up.\n\n"
-            "To check it yourself, press \u201cHear Broadcast\u201d on the Listen card.")
+            "To check it yourself, press \u201cHear Broadcast\u201d on the Listen card.",
+        )
 
     def first_run_demo(self) -> None:
         ui_dialog.information(
-            self, "Try the demo",
+            self,
+            "Try the demo",
             "The demo shows a full mixer with made-up sound and changes nothing on your computer.\n\n"
-            "Close Sluice, then start it again with:  sluice --demo")
+            "Close Sluice, then start it again with:  sluice --demo",
+        )
 
     # ------------------------------------------------------------------- menus
     # ------------------------------------------------------------------- settings files
@@ -790,8 +927,9 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         self.say(f"Settings exported to {logs.short_path(path)}.")
 
     def export_settings(self) -> None:
-        path, _ = QFileDialog.getSaveFileName(self, "Export settings", str(Path.home() / "sluice-settings.json"),
-                                              "Settings (*.json)")
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export settings", str(Path.home() / "sluice-settings.json"), "Settings (*.json)"
+        )
         if path:
             try:
                 self.export_settings_to(path)
@@ -809,8 +947,12 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
             data = json.loads(Path(path).read_text())
         except (OSError, ValueError) as exc:
             raise ValueError(f"That file could not be read as settings: {exc}") from exc
-        if not isinstance(data, dict) or not isinstance(data.get("channels"), list) or not data["channels"] \
-                or data.get("version") != Mixer.default().to_dict()["version"]:
+        if (
+            not isinstance(data, dict)
+            or not isinstance(data.get("channels"), list)
+            or not data["channels"]
+            or data.get("version") != Mixer.default().to_dict()["version"]
+        ):
             raise ValueError("That file does not look like Sluice settings.")
         if self.config_file.exists():
             shutil.copy2(self.config_file, self.config_file.with_name("config.before-import.json"))
@@ -829,10 +971,12 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
             ui_dialog.warning(self, "Could not import the settings", str(exc))
             return
         ui_dialog.information(
-            self, "Settings imported",
+            self,
+            "Settings imported",
             "The settings are saved. Close Sluice and start it again to use them.\n\n"
             "Until then Sluice keeps what you have now, and it will not overwrite the imported file when you quit. "
-            "Your previous settings were kept as config.before-import.json.")
+            "Your previous settings were kept as config.before-import.json.",
+        )
 
     def _fill_restore_menu(self) -> None:
         self.restore_menu.clear()
@@ -842,7 +986,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
             return
         for path in backups:
             try:
-                when = time.strftime("%b %d, %I:%M %p", time.strptime(path.stem[len("config-"):][:15], "%Y%m%d-%H%M%S"))
+                when = time.strftime("%b %d, %I:%M %p", time.strptime(path.stem[len("config-") :][:15], "%Y%m%d-%H%M%S"))
                 count = len(json.loads(path.read_text()).get("channels", []))
                 label = f"{when}  ({count} channels)"
             except (OSError, ValueError):
@@ -850,10 +994,16 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
             self.restore_menu.addAction(label, partial(self.restore_backup, path))
 
     def restore_backup(self, path, confirm: bool = True) -> None:
-        if confirm and ui_dialog.question(
-                self, "Restore earlier settings",
+        if (
+            confirm
+            and ui_dialog.question(
+                self,
+                "Restore earlier settings",
                 "Go back to these settings? Your current ones are kept as config.before-import.json.\n\n"
-                "The change takes effect the next time Sluice starts.") != QMessageBox.StandardButton.Yes:
+                "The change takes effect the next time Sluice starts.",
+            )
+            != QMessageBox.StandardButton.Yes
+        ):
             return
         self._autosave()  # make sure what you have now is on disk first
         try:
@@ -871,10 +1021,12 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
             self.say("Demo mode: there are no saved settings to reset.")
             return
         ask = ui_dialog.question(
-            self, "Reset all settings",
+            self,
+            "Reset all settings",
             "Put every setting back to how a fresh Sluice starts?\n\nThat means the default channels, levels, effects, theme "
             "and options. Your effect presets and controller assignments are kept.\n\nYour current settings are kept as "
-            "config.before-reset.json, and the change takes effect the next time Sluice starts.")
+            "config.before-reset.json, and the change takes effect the next time Sluice starts.",
+        )
         if ask != QMessageBox.StandardButton.Yes:
             return
         self._autosave()  # what you have now is on disk first, so the copy below is the latest
@@ -886,7 +1038,9 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
             ui_dialog.warning(self, "Could not reset the settings", str(exc))
             return
         self._keep_settings_file = True  # quitting must not write the old settings back over the fresh ones
-        self.say("Settings reset. Close Sluice and start it again to use them. Your old settings are in config.before-reset.json.")
+        self.say(
+            "Settings reset. Close Sluice and start it again to use them. Your old settings are in config.before-reset.json."
+        )
 
     def bring_to_front(self) -> None:
         self.setWindowState(self.windowState() & ~Qt.WindowState.WindowMinimized)
@@ -908,11 +1062,15 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         if mode == "quit":
             self.say("Closing the window will quit Sluice.")
         elif mode == "tray" and not self.tray_active:
-            self.say("No system tray was found on this desktop, so closing the window will minimize it to the taskbar instead. "
-                     "Use File > Quit to exit.")
+            self.say(
+                "No system tray was found on this desktop, so closing the window will minimize it to the taskbar instead. "
+                "Use File > Quit to exit."
+            )
         elif mode == "tray":
-            self.say("Closing or minimizing the window will keep Sluice running in the system tray. Click its icon to bring "
-                     "the window back; right-click it for Quit.")
+            self.say(
+                "Closing or minimizing the window will keep Sluice running in the system tray. Click its icon to bring "
+                "the window back; right-click it for Quit."
+            )
         else:
             self.say("Closing the window will keep Sluice running, minimized to the taskbar. Use File > Quit to exit.")
 
@@ -974,6 +1132,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         """A channel's card in the look in use: a tile in the Tile look (Columns), a ChannelStrip everywhere else."""
         if themes.current_skin() == "tile" and not rows:
             from .ui_tile import TileStrip
+
             return TileStrip(channel, self.engine, self)
         return ChannelStrip(channel, self.engine, self, rows=rows)
 
@@ -981,6 +1140,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         """What moves a tile when it is dragged by its header (the Tile look)."""
         if getattr(self, "_tile_mover", None) is None:
             from .ui_tile_move import TileMover
+
             self._tile_mover = TileMover(self)
         return self._tile_mover
 
@@ -1145,8 +1305,9 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         box.setText("\n\n".join(warnings.values()))
         box.setInformativeText("Nothing is wrong with Sluice. If that is what you want, you can stop the reminder.")
         only = next(iter(warnings)).split(" · ")[0]
-        dismiss = box.addButton("Don't remind me about " + ("these" if len(warnings) > 1 else only),
-                                QMessageBox.ButtonRole.DestructiveRole)
+        dismiss = box.addButton(
+            "Don't remind me about " + ("these" if len(warnings) > 1 else only), QMessageBox.ButtonRole.DestructiveRole
+        )
         box.addButton("OK", QMessageBox.ButtonRole.AcceptRole)
         box.exec()
         if box.clickedButton() is dismiss:
@@ -1159,9 +1320,11 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         self.buffer_offer.setVisible(bigger is not None)
         if bigger is not None:
             self.buffer_offer.setText(f"Try a larger buffer ({bigger})")
-            self.buffer_offer.setToolTip(f"Dropouts keep coming. This saves {bigger} frames as the audio buffer (now "
-                                         f"{self.engine.io.blocksize}); it is used the next time Sluice starts. "
-                                         "More room for slow moments, a little more delay.")
+            self.buffer_offer.setToolTip(
+                f"Dropouts keep coming. This saves {bigger} frames as the audio buffer (now "
+                f"{self.engine.io.blocksize}); it is used the next time Sluice starts. "
+                "More room for slow moments, a little more delay."
+            )
 
     def accept_buffer_offer(self) -> None:
         bigger = self.engine.larger_buffer_offer()
@@ -1178,6 +1341,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         """0.12.0: the moment an optional part would be used (Glass blur, KDE widgets, VST3) and it is missing, say so once, with
         where to find the command that installs it. Returns whether the hint was shown."""
         from . import setup_check
+
         seen = self.engine.mixer.hints_seen
         tag = f"setup-{key}"
         if tag in seen or key not in setup_check.BY_KEY:
@@ -1195,7 +1359,8 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         from PySide6 import __version__ as pyside_version
 
         QMessageBox.about(
-            self, "About Sluice",
+            self,
+            "About Sluice",
             f"<b>Sluice {__version__}</b><br>An open-source virtual audio mixer for PipeWire.<br><br>"
             f"License: GPL-3.0-or-later<br>Python {platform.python_version()}, PySide6 {pyside_version}<br>"
             f"Log: {logs.short_path(logs.log_path())}<br><br>"
@@ -1213,16 +1378,39 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         threading.Thread(target=work, name="sluice-update-check", daemon=True).start()
 
     # -------------------------------------------------------------- what's new
-    def show_notes(self, title: str, heading: str, markdown: str, main_label: str = "", main_url: str = "",
-                   action=None, action_label: str = "") -> None:
+    def show_notes(
+        self,
+        title: str,
+        heading: str,
+        markdown: str,
+        main_label: str = "",
+        main_url: str = "",
+        action=None,
+        action_label: str = "",
+        extra=None,
+        close_label: str = "Close",
+    ) -> None:
         from .ui_whatsnew import NotesDialog
 
-        self._notes_dialog = NotesDialog(title, heading, markdown, main_label, main_url, self,
-                                         action=action, action_label=action_label)
+        self._notes_dialog = NotesDialog(
+            title,
+            heading,
+            markdown,
+            main_label,
+            main_url,
+            self,
+            action=action,
+            action_label=action_label,
+            extra=extra,
+            close_label=close_label,
+        )
         self._notes_dialog.open()  # does not block: a start-up notice must never hold up the window
 
     def show_whats_new(self) -> None:
-        notes = whatsnew.notes_for(__version__) or "No release notes are included with this build. See the releases page for the list of changes."
+        notes = (
+            whatsnew.notes_for(__version__)
+            or "No release notes are included with this build. See the releases page for the list of changes."
+        )
         self.show_notes(f"What's new in Sluice {__version__}", f"What's new in Sluice {__version__}", notes)
 
     def _maybe_show_whats_new(self) -> None:
@@ -1239,17 +1427,25 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         whatsnew.write_marker(self.config_file, __version__)
         if text:
             from . import spectral
-            offer = update_install.engine_rebuild_offer(update_install.install_root(), spectral.RUST_VERSION, spectral.RUST_EXPECTED,
-                                                        spectral.rust_is_older())
+
+            offer = update_install.engine_rebuild_offer(
+                update_install.install_root(), spectral.RUST_VERSION, spectral.RUST_EXPECTED, spectral.rust_is_older()
+            )
             if offer:  # 0.11.6: the update shipped a newer Rust engine than the one built here
-                self.show_notes(f"What's new in Sluice {__version__}", f"Sluice was updated to {__version__}. What's new:",
-                                f"{text}\n\n---\n\n*{offer}*", action=self.rebuild_engine, action_label="Rebuild the engine")
+                self.show_notes(
+                    f"What's new in Sluice {__version__}",
+                    f"Sluice was updated to {__version__}. What's new:",
+                    f"{text}\n\n---\n\n*{offer}*",
+                    action=self.rebuild_engine,
+                    action_label="Rebuild the engine",
+                )
             else:
                 self.show_notes(f"What's new in Sluice {__version__}", f"Sluice was updated to {__version__}. What's new:", text)
 
     def engine_rebuild_state(self) -> tuple:
         """(whether Settings > Updates can offer "Rebuild the audio engine", the line under it)."""
         from . import spectral
+
         root = update_install.install_root()
         last = update_install.last_rebuild()
         tail = ""
@@ -1260,7 +1456,10 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         if not shutil.which("cargo"):
             return False, "Rust is not installed (install it, then rebuild)."
         if spectral.RUST_VERSION and spectral.rust_is_older():
-            return True, f"Yours is {spectral.RUST_VERSION}; this Sluice comes with {spectral.RUST_EXPECTED}: rebuild for the fixes since.{tail}"
+            return (
+                True,
+                f"Yours is {spectral.RUST_VERSION}; this Sluice comes with {spectral.RUST_EXPECTED}: rebuild for the fixes since.{tail}",
+            )
         if spectral.RUST_VERSION:
             return True, f"Engine {spectral.RUST_VERSION}, up to date. Rebuild if it misbehaves.{tail}"
         return True, f"The Rust engine is not in use: build it for less CPU.{tail}"
@@ -1280,8 +1479,55 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         threading.Thread(target=work, name="sluice-engine-rebuild", daemon=True).start()
 
     def _engine_rebuilt(self, problem: str) -> None:
-        self.say(f"The audio engine could not be rebuilt: {problem}." if problem
-                 else "The audio engine was rebuilt. Restart Sluice to use it (File > Quit, then open it again).")
+        self.say(
+            f"The audio engine could not be rebuilt: {problem}."
+            if problem
+            else "The audio engine was rebuilt. Restart Sluice to use it (File > Quit, then open it again)."
+        )
+
+    def _daily_check(self) -> None:
+        """0.13.1 (House Standard): once a day, quietly, unless turned off; it never downloads: it shows the update pill."""
+        mixer = self.engine.mixer
+        if (
+            self._closed
+            or self.config_file is None
+            or not mixer.check_daily
+            or mixer.auto_update
+            or time.time() - mixer.last_update_check < 24 * 3600
+        ):
+            return
+        mixer.last_update_check = time.time()
+        check, bridge = self._update_check, self._update_bridge
+
+        def work() -> None:
+            try:
+                bridge.daily.emit(check(__version__, channel=mixer.update_channel))
+            except Exception as exc:  # noqa: BLE001 - a daily look that fails says nothing; Check now says why
+                log.info("the daily look for a new version failed: %s", exc)
+
+        threading.Thread(target=work, name="sluice-daily-check", daemon=True).start()
+
+    def _daily_result(self, result) -> None:
+        self._show_update_pill(
+            result if result.status == "available" and result.latest != self.engine.mixer.skipped_version else None
+        )
+
+    def _show_update_pill(self, result) -> None:
+        pill = getattr(self, "update_pill", None)
+        if pill is None:
+            return
+        self._pill_result = result
+        pill.setVisible(result is not None)
+        if result is not None:
+            pill.setText(f"Update to {result.latest}")
+            pill.setToolTip(f"Sluice {result.latest} is available (you have {result.current}). Click to see what is new.")
+
+    def skip_version(self, version: str) -> None:
+        """Update dialog > Skip this version: not offered again (the daily look and the pill); Check now still finds it."""
+        self.engine.mixer.skipped_version = version
+        self.save_settings()
+        self._show_update_pill(None)
+        self.say(f"Sluice {version} will not be offered again. A newer version will be.")
 
     def _show_update_result(self, result) -> None:
         if result.status == "available":
@@ -1290,25 +1536,40 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
             notes = result.notes or "No release notes were published for this version."
             if problem:
                 notes += f"\n\n---\n\n*Sluice cannot install this by itself: {problem}*"
-            self.show_notes(
-                "Update available", f"Sluice {result.latest} is available. You are running {result.current}.", notes,
-                "Open download page" if result.page else "", result.page,
-                action=None if problem else partial(self.start_update, result), action_label="Update now")
+            beta = update_check.is_prerelease(result.latest)
+            heading = f"You have {result.current}."
+            if update_check.is_prerelease(result.current) and self.engine.mixer.update_channel == "stable":
+                heading = f"You're on beta {result.current}. This installs the newest normal version."
+            self.show_notes(  # 0.13.1: the House Standard's update dialog
+                f"Sluice {result.latest} is available" + (" (Beta)" if beta else ""),
+                f"Sluice {result.latest} is available" + ("  \u00b7  Beta" if beta else "") + f"\n{heading}",
+                notes,
+                "Open download page" if result.page else "",
+                result.page,
+                action=None if problem else partial(self.start_update, result),
+                action_label="Update now",
+                extra=("Skip this version", partial(self.skip_version, result.latest)),
+                close_label="Later",
+            )
         elif result.status == "up_to_date":
             self.say(f"Sluice {result.current} is the latest version.")  # 0.12.2: said in the status line, no window to close
         elif result.status == "not_configured":
             self.say(f"Sluice {result.current}. Update checking is not set up yet.")
             ui_dialog.information(
-                self, "Check for updates",
+                self,
+                "Check for updates",
                 f"You are running Sluice {result.current}.\n\nThis build has no download address to check yet. "
-                "Until there is one, new versions arrive as a new zip file.")
+                "Until there is one, new versions arrive as a new zip file.",
+            )
         else:
             self.say(f"Could not check for updates: {result.message}")
             ui_dialog.warning(self, "Could not check for updates", result.message or "Unknown error.")
 
     def save_report_to(self, path) -> None:
         written = report.write_report(Path(path))
-        self.status_label.setText(f"Bug report saved to {logs.short_path(written)}. Your user name and computer name are replaced; look it over before sharing it.")
+        self.status_label.setText(
+            f"Bug report saved to {logs.short_path(written)}. Your user name and computer name are replaced; look it over before sharing it."
+        )
 
     def save_report(self) -> None:
         path, _ = QFileDialog.getSaveFileName(
@@ -1320,10 +1581,12 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
             except Exception as exc:  # a file problem, or something unexpected while building the report
                 log.warning("could not save the bug report: %s", exc, exc_info=True)
                 ui_dialog.warning(
-                    self, "Could not save the report",
+                    self,
+                    "Could not save the report",
                     f"The report could not be saved to:\n{path}\n\n{type(exc).__name__}: {exc}\n\n"
                     "Try another folder, or run  sluice --report  in a terminal. Details are in the log "
-                    "(File > Open folder).")
+                    "(File > Open folder).",
+                )
 
     def mark_glitch(self) -> None:
         self.say(self.engine.mark_glitch())
@@ -1339,6 +1602,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
             return
         self._closed = True
         from . import ui_meters
+
         ui_meters.FRAME_S = 1.0 / ui_meters.METER_FPS  # 0.12.4: the rate is shared; the next window starts from the usual one
         if report._window_source == self._report_info:
             report.set_window_source(None)
@@ -1368,8 +1632,16 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         """The first time the window is closed with the default setting (Quit), on a desktop with a system tray, ask once whether to
         quit or keep running in the tray, so nobody loses the mixer by accident or never learns the tray exists."""
         mixer = self.engine.mixer
-        return (mixer.close_action == "quit" and CLOSE_HINT not in mixer.hints_seen and not self._quitting and not self._closed
-                and not saving and self.config_file is not None and self.isVisible() and self._tray_possible())
+        return (
+            mixer.close_action == "quit"
+            and CLOSE_HINT not in mixer.hints_seen
+            and not self._quitting
+            and not self._closed
+            and not saving
+            and self.config_file is not None
+            and self.isVisible()
+            and self._tray_possible()
+        )
 
     def _ask_close_choice(self) -> bool:
         """Ask what closing should do. True: carry on closing (the setting is now what they chose, or a quit this once); False: stay."""
@@ -1377,8 +1649,10 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         box.setIcon(QMessageBox.Icon.Question)
         box.setWindowTitle("Close Sluice?")
         box.setText("Quit Sluice, or keep it running in the system tray?")
-        box.setInformativeText("In the tray the mixer keeps working while the window is out of the way, and you can mute your microphone "
-                               "from the tray icon. You can change this any time in Settings > Running in the background.")
+        box.setInformativeText(
+            "In the tray the mixer keeps working while the window is out of the way, and you can mute your microphone "
+            "from the tray icon. You can change this any time in Settings > Running in the background."
+        )
         tray = box.addButton("Keep running in the tray", QMessageBox.ButtonRole.AcceptRole)
         quit_button = box.addButton("Quit Sluice", QMessageBox.ButtonRole.DestructiveRole)
         box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
@@ -1419,6 +1693,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         # the tray is not visible: quitting from the tray left a process with no window and no audio, holding Sluice's lock.
         app = QGuiApplication.instance()
         from PySide6.QtCore import QThread
+
         if app is not None and not saving and QThread.currentThread().loopLevel() > 0:  # (only inside the program's event loop)
             for other in QApplication.topLevelWidgets():
                 if other is not self and other.isVisible():
@@ -1442,6 +1717,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         slow = self.isVisible() and not self.isActiveWindow()
         self._meter_slow = 2.0 if slow else 1.0
         from . import ui_meters
+
         ui_meters.FRAME_S = (2.0 if slow else 1.0) / ui_meters.METER_FPS
         return 33 if slow else 16
 
@@ -1453,9 +1729,13 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
 
     def showEvent(self, event) -> None:
         efficiency.startup_mark("window shown")  # 0.12.6 (only the first time counts)
-        if themes.see_through() and not getattr(self, "_blur_asked", False) and self.windowHandle() is not None:
-            from . import ui_glass
-            self._blur_asked = ui_glass.blur_window(self)  # KWin blurs the wallpaper behind the see-through window
+        if getattr(self, "allow_tour", False) and not getattr(self, "_tour_checked", False):  # 0.13.1: new installs only
+            self._tour_checked = True
+            from . import ui_tour
+
+            if ui_tour.should_start(self):
+                ui_tour.remember(self)  # (shown once, whether finished or closed; Help > Show the tour brings it back)
+                QTimer.singleShot(900, self.show_tour)
         if self.suspend_watcher is not None and not getattr(self, "_suspend_watched", False) and self.windowHandle() is not None:
             self.suspend_watcher.watch(self.windowHandle())
             self._suspend_watched = True

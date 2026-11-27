@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """0.12.0: Sluice is installed in ~/.local/share/sluice/program, never left running from the folder it was downloaded to."""
+
 import os
 import subprocess
 from pathlib import Path
@@ -93,8 +94,9 @@ def test_a_dry_run_changes_nothing(home, tmp_path):
     env = dict(os.environ, HOME=str(home), SLUICE_ALLOW_ROOT="1", SLUICE_NO_RUST="1")
     for name in ("XDG_DATA_HOME", "XDG_BIN_HOME"):
         env.pop(name, None)
-    out = subprocess.run(["bash", str(ROOT / "install.sh"), "--dry-run", "--no-system"], env=env, capture_output=True,
-                         text=True, timeout=120)
+    out = subprocess.run(
+        ["bash", str(ROOT / "install.sh"), "--dry-run", "--no-system"], env=env, capture_output=True, text=True, timeout=120
+    )
     assert out.returncode == 0, out.stderr
     assert f"copy the program files from {ROOT}" in out.stdout
     assert ("would offer to delete" in out.stdout) != (ROOT / ".git").exists()  # never for a git clone
@@ -108,6 +110,7 @@ def test_settings_offers_the_move_only_to_a_copy_in_its_download_folder(qapp, tm
     from sluice.linker import NullLinker
     from sluice.model import Mixer
     from sluice.ui import MainWindow
+
     for downloaded in (True, False):
         engine = Engine(Mixer.demo(), MockSystem(), NullIO(realtime=False), NullLinker())
         engine.start()

@@ -70,8 +70,14 @@ def test_the_bundled_icons_ship_with_the_package():
 
 
 def test_command_line_installs_and_removes(tmp_path):
-    env = {**os.environ, "XDG_DATA_HOME": str(tmp_path / "share"), "XDG_STATE_HOME": str(tmp_path / "s"),
-           "XDG_CONFIG_HOME": str(tmp_path / "c"), "PATH": "/nonexistent:" + os.defpath, "QT_QPA_PLATFORM": "offscreen"}
+    env = {
+        **os.environ,
+        "XDG_DATA_HOME": str(tmp_path / "share"),
+        "XDG_STATE_HOME": str(tmp_path / "s"),
+        "XDG_CONFIG_HOME": str(tmp_path / "c"),
+        "PATH": "/nonexistent:" + os.defpath,
+        "QT_QPA_PLATFORM": "offscreen",
+    }
 
     def run(*args):
         return subprocess.run([sys.executable, "-m", "sluice", *args], env=env, capture_output=True, text=True, timeout=60)
@@ -89,7 +95,9 @@ def test_command_line_installs_and_removes(tmp_path):
 def test_the_launch_script_really_starts_sluice_and_logs(tmp_path, data_home, monkeypatch):
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     launcher.install(sys.executable)
-    result = subprocess.run([str(launcher.script_path()), "--version"], capture_output=True, text=True, timeout=60, env=_with_project_on_path())
+    result = subprocess.run(
+        [str(launcher.script_path()), "--version"], capture_output=True, text=True, timeout=60, env=_with_project_on_path()
+    )
     assert result.returncode == 0
     log = (tmp_path / "state" / "sluice" / "launcher.log").read_text()
     assert "starting (--version)" in log and "sluice " in log
@@ -127,6 +135,12 @@ def test_the_launch_script_is_not_fooled_by_a_folder_named_sluice_in_the_start_f
     launcher.install(sys.executable)
     text = launcher.script_path().read_text()
     assert text.index('cd "$dir"') < text.index("-m sluice")  # leaves the start folder before starting Python
-    result = subprocess.run([str(launcher.script_path()), "--version"], capture_output=True, text=True, timeout=60,
-                            cwd=tmp_path / "home", env=_with_project_on_path())
+    result = subprocess.run(
+        [str(launcher.script_path()), "--version"],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        cwd=tmp_path / "home",
+        env=_with_project_on_path(),
+    )
     assert result.returncode == 0

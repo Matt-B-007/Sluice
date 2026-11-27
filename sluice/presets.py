@@ -8,6 +8,7 @@ yourself keep those too.
 
 Your own presets live in ``presets.json`` next to the settings file.
 """
+
 from __future__ import annotations
 
 import json
@@ -15,6 +16,7 @@ import os
 import tempfile
 from pathlib import Path
 from typing import Optional
+
 
 def _entry(kind: str, bypass: bool = False, **params) -> dict:
     return {"type": kind, "bypass": bypass, "params": {k: float(v) for k, v in params.items()}}
@@ -24,37 +26,61 @@ def _entry(kind: str, bypass: bool = False, **params) -> dict:
 # want to sound and only touches the high-pass, EQ, compressor and limiter. Each effect belongs to exactly one of them, so
 # the two never fight. Neither sets the gate threshold or the Gain: those depend on your microphone (see Measure my room).
 ROOMS: dict = {
-    "Quiet": ("Treated or very quiet room: both reducers off (no extra delay).",
-              [_entry("echo_reducer", True), _entry("noise_reducer", True)]),
-    "Normal": ("An ordinary room: some fan or traffic and a little echo. The starting choice.",
-               [_entry("echo_reducer", reverb_time=0.6, reduction_db=9), _entry("noise_reducer", reduction_db=12)]),
-    "Noisy": ("A loud fan, bare walls: more reduction and a longer echo time.",
-              [_entry("echo_reducer", reverb_time=0.8, reduction_db=12), _entry("noise_reducer", reduction_db=18)]),
-    "Very noisy": ("As much reduction as is sensible. Some risk of a thin voice: only if Noisy is not enough.",
-                   [_entry("echo_reducer", reverb_time=1.0, reduction_db=15), _entry("noise_reducer", reduction_db=22)]),
+    "Quiet": (
+        "Treated or very quiet room: both reducers off (no extra delay).",
+        [_entry("echo_reducer", True), _entry("noise_reducer", True)],
+    ),
+    "Normal": (
+        "An ordinary room: some fan or traffic and a little echo. The starting choice.",
+        [_entry("echo_reducer", reverb_time=0.6, reduction_db=9), _entry("noise_reducer", reduction_db=12)],
+    ),
+    "Noisy": (
+        "A loud fan, bare walls: more reduction and a longer echo time.",
+        [_entry("echo_reducer", reverb_time=0.8, reduction_db=12), _entry("noise_reducer", reduction_db=18)],
+    ),
+    "Very noisy": (
+        "As much reduction as is sensible. Some risk of a thin voice: only if Noisy is not enough.",
+        [_entry("echo_reducer", reverb_time=1.0, reduction_db=15), _entry("noise_reducer", reduction_db=22)],
+    ),
 }
 
 STYLES: dict = {
-    "Natural": ("Sounds like you, only tidier. The starting choice.",
-                [_entry("highpass", cutoff_frequency_hz=80),
-                 _entry("eq", low_hz=120, low_db=-1, mid_hz=250, mid_db=-2, mid_q=1, high_hz=4000, high_db=2),
-                 _entry("compressor", threshold_db=-28, ratio=2.5, attack_ms=15, release_ms=120, makeup_db=3),
-                 _entry("limiter", threshold_db=-2, release_ms=60)]),
-    "Broadcast": ("Warm, full and even, like radio or a podcast.",
-                  [_entry("highpass", cutoff_frequency_hz=80),
-                   _entry("eq", low_hz=150, low_db=2, mid_hz=300, mid_db=-1.5, mid_q=1, high_hz=3500, high_db=3),
-                   _entry("compressor", threshold_db=-30, ratio=3.5, attack_ms=12, release_ms=160, makeup_db=6),
-                   _entry("limiter", threshold_db=-1.5, release_ms=60)]),
-    "Game chat": ("Clear and punchy so teammates hear every word over the game.",
-                  [_entry("highpass", cutoff_frequency_hz=110),
-                   _entry("eq", low_hz=200, low_db=-2, mid_hz=300, mid_db=-2, mid_q=1, high_hz=3000, high_db=4),
-                   _entry("compressor", threshold_db=-34, ratio=6, attack_ms=6, release_ms=100, makeup_db=8),
-                   _entry("limiter", threshold_db=-3, release_ms=50)]),
-    "Recording": ("Close to the raw microphone with room left to edit later.",
-                  [_entry("highpass", cutoff_frequency_hz=60),
-                   _entry("eq", low_hz=120, low_db=0, mid_hz=250, mid_db=0, mid_q=1, high_hz=8000, high_db=0),
-                   _entry("compressor", threshold_db=-18, ratio=1.5, attack_ms=30, release_ms=200, makeup_db=0),
-                   _entry("limiter", threshold_db=-3, release_ms=80)]),
+    "Natural": (
+        "Sounds like you, only tidier. The starting choice.",
+        [
+            _entry("highpass", cutoff_frequency_hz=80),
+            _entry("eq", low_hz=120, low_db=-1, mid_hz=250, mid_db=-2, mid_q=1, high_hz=4000, high_db=2),
+            _entry("compressor", threshold_db=-28, ratio=2.5, attack_ms=15, release_ms=120, makeup_db=3),
+            _entry("limiter", threshold_db=-2, release_ms=60),
+        ],
+    ),
+    "Broadcast": (
+        "Warm, full and even, like radio or a podcast.",
+        [
+            _entry("highpass", cutoff_frequency_hz=80),
+            _entry("eq", low_hz=150, low_db=2, mid_hz=300, mid_db=-1.5, mid_q=1, high_hz=3500, high_db=3),
+            _entry("compressor", threshold_db=-30, ratio=3.5, attack_ms=12, release_ms=160, makeup_db=6),
+            _entry("limiter", threshold_db=-1.5, release_ms=60),
+        ],
+    ),
+    "Game chat": (
+        "Clear and punchy so teammates hear every word over the game.",
+        [
+            _entry("highpass", cutoff_frequency_hz=110),
+            _entry("eq", low_hz=200, low_db=-2, mid_hz=300, mid_db=-2, mid_q=1, high_hz=3000, high_db=4),
+            _entry("compressor", threshold_db=-34, ratio=6, attack_ms=6, release_ms=100, makeup_db=8),
+            _entry("limiter", threshold_db=-3, release_ms=50),
+        ],
+    ),
+    "Recording": (
+        "Close to the raw microphone with room left to edit later.",
+        [
+            _entry("highpass", cutoff_frequency_hz=60),
+            _entry("eq", low_hz=120, low_db=0, mid_hz=250, mid_db=0, mid_q=1, high_hz=8000, high_db=0),
+            _entry("compressor", threshold_db=-18, ratio=1.5, attack_ms=30, release_ms=200, makeup_db=0),
+            _entry("limiter", threshold_db=-3, release_ms=80),
+        ],
+    ),
 }
 DEFAULT_ROOM, DEFAULT_STYLE = "Normal", "Natural"
 AXES = {"room": ROOMS, "style": STYLES}
@@ -80,9 +106,18 @@ def load_user(path: Optional[Path]) -> dict:
         for name, entries in data.items():
             if isinstance(name, str) and isinstance(entries, list):
                 clean = [e for e in entries if isinstance(e, dict) and isinstance(e.get("type"), str)]
-                result[name] = [{"type": e["type"], "bypass": bool(e.get("bypass", False)),
-                                 "params": {k: float(v) for k, v in dict(e.get("params") or {}).items()
-                                            if isinstance(k, str) and isinstance(v, (int, float))}} for e in clean]
+                result[name] = [
+                    {
+                        "type": e["type"],
+                        "bypass": bool(e.get("bypass", False)),
+                        "params": {
+                            k: float(v)
+                            for k, v in dict(e.get("params") or {}).items()
+                            if isinstance(k, str) and isinstance(v, (int, float))
+                        },
+                    }
+                    for e in clean
+                ]
     return result
 
 

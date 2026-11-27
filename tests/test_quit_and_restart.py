@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """0.12.1: Quit really ends Sluice (also from the tray), a copy that does not answer can be replaced, and a new buffer size
 is used at a restart."""
+
 import subprocess
 import sys
 import textwrap
@@ -52,6 +53,7 @@ def test_the_safety_net_is_armed_when_the_window_shuts_down(qapp, tmp_path):
     from sluice.linker import NullLinker
     from sluice.model import Mixer
     from sluice.ui import MainWindow
+
     engine = Engine(Mixer.demo(), MockSystem(), NullIO(realtime=False), NullLinker())
     engine.start()
     win = MainWindow(engine, tmp_path / "config.json")
@@ -72,7 +74,7 @@ def holder(runtime: Path, argv_tail=("-m", "sluice")) -> subprocess.Popen:
     """A process that holds Sluice's lock and never answers, looking like a Sluice in /proc."""
     code = textwrap.dedent(f"""
         import fcntl, os, time
-        handle = open({str(runtime / 'sluice.lock')!r}, "a+")
+        handle = open({str(runtime / "sluice.lock")!r}, "a+")
         fcntl.flock(handle, fcntl.LOCK_EX)
         handle.seek(0); handle.truncate(); handle.write(f"{{os.getpid()}} 0.12.0\\n"); handle.flush()
         print("held", flush=True)
@@ -123,6 +125,7 @@ def test_a_new_buffer_size_shows_as_waiting_and_can_restart_now(qapp, tmp_path, 
     from sluice.linker import NullLinker
     from sluice.model import Mixer
     from sluice.ui import MainWindow
+
     engine = Engine(Mixer.demo(), MockSystem(), NullIO(realtime=False), NullLinker())
     engine.start()
     engine.io.demo = False  # as with a real connection (demo mode saves nothing, so there is nothing to wait for)
@@ -132,8 +135,9 @@ def test_a_new_buffer_size_shows_as_waiting_and_can_restart_now(qapp, tmp_path, 
         other = 1024 if running != 1024 else 2048
         choice = {"text": "At the next start"}
         monkeypatch.setattr(QMessageBox, "exec", lambda self: 0)
-        monkeypatch.setattr(QMessageBox, "clickedButton",
-                            lambda self: next(b for b in self.buttons() if b.text() == choice["text"]))
+        monkeypatch.setattr(
+            QMessageBox, "clickedButton", lambda self: next(b for b in self.buttons() if b.text() == choice["text"])
+        )
         restarts = []
         monkeypatch.setattr(win, "restart_for_buffer", lambda: restarts.append(True))
         win.set_buffer(other)
@@ -147,8 +151,6 @@ def test_a_new_buffer_size_shows_as_waiting_and_can_restart_now(qapp, tmp_path, 
         assert "after restart" not in win.rate_label.text()
     finally:
         win.shutdown()
-
-
 
 
 def test_the_safety_net_only_runs_in_the_sluice_command(monkeypatch):

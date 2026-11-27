@@ -9,6 +9,7 @@ Wayland, and only if the library and every function it needs are there; anything
 before. Elsewhere on KDE, a KWin window rule (written with kwriteconfig and applied with a KWin reconfigure) keeps the widgets on top.
 
 The snapping and the places are pure functions of rectangles, so they are easy to test."""
+
 from __future__ import annotations
 
 import ctypes
@@ -22,9 +23,9 @@ from typing import Callable, Optional
 
 log = logging.getLogger("sluice.desktop_place")
 
-SNAP = 16          # pixels: an edge this close to a screen edge or another widget's edge snaps to it
-GAP = 8            # widgets snapped beside each other keep this gap
-MAX_PLACES = 8     # screens a widget remembers a place on
+SNAP = 16  # pixels: an edge this close to a screen edge or another widget's edge snaps to it
+GAP = 8  # widgets snapped beside each other keep this gap
+MAX_PLACES = 8  # screens a widget remembers a place on
 
 
 # ----------------------------------------------------------------------------- snapping (pure)
@@ -115,8 +116,13 @@ def clean_places(value) -> dict:
     out = {}
     if isinstance(value, dict):
         for name, pair in list(value.items())[:MAX_PLACES]:
-            if (isinstance(name, str) and 0 < len(name) <= 60 and isinstance(pair, list) and len(pair) == 2
-                    and all(isinstance(n, int) and not isinstance(n, bool) and -5000 <= n <= 20000 for n in pair)):
+            if (
+                isinstance(name, str)
+                and 0 < len(name) <= 60
+                and isinstance(pair, list)
+                and len(pair) == 2
+                and all(isinstance(n, int) and not isinstance(n, bool) and -5000 <= n <= 20000 for n in pair)
+            ):
                 out[name] = [pair[0], pair[1]]
     return out
 
@@ -155,11 +161,15 @@ SYMBOLS = {
 }
 REQUIRED = ("get", "setLayer", "setAnchors", "setMargins")
 ARGUMENTS = {  # ctypes argument types after the window pointer
-    "setLayer": [ctypes.c_int], "setAnchors": [ctypes.c_int], "setKeyboardInteractivity": [ctypes.c_int],
-    "setExclusiveZone": [ctypes.c_int], "setScreen": [ctypes.c_void_p], "setWantsToBeOnActiveScreen": [ctypes.c_bool],
+    "setLayer": [ctypes.c_int],
+    "setAnchors": [ctypes.c_int],
+    "setKeyboardInteractivity": [ctypes.c_int],
+    "setExclusiveZone": [ctypes.c_int],
+    "setScreen": [ctypes.c_void_p],
+    "setWantsToBeOnActiveScreen": [ctypes.c_bool],
     "setActivateOnShow": [ctypes.c_bool],
 }
-LAYER_TOP = 2            # LayerShellQt::Window::LayerTop
+LAYER_TOP = 2  # LayerShellQt::Window::LayerTop
 ANCHOR_TOP, ANCHOR_LEFT = 1, 4
 KEYBOARD_NONE = 0
 LIBRARIES = ("libLayerShellQtInterface.so.6", "libLayerShellQtInterface.so.5", "libLayerShellQtInterface.so")
@@ -176,7 +186,7 @@ class LayerShell:
     def __init__(self, loader=None, env=None, platform: str = "") -> None:
         self.lib = None
         self.functions: dict = {}
-        self.attached: dict = {}   # id(window) -> the LayerShellQt::Window pointer
+        self.attached: dict = {}  # id(window) -> the LayerShellQt::Window pointer
         self.reason = ""
         if not kde_wayland(env, platform):
             self.reason = "not KDE Plasma on Wayland"
@@ -292,6 +302,7 @@ class LayerShell:
 
 def _address(qt_object) -> int:
     import shiboken6
+
     return shiboken6.getCppPointer(qt_object)[0]
 
 
@@ -303,7 +314,9 @@ def status() -> str:
     shell = layer_shell()
     if shell.available:
         extra = shell.missing_optional()
-        line = "KDE layer-shell (they place themselves and stay on top)" + (f"; this version lacks {', '.join(extra)}" if extra else "")
+        line = "KDE layer-shell (they place themselves and stay on top)" + (
+            f"; this version lacks {', '.join(extra)}" if extra else ""
+        )
     else:
         line = f"ordinary windows ({shell.reason})"
     if kde():
@@ -319,6 +332,7 @@ def layer_shell() -> LayerShell:
         platform = ""
         try:
             from PySide6.QtGui import QGuiApplication
+
             platform = QGuiApplication.platformName() or ""
         except Exception:  # no Qt application yet: the platform is unknown, so the environment decides
             pass
@@ -326,8 +340,10 @@ def layer_shell() -> LayerShell:
         if not _shell.available and kde_wayland(platform=platform):
             log.info("desktop widgets: %s", _shell.reason)
         elif _shell.available:
-            log.info("desktop widgets: KDE layer-shell in use%s", (" (without " + ", ".join(_shell.missing_optional()) + ")")
-                     if _shell.missing_optional() else "")
+            log.info(
+                "desktop widgets: KDE layer-shell in use%s",
+                (" (without " + ", ".join(_shell.missing_optional()) + ")") if _shell.missing_optional() else "",
+            )
     return _shell
 
 
@@ -350,6 +366,7 @@ def system_qt(lib_dirs=LIB_DIRS) -> tuple:
     Sluice runs PySide6's own Qt, so KDE's library looks for its plugins in PySide6's folder unless told where the system keeps
     them: then it finds none, prints "Could not find any platform plugin" and blurs nothing (0.11.6 on Plasma)."""
     import glob
+
     for folder in lib_dirs:
         plugins = Path(folder) / "qt6" / "plugins"
         if not (plugins / "kf6" / "kwindowsystem").is_dir():
@@ -369,8 +386,14 @@ class Blur:
     ``window`` inside ``region`` (the Glass skin). Elsewhere, or when it cannot work in this Qt, nothing is blurred and ``reason``
     says why (the bug report shows it)."""
 
-    def __init__(self, loader=None, env=None, qt_version: Optional[str] = None, system: Optional[tuple] = None,
-                 add_path: Optional[Callable] = None) -> None:
+    def __init__(
+        self,
+        loader=None,
+        env=None,
+        qt_version: Optional[str] = None,
+        system: Optional[tuple] = None,
+        add_path: Optional[Callable] = None,
+    ) -> None:
         self.function = None
         self.reason = ""
         if not kde(env):
@@ -382,12 +405,14 @@ class Blur:
             return
         if qt_version is None:
             from PySide6.QtCore import qVersion
+
             qt_version = qVersion()
         if version and not same_minor(version, qt_version):  # a plugin built for another Qt would not load (or worse)
             self.reason = f"the system's Qt is {version} and Sluice's is {qt_version}; KDE's blur only works in the same version"
             return
         if add_path is None:
             from PySide6.QtCore import QCoreApplication
+
             add_path = QCoreApplication.addLibraryPath
         add_path(str(plugins))  # before KWindowSystem looks for its platform plugin (on its first call)
         lib = (loader or self._load)()
@@ -423,6 +448,7 @@ class Blur:
         try:
             if pointers is None:
                 from PySide6.QtGui import QRegion
+
                 region = region if region is not None else QRegion()
                 pointers = (_address(window), _address(region))
             self.function(ctypes.c_void_p(pointers[0]), bool(on), ctypes.c_void_p(pointers[1]))
@@ -454,9 +480,19 @@ def kwin_rule_commands(writer: str) -> list:
     """The kwriteconfig commands that add a KWin rule keeping Sluice's widget windows above other windows and (0.11.7) out of the
     taskbar, the pager and Alt-Tab, in KWin's own rules file. ("2": force the setting.)"""
     base = [writer, "--file", "kwinrulesrc", "--group", RULE_GROUP, "--key"]
-    entries = [("Description", "Sluice desktop widgets"), ("title", RULE_TITLE), ("titlematch", "2"),
-               ("above", "true"), ("aboverule", "2"), ("skiptaskbar", "true"), ("skiptaskbarrule", "2"),
-               ("skippager", "true"), ("skippagerrule", "2"), ("skipswitcher", "true"), ("skipswitcherrule", "2")]
+    entries = [
+        ("Description", "Sluice desktop widgets"),
+        ("title", RULE_TITLE),
+        ("titlematch", "2"),
+        ("above", "true"),
+        ("aboverule", "2"),
+        ("skiptaskbar", "true"),
+        ("skiptaskbarrule", "2"),
+        ("skippager", "true"),
+        ("skippagerrule", "2"),
+        ("skipswitcher", "true"),
+        ("skipswitcherrule", "2"),
+    ]
     commands = [base + [key, value] for key, value in entries]
     return commands
 
@@ -466,9 +502,12 @@ def kwin_rule_present(reader: Optional[str] = None) -> bool:
     if not reader:
         return False
     try:
+
         def read(key):
-            return subprocess.run([reader, "--file", "kwinrulesrc", "--group", RULE_GROUP, "--key", key], capture_output=True,
-                                  text=True, timeout=5).stdout.strip()
+            return subprocess.run(
+                [reader, "--file", "kwinrulesrc", "--group", RULE_GROUP, "--key", key], capture_output=True, text=True, timeout=5
+            ).stdout.strip()
+
         # a rule from before 0.11.7 only kept them above: it counts as missing, so Sluice offers it again (and writes the rest)
         return read("title") == RULE_TITLE and read("skiptaskbar") == "true"
     except (OSError, subprocess.SubprocessError):
@@ -483,15 +522,27 @@ def add_kwin_rule(run=subprocess.run) -> str:
     try:
         for command in kwin_rule_commands(writer):
             run(command, check=True, capture_output=True, timeout=5)
-        listed = run([writer.replace("kwriteconfig", "kreadconfig"), "--file", "kwinrulesrc", "--group", "General", "--key", "rules"],
-                     capture_output=True, text=True, timeout=5)
+        listed = run(
+            [writer.replace("kwriteconfig", "kreadconfig"), "--file", "kwinrulesrc", "--group", "General", "--key", "rules"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
         names = [n for n in (getattr(listed, "stdout", "") or "").strip().split(",") if n]
         if RULE_GROUP not in names:
             names.append(RULE_GROUP)
-        run([writer, "--file", "kwinrulesrc", "--group", "General", "--key", "rules", ",".join(names)], check=True,
-            capture_output=True, timeout=5)
-        run([writer, "--file", "kwinrulesrc", "--group", "General", "--key", "count", str(len(names))], check=True,
-            capture_output=True, timeout=5)
+        run(
+            [writer, "--file", "kwinrulesrc", "--group", "General", "--key", "rules", ",".join(names)],
+            check=True,
+            capture_output=True,
+            timeout=5,
+        )
+        run(
+            [writer, "--file", "kwinrulesrc", "--group", "General", "--key", "count", str(len(names))],
+            check=True,
+            capture_output=True,
+            timeout=5,
+        )
     except (OSError, subprocess.SubprocessError) as exc:
         return f"The rule could not be written: {exc}"
     for tool in ("qdbus6", "qdbus", "qdbus-qt6", "qdbus-qt5"):
@@ -503,8 +554,11 @@ def add_kwin_rule(run=subprocess.run) -> str:
                 break
     if shutil.which("dbus-send"):
         try:
-            run(["dbus-send", "--session", "--type=method_call", "--dest=org.kde.KWin", "/KWin", "org.kde.KWin.reconfigure"],
-                capture_output=True, timeout=5)
+            run(
+                ["dbus-send", "--session", "--type=method_call", "--dest=org.kde.KWin", "/KWin", "org.kde.KWin.reconfigure"],
+                capture_output=True,
+                timeout=5,
+            )
             return ""
         except (OSError, subprocess.SubprocessError):
             pass

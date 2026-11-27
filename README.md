@@ -56,22 +56,22 @@ The same mixer in the light theme, in the Rows layout, and the first-run screen:
 ![Rows layout](docs/screenshot-rows.png)
 ![First run](docs/first-run.png)
 
-## What's new in 0.12.7
+## What's new in 0.13.1-beta.1
 
-- **Sluice's own fonts everywhere:** Inter for the whole window and every weight of JetBrains Mono the Tile look uses are
-  bundled, so text is the same width on every computer (on GitHub's machine, "Broadcast" was cut off on its tile).
-- **Mix tile names end in an ellipsis** with the whole name in a tooltip when they do not fit, like channel names.
+A test version (the Beta channel only). There is no 0.13.0; the normal release will be 0.13.1.
 
-0.12.6, the release before this:
+- **The audio is mixed in Rust, without Python,** whenever every effect is one of Sluice's own: no more slow blocks waiting
+  for the window. Python takes over only while a VST3 plugin, the Effects window's live view or Measure my room needs it.
+- **Device names say which is for OBS:** "Play to Sluice (Game)" to play into, "Sluice (Game) for OBS" to record.
+- **A new look:** Sluice blue, a blue "S" logo, seven built-in themes, quieter cards, a clearer tray icon, Lucide icons.
+  Glass and Nexus are retired (Nexus's second-screen layout is *Compact list*, Ctrl+3).
+- **New screens:** Report a problem (preview, save, copy, private Discord ticket), an update window with *Skip this version*,
+  a one-window uninstall, Settings in a clearer order, **Ctrl+K** to search every command, **?** for shortcuts, and a short tour
+  for new installs.
+- **Signed updates:** releases are signed, and a release with a wrong signature is refused.
+- **0.12.7's fix:** Sluice's own fonts for the whole window, so text is the same width on every computer.
 
-- **Every channel has its own recording device from the start**, such as "Sluice (Game)" for OBS (one switch in Settings ›
-  Audio; updating asks once if some of yours have none).
-- **Fixed:** the false "OBS can hear itself on Broadcast" warning, warnings repeating when OBS reconnects, and dropouts blamed
-  on the wrong thing.
-- **Measured:** how long audio blocks wait for the window, and how long start-up takes, step by step, in the bug report.
-- **Screen readers** hear a name for every control, and faders say their level in dB.
-
-The full list, and every earlier version, is in [CHANGELOG.md](CHANGELOG.md) (also under *Help > What's new in this version*).
+The full list, and every earlier version, is in [CHANGELOG.md](CHANGELOG.md) (also under *Help > What's new*).
 
 ## Status: please read
 
@@ -97,6 +97,11 @@ Open a terminal and paste this line:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Matt-B-007/Sluice/main/get.sh | bash
 ```
+
+(It is a bash script, so it is piped to `bash`: the one exception to the House Standard's `| sh`, written down here as the
+standard asks. The line above works in fish, zsh and bash alike.) Options go after `bash -s --`: `--beta`, `--version 0.13.1`,
+`--no-launch` (do not start Sluice at the end), `--from-source` (the newest code on the main branch instead of a release; it
+has no checksum) and `--uninstall` (remove Sluice).
 
 It finds the newest release on GitHub, downloads its zip, checks it against the release's `.sha256` file (and stops if
 they do not match), installs it with `install.sh` (below) and deletes the download. It shows the package command for your
@@ -154,7 +159,6 @@ is mentioned once, the first time it would be used. `sluice --diagnose`, the bug
 | pipewire-jack | needed | carrying the sound through the channels and mixes |
 | pw-link | needed | connecting Sluice to your microphones and outputs |
 | KDE layer-shell (LayerShellQt) | optional, Plasma on Wayland | desktop widgets that place themselves and stay on top |
-| KDE window system (KWindowSystem) | optional, Plasma | the blur behind Glass (it needs the same Qt version as Sluice's) |
 | kwriteconfig6 (KConfig) | optional, Plasma | the KWin rule that keeps widgets on top without layer-shell |
 | Rust | optional | the faster audio engine and the steeper high-pass filter |
 | pedalboard | optional | VST3 plugins |
@@ -207,12 +211,18 @@ Discord, a browser or a game's settings:
 
 | Where you see it | Name | What it is |
 |---|---|---|
-| An app's *output* list (Discord, browser, game) | **Sluice (Game) output**, **Sluice (Browser) output**, ... | send that app's sound to the channel |
+| An app's *output* list (Discord, browser, game) | **Play to Sluice (Game)**, **Play to Sluice (Browser)**, ... | send that app's sound to the channel (Sluice puts apps there itself) |
+| OBS *Audio Output Capture* | **Sluice (Game) for OBS**, **Sluice (Broadcast) for OBS**, ... | one channel, or the whole stream mix, after your Broadcast faders and mutes |
 | OBS *Audio Input Capture*, Discord *input*, any *microphone* list | **Sluice (Broadcast)** | the stream mix: what your audience hears |
-| OBS *Audio Input Capture*, and the microphone list in Discord, games and browsers | **Sluice (Mic)** (on from the start) | your microphone after its effects: gate, EQ, compressor, limiter |
-| The same lists, after ticking more channels in *Recording devices for OBS* | **Sluice (Game)**, **Sluice (Music)**, ... | just that one channel, for its own track |
+| The same lists | **Sluice (Mic)** | your microphone after its effects: gate, EQ, compressor, limiter |
+| The same lists | **Sluice (Game)**, **Sluice (Music)**, ... | just that one channel, for its own track (every channel has one from the start) |
 
-Use **Sluice (Mic)** wherever a program asks for your microphone, and **Sluice (Broadcast)** for everything the audience should hear. Names ending in *feed* or *recording feed* are internal plumbing, and the one PipeWire program node that carries everything is just called *sluice*; you can ignore all of those. Renaming a channel renames its devices.
+In OBS, pick a name **with "for OBS"** (Audio Output Capture) or the plain **Sluice (Game)** (Audio Input Capture). Never
+pick **Play to Sluice (…)**: that is where apps play in, from before every fader, so your Broadcast faders and mutes would
+not reach OBS. (Sluice cannot steer OBS itself: OBS keeps each source on the device it was given, so the names do the
+steering, and Sluice warns if a source is on the wrong one.) Until 0.13.1 the names were *Sluice (Game) output*,
+*Sluice (Game) recording feed* and *Sluice (Broadcast) feed*; OBS sources set up with those keep working, because OBS
+remembers the device itself, not its name. Renaming a channel renames its devices.
 
 ## Starting Sluice from the desktop
 
@@ -320,30 +330,30 @@ To watch what it is doing while you test: `tail -f ~/.local/state/sluice/sluice.
 
 ## The menus
 
-The ☰ button in the top bar opens one panel; the ⚙ button beside it opens the Settings window. Both are drawn in the same design, and
-everything in them works from the keyboard (the arrow keys or Tab to move, Enter or Space to use, Escape to close). Columns and Rows
-are the two buttons at the top right (and in Settings).
+The ☰ button at the top left opens one panel. At the top right are the update button (only when there is an update), **Help
+(?)** and the **Settings** gear. Everything works from the keyboard (the arrow keys or Tab to move, Enter or Space to use,
+Escape to close), and **Ctrl+K** searches every command Sluice has: type a few letters ("mute mic", "theme") and press Enter.
+**?** opens the keyboard shortcuts.
 
 | Where | What is in it |
 |---|---|
-| **☰ panel** | Three tiles: Mute my mic (Ctrl+M), Add channel (Ctrl+N), Refresh (F5). *Quick mutes:* Listen (Ctrl+Shift+L), Broadcast (Ctrl+Shift+B), Hear Broadcast (Ctrl+H). *Mixer and desktop:* Desktop widgets, Show or hide my widgets (Ctrl+Shift+W), Recording mix, Recording devices for OBS, Full screen (F11), Hide to tray (Ctrl+W). *Help:* Keyboard shortcuts (F1), What's new, I heard a glitch (Ctrl+Shift+G), Save bug report, Report a problem, GitHub, Discord, About. At the bottom: Settings… (Ctrl+,) and Quit (Ctrl+Q) |
-| **Settings** (the ⚙ button, Ctrl+,) | *Themes and skins* (the skin, with a picture of each in your theme; the theme; see-through window for Glass on KDE; the skin's own colours; reduce effects; the layout; the desktop widgets' own skin and theme), *Audio* (the buffer), *Startup and background*, *Controllers* (MIDI and Stream Deck), *Updates* (automatic updates, check now, go back a version, rebuild the audio engine, uninstall), *Setup check* (what Sluice uses from your system, whether it is there, and the command that installs it) and *Backup and reset* (save, import and export your settings, restore an earlier copy, open Sluice's folders, reset everything) |
+| **☰ panel** | Three tiles: Mute my mic (Ctrl+M), Add channel (Ctrl+N), Refresh (F5). *Quick mutes:* Listen (Ctrl+Shift+L), Broadcast (Ctrl+Shift+B), Hear Broadcast (Ctrl+H). *Mixer and desktop:* Desktop widgets, Show or hide my widgets (Ctrl+Shift+W), Recording mix, Recording devices for OBS, Full screen (F11), Hide to tray (Ctrl+W). *Help* items. At the bottom: Settings… (Ctrl+,) and Quit (Ctrl+Q) |
+| **Help (?)** | Report a problem, What's new, Keyboard shortcuts (F1 or ?), Show the tour, About Sluice; then I heard a glitch (Ctrl+Shift+G), the Discord and the GitHub page |
+| **Settings** (the gear, Ctrl+,) | *General* (startup and background), *Appearance* (skin, theme, reduce effects, layout, the desktop widgets' look), *Updates* (look once a day, update automatically, check now, which versions, go back a version), *Privacy* (what Sluice keeps and sends: nothing unless you choose), *Audio* (the buffer, the devices), *Controllers* (MIDI and Stream Deck), *Setup check* (what Sluice uses from your system and the command that installs it), *Advanced* (backup and reset, the audio engine) and *About & uninstall* (the version, the links, and the red Uninstall box, last) |
 
 Settings are saved automatically a few seconds after every change and when you quit (see *Saving*). **Import settings** checks the file, keeps your current settings as
 `config.before-import.json`, and takes effect the next time Sluice starts; quitting does not overwrite the imported file.
 
 ## Uninstalling
 
-*Help > Uninstall Sluice...* (or `./uninstall.sh`) lists exactly what it will remove and asks first. Two choices:
-
-- **Uninstall, keep my settings:** removes the launcher and apps-menu entry, autostart, the `sluice` command, Sluice's virtual devices,
-  logs, and the install folder (`~/.local/share/sluice`), but leaves `~/.config/sluice` so a later install picks up where you left off.
-- **Remove everything:** the same, plus your settings.
-
-Also: a tick-box **Also clear download caches** (pip and cargo, off by default, because other programs share them); if the install folder is a
-git clone, a question whether to delete the `.git` folder too; and at the end a check that says *nothing of Sluice is left* or lists exactly what
-is. What stays: system packages you installed (PipeWire, the JACK library), shared caches, and files Sluice did not create.
-From a terminal: `sluice --uninstall` or, in the install folder, `./uninstall.sh [--keep-settings] [--clear-caches] [--remove-git-folder] [--dry-run] [--yes]`
+*Settings › About & uninstall › Uninstall* (or `sluice --uninstall`, or `./uninstall.sh`) opens one window that lists exactly
+what it will remove: the launcher and apps-menu entry, autostart, the `sluice` command, Sluice's virtual devices, and the
+install folder (`~/.local/share/sluice`). **Your settings and logs are kept** unless you tick *Also delete my settings and
+logs*. *Also clear download caches* (pip and cargo) is off by default, because other programs share them. If the install folder
+is a git clone, Sluice asks whether to delete the `.git` folder too. Sluice closes, removes itself a moment later, checks that
+nothing was missed and says so in a notification. What stays: system packages you installed (PipeWire, the JACK library),
+shared caches, and files Sluice did not create.
+From a terminal, in the install folder: `./uninstall.sh [--keep-settings] [--clear-caches] [--remove-git-folder] [--dry-run] [--yes]`
 (`--dry-run` only lists, `--yes` does not ask).
 
 ## Desktop widgets
@@ -361,10 +371,6 @@ it they are ordinary windows; right-click one and choose *Keep widgets on top on
 on top. *Help > Save bug report* says which of the two your widgets use, and why. On X11 desktops widgets place themselves and stay on
 top without either.
 
-**Glass widgets.** Choose *Glass* as the widgets' skin (*Settings > Themes and skins > Desktop widgets*) and they become frosted panes you
-can see your wallpaper through. On KDE Plasma, KWin also blurs what is behind them (through KDE's own window-effects library, which comes
-with Plasma); on other desktops they are see-through without the blur. *Reduce effects* turns the blur off.
-
 **Moving widgets.** Drag a widget by any part that is not a slider or a button (the pointer shows an open hand). It snaps to the screen's
 edges and to other widgets when you let go. *Ctrl+Shift+W* puts all your widgets away and brings the same ones back, even after a restart.
 
@@ -372,22 +378,18 @@ edges and to other widgets when you let go. *Ctrl+Shift+W* puts all your widgets
 the desktop never tells an app it was minimized, so Sluice watches for KWin suspending the window instead; *Ctrl+W* (or *Hide to tray* in
 the ☰ panel) always works. Desktop widgets stay out of the taskbar and Alt-Tab.
 
-## Glass
-
-Glass makes the window's cards frosted panes. **On KDE Plasma** the window itself becomes see-through and KWin blurs your wallpaper behind
-it (*Settings > Themes and skins > See-through window*; it takes effect the next time Sluice starts). **Elsewhere**, or with that off, Sluice
-paints soft shapes in your theme's colours behind the panes. Either way the panes get more solid where text would be hard to read, and
-*Reduce effects* turns the blur and the see-through off.
-
 ## Themes
 
-*Settings > Themes and skins > Theme* lists **Dark** (the default), **Light**, **High contrast**, **Retro Purple**, **Midnight Blue**,
-**Amber Console**, **Paper** and **Match my system** (follows your desktop's light or dark setting while Sluice runs).
-**Get more themes...** opens the [`themes/`](themes/) folder of this project: 21 more themes with previews.
-Every theme works in every skin (a *theme* is the colours; a *skin* is how things are shaped and drawn: Calm, Nexus,
-Tile or Glass; the Original skin of 0.9.7 was retired in 0.12.0, and settings that chose it show Calm): the raised keys, glass, shadows and grooves are worked out from its own colours.
-Download one and use *Import theme*. A check mark shows the one in use. The level
-meters' green-to-red colours, the Mute red and the Limiter teal are the same in every theme so they always mean the same thing.
+*Settings › Appearance › Theme* lists seven built-in themes: **Dark** (the default), **Light**, **High contrast**,
+**Colour-blind friendly**, **OLED Black**, **Paper** and **Synthwave**, and **Match my system** (follows your desktop's light or
+dark setting while Sluice runs). Every built-in theme is checked for contrast: each text colour on each surface. Midnight Blue,
+Amber Console and Retro Purple were retired in 0.13.1 (settings that chose them show Dark).
+**Get more themes...** opens the [`themes/`](themes/) folder of this project: more themes with previews, made by people for
+older versions and no longer kept up to date.
+Every theme works in both skins (a *theme* is the colours; a *skin* is how things are shaped and drawn: **Calm** or **Tile**;
+Glass and Nexus were retired in 0.13.1 and show Calm and Tile, the Original skin of 0.9.7 in 0.12.0). Download one and use
+*Import theme*. A check mark shows the one in use. The level meters' green-to-red colours, the Mute red and the Limiter teal
+are the same in every theme so they always mean the same thing.
 
 **Import theme** reads a JSON file that only contains colours, and **Export current theme** writes one to start from:
 
@@ -689,7 +691,7 @@ Sluice at the folder yabridge writes to (usually `~/.vst3/yabridge`). That route
 ```
  capture devices ---------------\
                                  >-- sluice:in_<channel> -- effects --+-- Listen mix    --> headphones
- apps -> "Sluice (<channel>) output" /   (pipewire-jack client)          +-- Broadcast mix --> Sluice (Broadcast) feed
+ apps -> "Play to Sluice (<channel>)" /  (pipewire-jack client)          +-- Broadcast mix --> Sluice (Broadcast) for OBS
         (its monitor is linked in)                                                          |
                                                           apps record "Sluice (Broadcast)" <-'
 ```
@@ -796,10 +798,6 @@ virtual devices now start with `Sluice` and `sluice_`, so choose **Sluice (Broad
 ## License and notices
 
 GPL-3.0-or-later. See `LICENSE`. pedalboard is GPLv3 as well, which is why Sluice uses the same license.
-
-Bundled fonts: [Inter](https://rsms.me/inter/) and [JetBrains Mono](https://www.jetbrains.com/lp/mono/), both under the SIL Open
-Font License 1.1. Their licences are next to the font files: `sluice/data/fonts/Inter-LICENSE.txt` and
-`sluice/data/fonts/JetBrainsMono-LICENSE.txt`. They are added for Sluice alone; nothing is installed on your system.
 
 The S in the logo is the letter from the font [Inter](https://rsms.me/inter/) Bold, converted to a shape. Inter is licensed under the SIL Open Font License 1.1, which allows this.
 

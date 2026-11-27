@@ -11,8 +11,8 @@ SR = 48000
 
 def run(fx, x, block=512):
     n = x.shape[1] // block * block
-    out = np.concatenate([fx.process(x[:, i:i + block]) for i in range(0, n, block)], axis=1)
-    return out[:, fx.latency:], x[:, :out.shape[1] - fx.latency]
+    out = np.concatenate([fx.process(x[:, i : i + block]) for i in range(0, n, block)], axis=1)
+    return out[:, fx.latency :], x[:, : out.shape[1] - fx.latency]
 
 
 def rms_db(x):
@@ -40,9 +40,9 @@ def test_steady_noise_is_lowered_and_a_voice_like_tone_is_kept():
     x = (noise + tone).astype(np.float32)
     out, ref = run(NoiseReducer(SR, 12), x)
     quiet = slice(int(2 * SR), int(2.9 * SR))
-    assert rms_db(ref[:, quiet]) - rms_db(out[:, quiet]) > 6          # the noise went down
+    assert rms_db(ref[:, quiet]) - rms_db(out[:, quiet]) > 6  # the noise went down
     loud = slice(int(3.5 * SR), int(4.5 * SR))
-    assert abs(rms_db(out[:, loud]) - rms_db(ref[:, loud])) < 2        # the tone stayed
+    assert abs(rms_db(out[:, loud]) - rms_db(ref[:, loud])) < 2  # the tone stayed
 
 
 def test_reduction_zero_is_a_pass_through():
@@ -57,13 +57,13 @@ def test_the_echo_tail_after_a_burst_is_lowered():
     t = np.arange(int(0.8 * SR)) / SR
     tail = rng.standard_normal(t.size) * 0.3 * 10 ** (-60 * t / 0.6 / 20 * 1.0)  # echo dying away over 0.6 s
     mono = np.concatenate([np.zeros(SR), burst, np.zeros(int(0.5 * SR))])
-    mono[SR + burst.size:SR + burst.size + tail.size][:int(0.5 * SR)] += tail[:int(0.5 * SR)]
+    mono[SR + burst.size : SR + burst.size + tail.size][: int(0.5 * SR)] += tail[: int(0.5 * SR)]
     x = np.stack([mono, mono]).astype(np.float32)
     out, ref = run(EchoReducer(SR, 0.6, 12), x)
     late = slice(SR + burst.size + int(0.1 * SR), SR + burst.size + int(0.4 * SR))
     assert rms_db(ref[:, late]) - rms_db(out[:, late]) > 3
     during = slice(SR + int(0.05 * SR), SR + int(0.25 * SR))
-    assert abs(rms_db(out[:, during]) - rms_db(ref[:, during])) < 3    # the sound itself is left alone
+    assert abs(rms_db(out[:, during]) - rms_db(ref[:, during])) < 3  # the sound itself is left alone
 
 
 def test_a_profile_from_the_room_can_be_set():
@@ -114,7 +114,7 @@ def test_neighbouring_reducers_run_as_one_pass_with_16_ms_of_delay():
     chain = Chain(pb, echo.items + noise.items)
     assert len(chain._parts) == 1 and isinstance(chain._parts[0], JointStage)
     x = (np.random.default_rng(5).standard_normal((2, SR)) * 0.05).astype(np.float32)
-    out = np.concatenate([chain(x[:, i:i + 512], SR) for i in range(0, SR - 511, 512)], axis=1)
+    out = np.concatenate([chain(x[:, i : i + 512], SR) for i in range(0, SR - 511, 512)], axis=1)
     assert np.isfinite(out).all() and out.shape[1] == (SR // 512) * 512
     assert StftEffect(SR).latency / SR == pytest.approx(0.016)
 

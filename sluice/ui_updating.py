@@ -2,6 +2,7 @@
 """Checking for updates, installing them in place and going back, for the main window.
 
 Part of the main window, split out of ``ui.py``: ``MainWindow`` inherits this class, so every method here is still a method of the window."""
+
 from __future__ import annotations
 
 import logging
@@ -21,9 +22,10 @@ class _UpdateBridge(QObject):
 
     done = Signal(object)
     progress = Signal(int, int)  # bytes downloaded so far, total (0 = unknown)
-    staged = Signal(object)      # (version, "") when an update was downloaded and verified, ("", message) when it was not
-    quiet = Signal(object)       # the same, for the automatic update: no dialogs
+    staged = Signal(object)  # (version, "") when an update was downloaded and verified, ("", message) when it was not
+    quiet = Signal(object)  # the same, for the automatic update: no dialogs
     engine_rebuilt = Signal(str)  # 0.11.6: "" when the Rust engine was rebuilt, else what went wrong
+    daily = Signal(object)  # 0.13.1: the daily look's answer: only the update pill shows it
 
 
 class UpdatingMixin:
@@ -81,8 +83,10 @@ class UpdatingMixin:
     def _ask_restart_for_update(self, version: str) -> bool:
         ask = ui_dialog.Message(self)
         ask.setWindowTitle("Update ready")
-        ask.setText(f"Sluice {version} was downloaded and checked.\n\nRestart now to start using it? Your settings are saved "
-                    "first. If you choose later, it is installed the next time you close Sluice.")
+        ask.setText(
+            f"Sluice {version} was downloaded and checked.\n\nRestart now to start using it? Your settings are saved "
+            "first. If you choose later, it is installed the next time you close Sluice."
+        )
         restart = ask.addButton("Restart now", QMessageBox.ButtonRole.AcceptRole)
         ask.addButton("Later", QMessageBox.ButtonRole.RejectRole)
         ask.exec()
@@ -108,8 +112,10 @@ class UpdatingMixin:
         box = ui_dialog.Message(self)
         box.setWindowTitle("Back to Stable")
         box.setText(f"You are running a beta, {__version__}.")
-        box.setInformativeText("Stay on it until a stable version is newer, or go to the latest stable version now? "
-                               "Your settings are kept either way.")
+        box.setInformativeText(
+            "Stay on it until a stable version is newer, or go to the latest stable version now? "
+            "Your settings are kept either way."
+        )
         now = box.addButton("Go to the latest stable now", QMessageBox.ButtonRole.AcceptRole)
         box.addButton("Stay until stable is newer", QMessageBox.ButtonRole.RejectRole)
         box.exec()
@@ -134,8 +140,10 @@ class UpdatingMixin:
         if self._closed or "move-out-of-download" in seen or not self.runs_from_download():
             return
         seen.append("move-out-of-download")
-        self.say("Sluice runs from the folder you downloaded. Settings > Updates > Move moves it to its own folder, so the "
-                 "download can go.")
+        self.say(
+            "Sluice runs from the folder you downloaded. Settings > Updates > Move moves it to its own folder, so the "
+            "download can go."
+        )
 
     def move_install(self) -> None:
         """Move Sluice to ~/.local/share/sluice/program and delete the download folder. Done after Sluice closes."""
@@ -146,20 +154,28 @@ class UpdatingMixin:
             self.say("Sluice already runs from its own folder.")
             return
         from .launcher import program_dir
+
         ask = ui_dialog.Message(self)
         ask.setWindowTitle("Move Sluice to its own folder")
-        ask.setText(f"Sluice runs from the folder you downloaded:\n{root}\n\nIt can move itself to {program_dir()} (with its "
-                    "menu entry and the sluice command) and then delete that folder. Your settings stay as they are.\n\n"
-                    "Sluice closes, the move takes a minute or two (it needs the internet for its Python packages), and "
-                    "Sluice starts again by itself. If anything goes wrong, it keeps running from where it is now.")
+        ask.setText(
+            f"Sluice runs from the folder you downloaded:\n{root}\n\nIt can move itself to {program_dir()} (with its "
+            "menu entry and the sluice command) and then delete that folder. Your settings stay as they are.\n\n"
+            "Sluice closes, the move takes a minute or two (it needs the internet for its Python packages), and "
+            "Sluice starts again by itself. If anything goes wrong, it keeps running from where it is now."
+        )
         move = ask.addButton("Move and restart", QMessageBox.ButtonRole.AcceptRole)
         ask.addButton("Not now", QMessageBox.ButtonRole.RejectRole)
         ask.exec()
         if ask.clickedButton() is not move:
             return
         try:
-            subprocess.Popen(update_install.move_script(root), start_new_session=True, stdin=subprocess.DEVNULL,
-                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.Popen(
+                update_install.move_script(root),
+                start_new_session=True,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
         except OSError as exc:
             ui_dialog.warning(self, "Move Sluice", f"Could not start the move: {exc}\nIn a terminal, run:\n  {root}/install.sh")
             return
@@ -175,7 +191,20 @@ class UpdatingMixin:
     def _refresh_update_menu(self) -> None:
         previous = update_install.previous_version(update_install.install_root())
         self.rollback_action.setEnabled(bool(previous))
-        self.rollback_action.setText(f"&Go back to version {previous}\u2026" if previous else "&Go back to the previous version\u2026")
+        self.rollback_action.setText(
+            f"&Go back to version {previous}\u2026" if previous else "&Go back to the previous version\u2026"
+        )
+
+    def toggle_check_daily(self) -> None:
+        mixer = self.engine.mixer
+        mixer.check_daily = not mixer.check_daily
+        self.check_daily_action.setChecked(mixer.check_daily)
+        self.save_settings()
+        self.say(
+            "Sluice looks for a new version once a day."
+            if mixer.check_daily
+            else "Sluice no longer looks for new versions by itself. Settings > Check now still works."
+        )
 
     def toggle_auto_update(self) -> None:
         mixer = self.engine.mixer
@@ -187,18 +216,23 @@ class UpdatingMixin:
                 ui_dialog.information(self, "Update automatically", reason)
                 return
             ask = ui_dialog.question(
-                self, "Update automatically",
+                self,
+                "Update automatically",
                 "Sluice will ask GitHub once, shortly after it starts, whether there is a newer version. If there is, it "
                 "downloads it, checks it against its checksum, and installs it the next time you close Sluice. It never "
                 "restarts or changes anything while it is running, and you can go back with Settings > Go back to the previous "
-                "version.\n\nTurn this on?")
+                "version.\n\nTurn this on?",
+            )
             if ask != QMessageBox.StandardButton.Yes:
                 self.auto_update_action.setChecked(False)
                 return
         mixer.auto_update = turn_on
         self.auto_update_action.setChecked(turn_on)
-        self.say("Sluice will download new versions by itself and install them when you close it." if turn_on
-                 else "Automatic updates are off. Settings > Check for updates still works.")
+        self.say(
+            "Sluice will download new versions by itself and install them when you close it."
+            if turn_on
+            else "Automatic updates are off. Settings > Check for updates still works."
+        )
 
     def _auto_update_check(self) -> None:
         """Once, a little after start-up, only if the user turned it on: fetch a newer version and leave it waiting."""
@@ -239,9 +273,11 @@ class UpdatingMixin:
             return
         ask = ui_dialog.Message(self)
         ask.setWindowTitle("Go back to the previous version")
-        ask.setText(f"Go back to Sluice {previous}?\n\nSluice restarts. Your settings are kept, but a newer version may have "
-                    "saved things an older one does not understand, so a backup of your settings is a good idea first "
-                    "(File > Export settings).")
+        ask.setText(
+            f"Go back to Sluice {previous}?\n\nSluice restarts. Your settings are kept, but a newer version may have "
+            "saved things an older one does not understand, so a backup of your settings is a good idea first "
+            "(File > Export settings)."
+        )
         go = ask.addButton("Go back and restart", QMessageBox.ButtonRole.AcceptRole)
         ask.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
         ask.exec()
@@ -255,4 +291,3 @@ class UpdatingMixin:
         from . import reconnect
 
         reconnect.restart_self(show_window=True)
-

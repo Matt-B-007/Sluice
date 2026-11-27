@@ -5,18 +5,20 @@
 copy of it so an installed Sluice can show them (a test fails if the two differ). GitHub release pages are built
 from the same file, so the window, the update check and the release page all say the same thing.
 """
+
 from __future__ import annotations
 
 import re
 from pathlib import Path
 from typing import Optional
 
-from .update_check import parse_version
+from .update_check import parse_version, version_key
 
 BUNDLED = Path(__file__).resolve().parent / "data" / "CHANGELOG.md"
-SECTION = re.compile(r"^## (\d+(?:\.\d+)*)\s*$", re.MULTILINE)
-MAX_VERSIONS = 4          # when someone skips many versions, show at most this many of the newest
-FIRST_PUBLIC = "0.7.0"    # settings from before Sluice recorded the last version it showed belong to this one
+# 0.13.1: a test version's heading too ("## 0.13.1-beta.1")
+SECTION = re.compile(r"^## (\d+(?:\.\d+)*(?:-[0-9A-Za-z.]+)?)\s*$", re.MULTILINE)
+MAX_VERSIONS = 4  # when someone skips many versions, show at most this many of the newest
+FIRST_PUBLIC = "0.7.0"  # settings from before Sluice recorded the last version it showed belong to this one
 
 
 def parse(text: str) -> dict:
@@ -25,7 +27,7 @@ def parse(text: str) -> dict:
     notes = {}
     for index, match in enumerate(found):
         end = found[index + 1].start() if index + 1 < len(found) else len(text)
-        notes[match.group(1)] = text[match.end():end].strip()
+        notes[match.group(1)] = text[match.end() : end].strip()
     return notes
 
 
@@ -44,8 +46,9 @@ def since(last_seen: str, current: str, notes: Optional[dict] = None) -> str:
     """Markdown with the notes of every version after ``last_seen`` up to ``current``, newest first.
     Empty if there is nothing to show (not newer, or no notes written)."""
     notes = load() if notes is None else notes
-    wanted = [v for v in notes if parse_version(v) > parse_version(last_seen) and parse_version(v) <= parse_version(current)]
-    wanted.sort(key=parse_version, reverse=True)
+    # 0.13.1: ordered as people mean versions (0.13.1-beta.1 comes after 0.12.7 and before 0.13.1)
+    wanted = [v for v in notes if version_key(v) > version_key(last_seen) and version_key(v) <= version_key(current)]
+    wanted.sort(key=version_key, reverse=True)
     wanted = wanted[:MAX_VERSIONS]
     if not wanted:
         return ""

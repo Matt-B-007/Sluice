@@ -21,6 +21,7 @@ removed in "remove everything" mode and only when you say yes, because it may ho
 What it never touches: system packages such as PipeWire, files Sluice did not create (zips you downloaded, a separate
 ``Sluice-repo`` clone, your recordings), and the shared caches unless you ask.
 """
+
 from __future__ import annotations
 
 import logging
@@ -39,8 +40,10 @@ log = logging.getLogger(__name__)
 DESKTOP_KINDS = ("applications-menu entry", "start-at-login entry", "launcher script", "icon")
 
 #: What stays on the computer whatever you choose. Shown in the dialog and printed at the end.
-STAYS = ("System packages such as PipeWire and Python stay.",
-         "Files Sluice did not create stay: zips you downloaded, a separate Sluice-repo clone, your recordings.")
+STAYS = (
+    "System packages such as PipeWire and Python stay.",
+    "Files Sluice did not create stay: zips you downloaded, a separate Sluice-repo clone, your recordings.",
+)
 
 
 @dataclass
@@ -51,12 +54,12 @@ class Item:
 
 @dataclass
 class Plan:
-    items: list = field(default_factory=list)   # Items that exist and will be removed
-    kept: list = field(default_factory=list)    # (path, why) that are left alone
+    items: list = field(default_factory=list)  # Items that exist and will be removed
+    kept: list = field(default_factory=list)  # (path, why) that are left alone
     install_root: Optional[Path] = None
     keep_settings: bool = False
-    git_folder: bool = False                    # the Sluice folder is a git clone
-    git_removed: bool = False                   # ... and the person said it may be removed
+    git_folder: bool = False  # the Sluice folder is a git clone
+    git_removed: bool = False  # ... and the person said it may be removed
 
     @property
     def nothing(self) -> bool:
@@ -115,14 +118,15 @@ def folder_problem(root: Optional[Path], allow_git: bool = False) -> str:
     return ""
 
 
-def plan(keep_settings: bool = False, root: Optional[Path] = None, clear_caches: bool = False,
-         remove_git: bool = False) -> Plan:
+def plan(keep_settings: bool = False, root: Optional[Path] = None, clear_caches: bool = False, remove_git: bool = False) -> Plan:
     result = Plan(install_root=root if root is not None else update_install.install_root(), keep_settings=keep_settings)
-    for path, what in ((launcher.launcher_path(), "applications-menu entry"),
-                       (launcher.autostart_path(), "start-at-login entry"),
-                       (launcher.script_path(), "launcher script"),
-                       (launcher.icon_path(), "icon"),
-                       *[(p, "icon") for p in launcher.png_icon_paths()]):
+    for path, what in (
+        (launcher.launcher_path(), "applications-menu entry"),
+        (launcher.autostart_path(), "start-at-login entry"),
+        (launcher.script_path(), "launcher script"),
+        (launcher.icon_path(), "icon"),
+        *[(p, "icon") for p in launcher.png_icon_paths()],
+    ):
         if path.exists():
             result.items.append(Item(path, what))
     if launcher.is_our_command():
@@ -204,8 +208,11 @@ def running_processes(exclude: Optional[set] = None) -> list:
         parts = [p for p in parts if p]
         if not parts or "--uninstall" in parts:
             continue
-        runs_sluice = any(a == "-m" and b == "sluice" for a, b in zip(parts, parts[1:])) \
-            or Path(parts[0]).name == "sluice" or (len(parts) > 1 and Path(parts[1]).name == "sluice")
+        runs_sluice = (
+            any(a == "-m" and b == "sluice" for a, b in zip(parts, parts[1:]))
+            or Path(parts[0]).name == "sluice"
+            or (len(parts) > 1 and Path(parts[1]).name == "sluice")
+        )
         if runs_sluice:
             found.append((pid, " ".join(parts)[:80]))
     return found
@@ -231,8 +238,13 @@ def leftovers(result: Plan, list_devices: Optional[Callable[[], list]] = None) -
     return left
 
 
-def execute(result: Plan, cleanup_devices: Optional[Callable[[], int]] = None, say: Callable = print,
-            list_devices: Optional[Callable[[], list]] = None, check: bool = False) -> int:
+def execute(
+    result: Plan,
+    cleanup_devices: Optional[Callable[[], int]] = None,
+    say: Callable = print,
+    list_devices: Optional[Callable[[], list]] = None,
+    check: bool = False,
+) -> int:
     """Do it. Returns 0 when everything in the plan is gone, 1 when something could not be removed.
     With ``check`` it also looks for leftovers and says what it found (or that nothing is left)."""
     if cleanup_devices is not None:
@@ -271,8 +283,11 @@ def execute(result: Plan, cleanup_devices: Optional[Callable[[], int]] = None, s
             say("Left over:\n" + "\n".join(f"  - {line}" for line in left))
             return 1
         if not failures:
-            say("Checked: nothing of Sluice is left on this computer." if not result.kept else
-                "Checked: nothing of Sluice is left except what you chose to keep.")
+            say(
+                "Checked: nothing of Sluice is left on this computer."
+                if not result.kept
+                else "Checked: nothing of Sluice is left except what you chose to keep."
+            )
     return 1 if failures else 0
 
 
@@ -281,9 +296,17 @@ def ask_git(ask: Callable, say: Callable) -> bool:
     return ask("Delete the git folder too? Type yes to delete it, anything else keeps it: ").strip().lower() in ("y", "yes")
 
 
-def run(keep_settings: bool = False, assume_yes: bool = False, dry_run: bool = False,
-        cleanup_devices: Optional[Callable[[], int]] = None, ask: Callable = input, say: Callable = print,
-        clear_caches: bool = False, remove_git: bool = False, list_devices: Optional[Callable[[], list]] = None) -> int:
+def run(
+    keep_settings: bool = False,
+    assume_yes: bool = False,
+    dry_run: bool = False,
+    cleanup_devices: Optional[Callable[[], int]] = None,
+    ask: Callable = input,
+    say: Callable = print,
+    clear_caches: bool = False,
+    remove_git: bool = False,
+    list_devices: Optional[Callable[[], list]] = None,
+) -> int:
     result = plan(keep_settings, clear_caches=clear_caches, remove_git=remove_git)
     if result.asks_about_git and not assume_yes and not dry_run:
         if ask_git(ask, say):

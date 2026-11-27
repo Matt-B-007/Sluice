@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Sluice's connection to PipeWire (through its JACK layer): the client, the ports, the block callback, and the
 //! measuring of how long each block takes and whose dropouts they are. libjack is loaded when the client is opened, so
-//! the module builds and imports without it. The mixing itself is still called in Python for each block (VST3 plugins
-//! need Python); everything around that call is Rust.
+//! the module builds and imports without it. 0.13.1: while every channel's chain is one of Sluice's own Rust effects, the
+//! block is mixed by the native graph (graph.rs) without Python at all; otherwise (a VST3 plugin, the Effects window's live
+//! view, "Measure my room") the mixing is called in Python, as before.
 use jack::{
     AsyncClient, AudioIn, AudioOut, Client, ClientOptions, ClientStatus, Control, Port,
     ProcessScope,
@@ -15,6 +16,9 @@ use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
+
+use crate::graph::GraphCore;
+use crate::NativeGraph;
 
 const SLOW_BLOCK: f64 = 0.7; // a block that used more than this share of its time counts as Sluice running late
 const RECENT: usize = 8; // 0.11.1: the last blocks remembered for deciding whose dropout it was
@@ -52,6 +56,10 @@ struct Shared {
     wait_peak_ns: AtomicU64,
     peak_block_wait_ns: AtomicU64,
     wait_blocks_seen: AtomicU64,
+    // 0.13.1: the native graph, and whether it runs the blocks (Python decides; the switch takes effect at the next block)
+    native: Mutex<Option<Arc<Mutex<GraphCore>>>>,
+    native_on: AtomicBool,
+    native_blocks: AtomicU64,
 }
 
 impl Shared {
@@ -137,6 +145,55 @@ impl Proc {
     }
 }
 
+impl Proc {
+    /// 0.13.1: one block mixed by the native graph: no Python, no waiting for Python's lock. False when there is no graph.
+    fn run_native(&self, ports: &mut Ports, ps: &ProcessScope, frames: usize) -> bool {
+        let core = match self.shared.native.lock() {
+            Ok(n) => match n.as_ref() {
+                Some(core) => core.clone(),
+                None => return false,
+            },
+            Err(_) => return false,
+        };
+        // the control side holds this lock only to change a setting (microseconds)
+        let mut graph = core.lock().unwrap_or_else(|e| e.into_inner());
+        let Ports { inputs, outputs } = ports;
+        graph.process(frames, |id| {
+            inputs
+                .get(id)
+                .map(|(l, r)| (l.as_slice(ps), r.as_slice(ps)))
+        });
+        for (id, (l, r)) in outputs.iter_mut() {
+            let (lo, ro) = (l.as_mut_slice(ps), r.as_mut_slice(ps));
+            let source = if let Some(mix) = graph.mixes.iter().find(|m| &m.id == id) {
+                Some(&mix.out)
+            } else if let Some(cid) = id.strip_prefix("solo_") {
+                graph
+                    .channels
+                    .iter()
+                    .find(|c| c.id == cid && c.solo_gain.is_some())
+                    .map(|c| &c.solo_out)
+            } else {
+                None
+            };
+            match source {
+                Some(buf) => {
+                    for (i, (a, b)) in lo.iter_mut().zip(ro.iter_mut()).enumerate() {
+                        *a = buf[0].get(i).copied().unwrap_or(0.0);
+                        *b = buf[1].get(i).copied().unwrap_or(0.0);
+                    }
+                }
+                None => {
+                    lo.fill(0.0);
+                    ro.fill(0.0);
+                }
+            }
+        }
+        self.shared.native_blocks.fetch_add(1, Ordering::Relaxed);
+        true
+    }
+}
+
 impl jack::ProcessHandler for Proc {
     fn process(&mut self, _: &Client, ps: &ProcessScope) -> Control {
         let s = &self.shared;
@@ -146,7 +203,9 @@ impl jack::ProcessHandler for Proc {
         s.wait_ns.store(0, Ordering::Relaxed);
         let frames = ps.n_frames() as usize;
         if let Ok(mut ports) = s.ports.try_lock() {
-            if let Err(e) = self.run_python(&mut ports, ps, frames, start) {
+            if s.native_on.load(Ordering::Acquire) && self.run_native(&mut ports, ps, frames) {
+                // mixed in Rust
+            } else if let Err(e) = self.run_python(&mut ports, ps, frames, start) {
                 // never let a failure reach the audio thread: say it, and play silence
                 let text = Python::attach(|py| {
                     format!(
@@ -279,6 +338,9 @@ impl JackEngine {
             wait_peak_ns: AtomicU64::new(0),
             peak_block_wait_ns: AtomicU64::new(0),
             wait_blocks_seen: AtomicU64::new(0),
+            native: Mutex::new(None),
+            native_on: AtomicBool::new(false),
+            native_blocks: AtomicU64::new(0),
         });
         Ok(JackEngine {
             state: Mutex::new(State::Idle(client)),
@@ -288,6 +350,29 @@ impl JackEngine {
         })
     }
 
+    /// 0.13.1: the native graph the blocks can be mixed by (None: always Python).
+    #[pyo3(signature = (graph))]
+    fn set_native(&self, graph: Option<PyRef<NativeGraph>>) {
+        if graph.is_none() {
+            self.shared.native_on.store(false, Ordering::Release);
+        }
+        if let Ok(mut n) = self.shared.native.lock() {
+            *n = graph.map(|g| g.core.clone());
+        }
+    }
+    /// 0.13.1: mix the next blocks in the native graph (true) or in Python (false).
+    fn use_native(&self, on: bool) {
+        self.shared.native_on.store(on, Ordering::Release);
+    }
+    #[getter]
+    fn native_on(&self) -> bool {
+        self.shared.native_on.load(Ordering::Acquire)
+    }
+    /// How many blocks the native graph has mixed so far (for the bug report).
+    #[getter]
+    fn native_blocks(&self) -> u64 {
+        self.shared.native_blocks.load(Ordering::Relaxed)
+    }
     #[getter]
     fn xruns(&self) -> u64 {
         self.shared.xruns.load(Ordering::Relaxed)

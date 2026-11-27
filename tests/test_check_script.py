@@ -1,15 +1,28 @@
 """0.12.5 (House Standard 1.2): one check script. CI and the release workflow run their checks only through scripts/check.sh,
 tool versions are pinned in one place, and a failed release says whether it left a draft behind."""
+
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 WORKFLOWS = [ROOT / ".github" / "workflows" / name for name in ("ci.yml", "release.yml")]
 CHECK = ROOT / "scripts" / "check.sh"
 # commands that are checks: they belong in scripts/check.sh, not in a workflow
-CHECK_COMMANDS = ["pytest", "pyflakes ", "-m pyflakes", "shellcheck -", "bash -n", "sh -n", "cargo fmt", "cargo clippy",
-                  "check-version.py --tag", "check-qt-libs.py", "install.sh --help"]
+CHECK_COMMANDS = [
+    "pytest",
+    "pyflakes ",
+    "-m pyflakes",
+    "shellcheck -",
+    "bash -n",
+    "sh -n",
+    "cargo fmt",
+    "cargo clippy",
+    "check-version.py --tag",
+    "check-qt-libs.py",
+    "install.sh --help",
+]
 
 
 def _run_lines(path):
@@ -63,13 +76,18 @@ def test_the_check_script_is_valid_bash_and_rejects_an_unknown_section():
 def test_missing_tools_are_listed_with_the_arch_command_and_exit_3(tmp_path):
     """Exit codes: 0 pass, 1 a check failed, 3 only tools missing (nothing checked)."""
     fake = tmp_path / "python3"  # a Python that has none of the modules the tests need
-    fake.write_text("#!/bin/sh\ncase \"$*\" in *check-qt-libs*) exit 0;; -c*) exit 1;; esac\nexit 0\n")
+    fake.write_text('#!/bin/sh\ncase "$*" in *check-qt-libs*) exit 0;; -c*) exit 1;; esac\nexit 0\n')
     fake.chmod(0o755)
-    out = subprocess.run(["bash", str(CHECK), "tests"], capture_output=True, text=True, cwd=ROOT,
-                         env={"PATH": "/usr/bin:/bin", "PYTHON": str(fake), "HOME": str(tmp_path)})
+    out = subprocess.run(
+        ["bash", str(CHECK), "tests"],
+        capture_output=True,
+        text=True,
+        cwd=ROOT,
+        env={"PATH": "/usr/bin:/bin", "PYTHON": str(fake), "HOME": str(tmp_path)},
+    )
     assert out.returncode == 3, out.stdout + out.stderr
     assert "nothing was checked" in out.stdout
-    assert "sudo pacman -S --needed pyside6 python-numpy python-pytest" in out.stdout
+    assert "sudo pacman -S --needed pyside6 python-cryptography python-numpy python-pytest" in out.stdout
     assert "paru -S --needed python-pulsectl" in out.stdout and "== " not in out.stdout
 
 
@@ -92,3 +110,40 @@ def test_a_failed_release_says_whether_it_left_a_draft():
     release = (ROOT / ".github" / "workflows" / "release.yml").read_text()
     assert "if: failure()" in release and "draft release" in release.lower() and "gh release delete" in release
     assert release.index("check.sh shell python release") < release.index("- name: Build")
+
+
+def test_the_tests_are_sealed_off_from_the_computer():
+    """0.13.1: own folders, no audio tools, no audio servers (see tests/conftest.py)."""
+    import os
+    import shutil
+    from conftest import AUDIO_TOOLS, SEALED
+
+    for name in ("HOME", "XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_RUNTIME_DIR"):
+        assert os.environ[name].startswith(str(SEALED)), name
+    for tool in AUDIO_TOOLS:
+        found = shutil.which(tool)
+        assert found is None or found.startswith(str(SEALED)), tool
+        if found:
+            assert subprocess.run([found], capture_output=True).returncode == 127
+    assert str(SEALED) in os.environ["PULSE_SERVER"] and str(SEALED) in os.environ["PIPEWIRE_REMOTE"]
+
+
+def test_the_installer_and_the_command_line_have_the_house_standard_options():
+    """0.13.1 (House Standard): get.sh --beta --version --no-launch --from-source --uninstall; install.sh --no-launch and
+    --uninstall; sluice --version --self-test (--quick) --report --update --rollback --uninstall."""
+    get = (ROOT / "get.sh").read_text()
+    for option in ("--beta)", "--version)", "--from-source)", "--uninstall)"):
+        assert option in get, option
+    assert "--no-launch" in get
+    install = (ROOT / "install.sh").read_text()
+    assert "--no-launch) launch=0" in install and "--uninstall)" in install
+    out = subprocess.run([sys.executable, "-m", "sluice", "--help"], capture_output=True, text=True, cwd=ROOT)
+    for option in ("--version", "--self-test", "--report", "--update", "--rollback", "--uninstall", "--diagnose"):
+        assert option in out.stdout, option
+
+
+def test_the_quick_self_test_passes_and_says_so():
+    out = subprocess.run(
+        [sys.executable, "-m", "sluice", "--self-test", "--quick"], capture_output=True, text=True, cwd=ROOT, timeout=120
+    )
+    assert out.returncode == 0 and "quick self-test passed" in out.stdout, out.stdout + out.stderr

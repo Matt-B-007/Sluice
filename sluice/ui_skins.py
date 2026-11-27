@@ -1,4 +1,5 @@
 """Small pictures of each skin in the colours of a theme, drawn from its real design (Settings > Themes and skins)."""
+
 from __future__ import annotations
 
 from PySide6.QtCore import QPointF, QRectF, Qt
@@ -9,8 +10,6 @@ from . import themes
 W, H = 240, 150
 BLURBS = {
     "calm": "Soft cards and quiet colours. The easiest on the eyes and on the computer.",
-    "nexus": "Glass cards with sound rings and neon edges. Reduce effects keeps it light.",
-    "glass": "Frosted panes over a soft wash of colour. On KDE Plasma, desktop widgets blur what is behind them.",
     "tile": "Raised keys in a tray, light or dark: fader and meter in one groove on each key. Fold a key out for effects and apps.",
 }
 
@@ -23,15 +22,14 @@ def draw_preview(skin: str, colors: dict, ratio: float = 1.0) -> QPixmap:
     three channel cards and the Listen card. Calm: white cards with tinted icon tiles; Tile: raised keys with LCD names and LED
     meters on a tray; Glass: frosted panes on a mix of light with pearl knobs; Nexus: glowing level rings and beams on a grid."""
     from .skin_tile import CHANNEL_TINTS
+
     pm = QPixmap(int(W * ratio), int(H * ratio))
     pm.setDevicePixelRatio(ratio)
     pm.fill(QColor(colors["bg"]))
     p = QPainter(pm)
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
     mixc = themes.mix_colors(colors, skin)
-    if skin == "glass":
-        _glass_backdrop(p, colors)
-    elif skin == "nexus":
+    if skin == "nexus":  # (retired in 0.13.1: never asked for any more)
         grid = QColor(colors["accent"])
         grid.setAlphaF(0.07)
         p.setPen(QPen(grid, 1))
@@ -70,10 +68,14 @@ def _top_bar(p: QPainter, skin: str, colors: dict) -> None:
 def _pane(p: QPainter, card: QRectF, skin: str, colors: dict, tint: str = "", radius: float = 9) -> None:
     """A card as the skin draws it."""
     from . import depth
+
     light = depth.luminance(colors["panel"]) >= depth.LIGHT_PANEL
     if skin == "calm":
         from .ui_paint import soft_shape
-        pixmap, pad = soft_shape(card.width() - 4, card.height(), 5, 0.5 if light else 1.0, "#000000", p.device().devicePixelRatioF(), radius)
+
+        pixmap, pad = soft_shape(
+            card.width() - 4, card.height(), 5, 0.5 if light else 1.0, "#000000", p.device().devicePixelRatioF(), radius
+        )
         p.drawPixmap(QPointF(card.left() + 2 - pad, card.top() + 3 - pad), pixmap)
         p.setBrush(QColor(colors["panel"]))
         p.setPen(QPen(QColor(colors["border"]), 1))
@@ -105,6 +107,7 @@ def _pane(p: QPainter, card: QRectF, skin: str, colors: dict, tint: str = "", ra
 def _fader(p: QPainter, x: float, top: float, bottom: float, at: float, skin: str, colors: dict, tint: str) -> None:
     """An upright fader: Calm's pill, Glass's pearl or Nexus's beam with a ring of light."""
     from . import ui_paint
+
     y = bottom - (bottom - top) * at
     p.setPen(Qt.PenStyle.NoPen)
     if skin == "nexus":
@@ -160,6 +163,7 @@ def _ring(p: QPainter, centre: QPointF, radius: float, level: float, colors: dic
 
 def _channel_card(p: QPainter, card: QRectF, skin: str, colors: dict, color: str, level: float) -> None:
     from . import depth
+
     tint = depth.channel_tint(color, colors)
     _pane(p, card, skin, colors, tint if skin == "nexus" else "")
     p.setPen(Qt.PenStyle.NoPen)
@@ -218,30 +222,11 @@ def _listen_card(p: QPainter, card: QRectF, skin: str, colors: dict, tint: str) 
     p.drawRoundedRect(QRectF(x + 7, card.bottom() - 16, 13, 9), 3, 3)
 
 
-def _glass_backdrop(p: QPainter, colors: dict) -> None:
-    from PySide6.QtGui import QRadialGradient
-    from .skin_glass import backdrop_colours
-    from .ui_glass import SHAPES
-    values = dict(colors, **themes.mix_colors(colors, "glass"))
-    for (fx, fy, size), colour in zip(SHAPES, backdrop_colours(values)):
-        centre = QPointF(fx * W, fy * H)
-        radius = size * W
-        gradient = QRadialGradient(centre, radius)
-        inner = QColor(colour)
-        inner.setAlphaF(0.5)
-        outer = QColor(colour)
-        outer.setAlphaF(0.0)
-        gradient.setColorAt(0.0, inner)
-        gradient.setColorAt(1.0, outer)
-        p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(gradient)
-        p.drawEllipse(centre, radius, radius)
-
-
 def _draw_tiles(p: QPainter, colors: dict) -> None:
     """Tile (0.12.2): raised keys on a tray that ends below them, each with an LCD name strip and two sideways LED lanes with metal
     caps, and the Listen key beside them."""
     from .skin_tile import CHANNEL_TINTS, is_light, key_colors, lcd_colors, lcd_ink
+
     keys = key_colors(colors)
     light = is_light(colors["panel"])
     lcd = lcd_colors(light)
@@ -253,12 +238,21 @@ def _draw_tiles(p: QPainter, colors: dict) -> None:
     tints = (CHANNEL_TINTS["mic"], CHANNEL_TINTS["game"], CHANNEL_TINTS["chat"], CHANNEL_TINTS["music"])
     for i, tint in enumerate(tints):
         _key(p, QRectF(10 + (i % 2) * 76, 30 + (i // 2) * 48, 70, 40), keys, lcd, lcd_ink(tint, light), tint, i, light)
-    _key(p, QRectF(170, 30, 64, 40), keys, lcd, lcd_ink(themes.mix_colors(colors, "tile")["listen"], light),
-         themes.mix_colors(colors, "tile")["listen"], 1, light)
+    _key(
+        p,
+        QRectF(170, 30, 64, 40),
+        keys,
+        lcd,
+        lcd_ink(themes.mix_colors(colors, "tile")["listen"], light),
+        themes.mix_colors(colors, "tile")["listen"],
+        1,
+        light,
+    )
 
 
 def _key(p: QPainter, card: QRectF, keys: dict, lcd: dict, ink: str, tint: str, index: int, light: bool) -> None:
     from .skin_tile import CAP_DARK, CAP_LIGHT
+
     p.setPen(Qt.PenStyle.NoPen)
     p.setBrush(QColor(0, 0, 0, 60))
     p.drawRoundedRect(card.translated(0, 5), 6, 6)
@@ -294,7 +288,7 @@ def _key(p: QPainter, card: QRectF, keys: dict, lcd: dict, ink: str, tint: str, 
             x += 2.6
         cap_x = groove.left() + groove.width() * (lit + 0.08)
         metal = QLinearGradient(QPointF(0, y - 2), QPointF(0, y + 7))
-        for at, color in (CAP_LIGHT if light else CAP_DARK):
+        for at, color in CAP_LIGHT if light else CAP_DARK:
             metal.setColorAt(at, QColor(color))
         p.setBrush(metal)
         p.drawRoundedRect(QRectF(cap_x - 3, y - 2, 6, 9), 1.5, 1.5)

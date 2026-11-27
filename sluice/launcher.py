@@ -5,6 +5,7 @@ This writes two small files into the user's own folders (nothing needs root and 
 is touched): a launcher in ``~/.local/share/applications`` and the icon in ``~/.local/share/icons``.
 The launcher starts the same Python that is running now, so it keeps working from a virtual environment.
 """
+
 from __future__ import annotations
 
 import os
@@ -39,6 +40,12 @@ def png_icon_paths() -> list:
 
 
 def bundled_icon() -> Path:
+    """0.13.1: the launcher icon (the House Standard's rounded dark square with the blue symbol)."""
+    return Path(__file__).with_name("data") / "sluice-launcher.svg"
+
+
+def bundled_logo() -> Path:
+    """The plain logo on a transparent background: the tray draws from it."""
     return Path(__file__).with_name("data") / "sluice.svg"
 
 

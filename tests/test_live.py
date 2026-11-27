@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The live display of the Effects window: the tap on an effect, the numbers behind the pictures, and the pictures."""
+
 import numpy as np
 import pytest
 
@@ -92,9 +93,13 @@ def select(dlg, kind):
 
 def test_each_effect_gets_its_own_kind_of_display(dialog):
     live = dialog.live
-    for kind, wave, spectrum, curve, gate in (("noise_gate", True, False, False, True), ("compressor", True, False, True, False),
-                                              ("limiter", True, False, False, False), ("eq", False, True, False, False),
-                                              ("highpass", False, True, False, False)):
+    for kind, wave, spectrum, curve, gate in (
+        ("noise_gate", True, False, False, True),
+        ("compressor", True, False, True, False),
+        ("limiter", True, False, False, False),
+        ("eq", False, True, False, False),
+        ("highpass", False, True, False, False),
+    ):
         select(dialog, kind)
         assert live.wave.isHidden() == (not wave) and live.spectrum.isHidden() == (not spectrum)
         assert live.curve_box.isHidden() == (not curve) and live.gate_box.isHidden() == (not gate)

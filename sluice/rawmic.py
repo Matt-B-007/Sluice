@@ -5,6 +5,7 @@ OBS, Discord or a browser that is set to the microphone itself, not to "Sluice (
 voice without the Noise Reducer, the EQ and the rest. Nothing is wrong with Sluice then, but nobody would guess, so
 Sluice says so.
 """
+
 from __future__ import annotations
 
 from typing import Callable, Iterable
@@ -13,9 +14,29 @@ CHECK_SECONDS = 5.0  # how often the connections are looked at (one small pw-lin
 SECONDS = 8.0  # an app must hold the raw microphone this long before it is reported (level meters flick on and off)
 
 # Programs that only watch the level of a microphone (volume meters, session managers, audio tools): not a recording.
-IGNORED = ("sluice", "pavucontrol", "pulseaudio volume control", "volume control", "plasmashell", "kmix", "peak detect",
-           "wireplumber", "pipewire", "easyeffects", "kded", "gnome-shell", "gnome-control-center", "cinnamon",
-           "pwvucontrol", "helvum", "qpwgraph", "carla", "catia", "patchance", "ardour-peak")
+IGNORED = (
+    "sluice",
+    "pavucontrol",
+    "pulseaudio volume control",
+    "volume control",
+    "plasmashell",
+    "kmix",
+    "peak detect",
+    "wireplumber",
+    "pipewire",
+    "easyeffects",
+    "kded",
+    "gnome-shell",
+    "gnome-control-center",
+    "cinnamon",
+    "pwvucontrol",
+    "helvum",
+    "qpwgraph",
+    "carla",
+    "catia",
+    "patchance",
+    "ardour-peak",
+)
 
 
 def node_of(port: str) -> str:
@@ -57,8 +78,10 @@ def message(app: str, channels: list) -> str:
     labels = " and ".join(c.label for c in channels)
     separate = next((c for c in channels if getattr(c, "separate", False)), None)
     use = f"Sluice ({separate.label})" if separate is not None else "Sluice (Broadcast)"
-    return (f"{app} is listening to your raw microphone, so the effects on {labels} (noise reduction, EQ and the rest) "
-            f"do not reach it. In {app}, choose “{use}” as its microphone to use them.")
+    return (
+        f"{app} is listening to your raw microphone, so the effects on {labels} (noise reduction, EQ and the rest) "
+        f"do not reach it. In {app}, choose “{use}” as its microphone to use them."
+    )
 
 
 def short(app: str) -> str:
@@ -72,7 +95,7 @@ FORGET_SECONDS = 60.0  # 0.12.6: a warning that stops is remembered this long, s
 
 
 def find_monitors(links: Iterable, channels: Iterable) -> dict:
-    """{app: [channel, ...]}: apps recording "Monitor of Sluice (<channel>) output", the raw copy of what apps send into a
+    """{app: [channel, ...]}: apps recording a channel's playback device ("Play to Sluice (<channel>)"), the raw copy of what apps send into a
     channel, from before its effects, faders and mutes (PipeWire makes one for every output, so it is easy to pick in OBS)."""
     sinks = {channel.sink_name: channel for channel in channels}
     found: dict = {}
@@ -87,12 +110,14 @@ def find_monitors(links: Iterable, channels: Iterable) -> dict:
 
 
 def monitor_message(app: str, channels: list) -> str:
-    names = " and ".join(f"“Monitor of Sluice ({c.label}) output”" for c in channels)
-    labels = " and ".join(c.label for c in channels)
-    own = " and ".join(f"“Sluice ({c.label})”" for c in channels)
-    return (f"{app} is recording {names}: a copy of the sound from before Sluice's faders and mutes, so Broadcast cannot "
-            f"change or mute it. In {app}, use “Sluice (Broadcast)” instead, or turn on {labels} under the channel's menu > "
-            f"Recording devices for OBS and use {own}, which follow your Broadcast faders and mutes.")
+    names = " and ".join(f"“{c.description}”" for c in channels)
+    own = " and ".join(f"“{c.solo_sink_description}”" for c in channels)
+    return (
+        f"{app} is recording {names}: the sound apps play into Sluice, from before its faders and mutes, so Broadcast "
+        f"cannot change or mute it. In {app}, choose {own} instead (or “Sluice (Broadcast) for OBS” for the whole "
+        f"mix): those follow your Broadcast faders and mutes. (Older Sluice versions called the wrong one "
+        f"“Sluice (…) output”.)"
+    )
 
 
 def monitor_short(app: str) -> str:
@@ -110,8 +135,11 @@ def find_loops(links: Iterable, streams: Iterable, channel_for_stream: Callable,
     recorded: dict = {}
     for out_port, in_port in links:
         out_node, app = node_of(out_port), node_of(in_port)
-        if (out_node in BROADCAST_NODES or out_node.startswith("sluice_solo_")) and not app.startswith("sluice") \
-                and not ignorable(app):
+        if (
+            (out_node in BROADCAST_NODES or out_node.startswith("sluice_solo_"))
+            and not app.startswith("sluice")
+            and not ignorable(app)
+        ):
             recorded.setdefault(app, set()).add(out_node)
     found: dict = {}
     for app, nodes in recorded.items():
@@ -133,12 +161,16 @@ def find_loops(links: Iterable, streams: Iterable, channel_for_stream: Callable,
 
 def loop_message(app: str, channel, via: str = "broadcast") -> str:
     if via == "own":
-        return (f"{app} records \u201cSluice ({channel.label})\u201d, and {app}'s own sound plays into the {channel.label} "
-                f"channel: what {app} plays comes back into what it records, so your stream can echo or hear things twice. "
-                f"In {app} set its audio monitoring to your headphones, or record another channel's device.")
-    return (f"{app} records your Broadcast, and {app}'s own sound plays into the {channel.label} channel, which goes to "
-            f"Broadcast too: what {app} plays comes back into what it records, so your stream can echo or hear things "
-            f"twice. Mute {channel.label} in Broadcast, or in {app} set its audio monitoring to your headphones.")
+        return (
+            f"{app} records \u201cSluice ({channel.label})\u201d, and {app}'s own sound plays into the {channel.label} "
+            f"channel: what {app} plays comes back into what it records, so your stream can echo or hear things twice. "
+            f"In {app} set its audio monitoring to your headphones, or record another channel's device."
+        )
+    return (
+        f"{app} records your Broadcast, and {app}'s own sound plays into the {channel.label} channel, which goes to "
+        f"Broadcast too: what {app} plays comes back into what it records, so your stream can echo or hear things "
+        f"twice. Mute {channel.label} in Broadcast, or in {app} set its audio monitoring to your headphones."
+    )
 
 
 def loop_short(app: str) -> str:
@@ -148,7 +180,7 @@ def loop_short(app: str) -> str:
 def short_for(key: str) -> str:
     """The status-bar line for a warning key."""
     if key.endswith(MONITOR):
-        return monitor_short(key[:-len(MONITOR)])
+        return monitor_short(key[: -len(MONITOR)])
     if key.endswith(LOOP):
-        return loop_short(key[:-len(LOOP)])
+        return loop_short(key[: -len(LOOP)])
     return short(key)

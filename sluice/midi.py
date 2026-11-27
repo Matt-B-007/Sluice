@@ -8,6 +8,7 @@ MIDI device creates. Nothing is ever sent to the device, so it cannot change a c
 * ``Binding``    "this control does that": saved in ``controls.json`` next to the settings
 * ``MidiHub``    finds devices (and notices plug/unplug), reads them, applies the bindings
 """
+
 from __future__ import annotations
 
 import glob
@@ -30,10 +31,10 @@ MAX_BINDINGS = 256
 # ---------------------------------------------------------------------------------------- events
 @dataclass(frozen=True)
 class MidiEvent:
-    kind: str      # "cc", "on" or "off"
-    channel: int   # MIDI channel 1-16
-    number: int    # controller or note number, 0-127
-    value: int     # 0-127
+    kind: str  # "cc", "on" or "off"
+    channel: int  # MIDI channel 1-16
+    number: int  # controller or note number, 0-127
+    value: int  # 0-127
 
     @property
     def source(self) -> str:
@@ -51,7 +52,7 @@ class Parser:
     def feed(self, data: bytes) -> list:
         events = []
         for byte in data:
-            if byte >= 0xF8:          # real-time (clock, active sensing): may appear anywhere, ignore
+            if byte >= 0xF8:  # real-time (clock, active sensing): may appear anywhere, ignore
                 continue
             if byte >= 0x80:
                 self._status = byte if byte < 0xF0 else 0  # system messages cancel running status
@@ -96,7 +97,7 @@ class Binding:
     control: str
     action: str
     channel: str = ""
-    mix: str = ""        # listen / broadcast; empty = both (channel actions only)
+    mix: str = ""  # listen / broadcast; empty = both (channel actions only)
     step_db: float = 1.0  # size of one encoder click
 
     def to_dict(self) -> dict:
@@ -203,8 +204,13 @@ class _Port:
 class MidiHub:
     """Reads every MIDI input and applies the bindings. Call ``poll()`` often (every 10 ms or so) from one thread."""
 
-    def __init__(self, apply: Callable[[dict], dict], bindings: Optional[list] = None,
-                 pattern: str = DEVICE_GLOB, opener: Optional[Callable[[str], int]] = None) -> None:
+    def __init__(
+        self,
+        apply: Callable[[dict], dict],
+        bindings: Optional[list] = None,
+        pattern: str = DEVICE_GLOB,
+        opener: Optional[Callable[[str], int]] = None,
+    ) -> None:
         self.apply = apply
         self.bindings: list = list(bindings or [])
         self.pattern = pattern
@@ -280,7 +286,7 @@ class MidiHub:
                     data = os.read(port.fd, 4096)
                 except BlockingIOError:
                     break
-                except OSError:      # unplugged
+                except OSError:  # unplugged
                     self._close(path)
                     log.info("MIDI input lost: %s", path)
                     break

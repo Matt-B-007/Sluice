@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Moving a tile: the lifted picture under the pointer and the "Drop here" slot that moves through the other tiles."""
+
 from __future__ import annotations
 
 from typing import Optional
@@ -43,8 +44,9 @@ class TileGhost(QWidget):
         p.scale(1.02, 1.02)
         p.translate(-size.width() / 2.0, -size.height() / 2.0)
         pc = skin_tile.paint_colors()
-        pixmap, pad = soft_shape(self.tile_rect.width(), self.tile_rect.height(), 20, pc["shadow"] * 2.6, "#000000",
-                                 self.devicePixelRatioF())
+        pixmap, pad = soft_shape(
+            self.tile_rect.width(), self.tile_rect.height(), 20, pc["shadow"] * 2.6, "#000000", self.devicePixelRatioF()
+        )
         p.drawPixmap(QPointF(self.tile_rect.x() - pad, self.tile_rect.y() - pad + 14), pixmap)
         p.drawPixmap(QPointF(0, 0), self.picture)
         p.end()

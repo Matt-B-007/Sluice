@@ -11,6 +11,7 @@ sent through ``submit``. While audio is running they are queued and applied at t
 start of the next block, on the audio thread, so plugins are never touched from two
 threads at once.
 """
+
 from __future__ import annotations
 
 import logging
@@ -21,7 +22,7 @@ from typing import Callable, Iterable, Optional
 
 import numpy as np
 
-from .effects import Chain, Tap, toolbox
+from .effects import Chain, JointStage, NativeRun, Stage, Tap, toolbox
 
 log = logging.getLogger(__name__)
 
@@ -55,19 +56,19 @@ class PythonPeakLimiter:
 
     def _powers(self, n: int) -> tuple:
         k = np.arange(n, dtype=np.float64)
-        return self.decay ** k, self.decay ** (-k), self.decay ** (k + 1)
+        return self.decay**k, self.decay ** (-k), self.decay ** (k + 1)
 
     def process(self, audio: np.ndarray) -> np.ndarray:
         out = np.empty_like(audio)
         for start in range(0, audio.shape[1], self.CHUNK):
-            part = audio[:, start:start + self.CHUNK]
+            part = audio[:, start : start + self.CHUNK]
             n = part.shape[1]
             decay_n, grow_n, decay_next = self._cached if n == self.CHUNK else self._powers(n)
             need = np.maximum(np.max(np.abs(part), axis=0) / self.ceiling, 1.0)
             held = decay_n * np.maximum.accumulate(need * grow_n)  # decayed running maximum
             reduction = np.maximum(np.maximum(self._reduction * decay_next, held), 1.0)
             self._reduction = float(reduction[-1])
-            out[:, start:start + n] = part / reduction.astype(np.float32)
+            out[:, start : start + n] = part / reduction.astype(np.float32)
         return out
 
 
@@ -87,6 +88,9 @@ if not os.environ.get("SLUICE_NO_RUST") and not os.environ.get("SLUICE_NO_RUST_M
         log.debug("Rust mixer not used: %s", exc)
         _rust = None
 MIX_BACKEND = "rust" if _rust is not None else "python"
+# 0.13.1: the whole graph in Rust (sluice_dsp.NativeGraph, engine 0.12.0 and later), used by the JACK engine while every chain
+# is native. SLUICE_NO_NATIVE_GRAPH=1 keeps every block in Python (to compare, or to rule it out when hunting a problem).
+NATIVE_GRAPH = _rust is not None and hasattr(_rust, "NativeGraph") and not os.environ.get("SLUICE_NO_NATIVE_GRAPH")
 
 
 def _curve(previous: float, target: float, frames: int):
@@ -151,7 +155,9 @@ class Graph:
     def __init__(self, sample_rate: int, mix_ids: Iterable) -> None:
         self.sample_rate = int(sample_rate)
         self.live = False  # set by the audio backend while blocks are being processed
-        self.audio_thread_id: Optional[int] = None  # the system id of the thread that runs ``process`` (the bug report's CPU split)
+        self.audio_thread_id: Optional[int] = (
+            None  # the system id of the thread that runs ``process`` (the bug report's CPU split)
+        )
         self.channels: dict = {}
         self.mixes: dict = {mix_id: MixDsp(mix_id) for mix_id in mix_ids}
         self.errors: list = []
@@ -159,14 +165,154 @@ class Graph:
         self._captures: dict = {}  # channel id -> the Capture "Measure my room" is filling
         self.taps: dict = {}  # channel id -> the Tap the Effects window reads (only while it is open)
         self._pb = _pedalboard()
+        # 0.13.1: the Rust graph and the audio engine that can run it (see attach_native)
+        self.native = None
+        self.native_host = None
+        self.native_active = False
+        self.native_reason = "not available"  # why the blocks are mixed in Python, for the bug report
+        self._sync_after_block = False
+        self._native_boards: dict = {}  # channel id -> (the board last given to the Rust graph, whether it was native)
 
     # ------------------------------------------------------------ control side
     def submit(self, fn: Callable[[], None]) -> None:
-        """Run ``fn`` on the audio thread before the next block (immediately if audio is stopped)."""
-        if self.live:
+        """Run ``fn`` on the audio thread before the next block (immediately if audio is stopped, or while the Rust graph mixes
+        the blocks: Python's state is then not used by the audio thread, and the Rust graph gets the change at once)."""
+        if self.live and not self.native_active:
             self._queue.append(fn)
         else:
             fn()
+            if self.native is not None:
+                self._sync_native()
+
+    # ------------------------------------------------------------ the Rust graph
+    def attach_native(self, host) -> bool:
+        """0.13.1: let ``host`` (the Rust JACK engine: set_native, use_native) mix the blocks in Rust whenever every chain is
+        native. Returns whether it can."""
+        if not NATIVE_GRAPH or not hasattr(host, "use_native"):
+            self.native_reason = "the Rust engine is too old or switched off"
+            return False
+        try:
+            self.native = _rust.NativeGraph(self.sample_rate, list(self.mixes))
+            host.set_native(self.native)
+        except Exception as exc:  # an engine that cannot: Python mixes, as before
+            log.warning("the Rust graph could not be used: %s", exc)
+            self.native, self.native_reason = None, f"could not start ({exc})"
+            return False
+        self.native_host = host
+        self._native_boards.clear()
+        self._sync_native()
+        return True
+
+    def detach_native(self) -> None:
+        if self.native_host is not None:
+            try:
+                self.native_host.use_native(False)
+                self.native_host.set_native(None)
+            except Exception as exc:
+                log.debug("could not detach the Rust graph: %s", exc)
+        self.native = self.native_host = None
+        self.native_active = False
+
+    def _native_items(self, channel: "ChannelDsp") -> Optional[list]:
+        """The channel's chain as Rust effect objects for the Rust graph ([] for no chain); None when a part needs Python."""
+        board = channel.board
+        if board is None:
+            return []
+        parts = getattr(board, "_parts", None)
+        if parts is None or getattr(board, "_tap", None) is not None:
+            return None
+        items = []
+        for part in parts:
+            if isinstance(part, NativeRun):
+                items.append(part._run)
+            elif isinstance(part, JointStage):
+                items.append(part.ensure(self.sample_rate))
+            elif isinstance(part, Stage):
+                items.append(part.ensure(self.sample_rate))
+            else:
+                return None  # a pedalboard plugin (VST3 or one with no Rust twin)
+        return items
+
+    def _sync_native(self) -> None:
+        """Give the Rust graph the settings Python keeps, then let it mix the blocks if every chain is native and nothing is
+        being looked at or recorded (those need Python), or take the blocks back."""
+        native = self.native
+        if native is None:
+            return
+        reason = ""
+        try:
+            native.set_channels(list(self.channels))
+            for cid, channel in list(self.channels.items()):
+                native.set_channel(cid, dict(channel.gains), channel.solo_gain)
+                known = self._native_boards.get(cid)
+                if known is None or known[0] is not channel.board:
+                    items = self._native_items(channel)
+                    ok = items is not None
+                    if ok:
+                        try:
+                            native.set_chain(cid, items)
+                        except TypeError:
+                            ok = False
+                    self._native_boards[cid] = (channel.board, ok)
+                    known = self._native_boards[cid]
+                if channel.tap is not None:  # (its chain is built with the view's parts: not one to judge)
+                    reason = reason or "the Effects window shows a live view"
+                elif channel.capture is not None:
+                    reason = reason or "Measure my room is listening"
+                elif not known[1]:
+                    reason = reason or f"'{cid}' has an effect that needs Python (a VST3 plugin, say)"
+            for cid in [c for c in self._native_boards if c not in self.channels]:
+                del self._native_boards[cid]
+            for mid, mix in self.mixes.items():
+                native.set_mix(mid, mix.gain, mix.limiter)
+        except Exception as exc:  # never let the mirror stop the audio: Python mixes
+            log.warning("the Rust graph could not follow a change: %s", exc)
+            reason = f"it could not follow a change ({exc})"
+        self.native_reason = reason
+        self._switch_native(not reason)
+
+    def _switch_native(self, on: bool) -> None:
+        if on == self.native_active or self.native_host is None:
+            return
+        native = self.native
+        if on:  # Python hands over where every channel and mix is, so nothing jumps
+            for cid, channel in list(self.channels.items()):
+                native.put_channel_state(
+                    cid,
+                    (
+                        dict(channel.applied),
+                        channel.solo_applied,
+                        channel.recent,
+                        channel.input_recent,
+                        int(channel.quiet_frames),
+                        channel.asleep,
+                    ),
+                )
+            for mid, mix in self.mixes.items():
+                native.put_mix_state(mid, mix.applied, mix.primed)
+            self.native_active = True
+            self.native_host.use_native(True)
+            log.info("the Rust graph mixes the blocks (no Python in the audio path)")
+        else:  # the Rust graph stops first, then Python takes over from where it was
+            self.native_host.use_native(False)
+            self.native_active = False
+            for cid, channel in list(self.channels.items()):
+                state = native.channel_state(cid)
+                if state is not None:
+                    (
+                        applied,
+                        channel.solo_applied,
+                        channel.recent,
+                        channel.input_recent,
+                        channel.quiet_frames,
+                        channel.asleep,
+                    ) = state
+                    channel.applied = dict(applied)
+            for mid, mix in self.mixes.items():
+                state = native.mix_state(mid)
+                if state is not None:
+                    mix.applied, mix.primed = state
+            log.info("Python mixes the blocks: %s", self.native_reason)
 
     def set_channels(self, channel_ids: Iterable) -> None:
         ids = list(channel_ids)
@@ -310,6 +456,14 @@ class Graph:
             peaks[f"in:{cid}"], channel.input_peak = channel.input_peak, 0.0
         for mid, mix in self.mixes.items():
             peaks[f"mix:{mid}"], mix.peak = mix.peak, 0.0
+        if self.native is not None:  # 0.13.1: what the Rust graph measured (both, around a switch)
+            for key, value in self.native.take_peaks().items():
+                peaks[key] = max(peaks.get(key, 0.0), value)
+            if self.native_active:  # the slowly falling levels the window reads, from the graph that has them
+                for cid, (recent, input_recent, asleep) in self.native.levels().items():
+                    channel = self.channels.get(cid)
+                    if channel is not None:
+                        channel.recent, channel.input_recent, channel.asleep = recent, input_recent, asleep
         return peaks
 
     def take_errors(self) -> list:
@@ -318,11 +472,16 @@ class Graph:
 
     # -------------------------------------------------------------- audio side
     def _drain(self) -> None:
+        changed = bool(self._queue)
         for _ in range(len(self._queue)):
             try:
                 self._queue.popleft()()
             except Exception as exc:  # a bad change must not stop the audio
                 self.errors.append(f"{type(exc).__name__}: {exc}")
+        if changed and self.native is not None:
+            # the Rust graph hears of the change after this block, which Python still mixes: a hand-over before it would give
+            # the Rust graph where things were a block ago (a fader's ramp twice, the meters a block behind)
+            self._sync_after_block = True
 
     def _run_board(self, board, audio: np.ndarray) -> np.ndarray:
         return np.asarray(board(audio, self.sample_rate, reset=False), dtype=np.float32)
@@ -330,12 +489,14 @@ class Graph:
     def process(self, inputs: dict, frames: int) -> dict:
         """inputs: channel id -> (2, frames) float32. Returns mix id -> (2, frames) float32."""
         if self.audio_thread_id is None:
-            self.audio_thread_id = threading.get_native_id()  # once: the thread the bug report's CPU split calls "the audio callback"
+            self.audio_thread_id = (
+                threading.get_native_id()
+            )  # once: the thread the bug report's CPU split calls "the audio callback"
         self._drain()
         outputs = {mid: np.zeros((2, frames), dtype=np.float32) for mid in self.mixes}
 
         silence = None  # one shared block of zeros, made only if some channel needs it
-        for cid, channel in self.channels.items():
+        for cid, channel in list(self.channels.items()):
             audio = inputs.get(cid)
             if audio is not None:
                 audio = np.ascontiguousarray(audio, dtype=np.float32)
@@ -347,11 +508,13 @@ class Graph:
             if cap is not None and frames and not cap.done:  # "Measure my room": keep a copy of what comes in
                 n = min(frames, cap.size - cap.pos)
                 if audio is not None:
-                    cap.buf[:, cap.pos:cap.pos + n] = audio[:, :n]
+                    cap.buf[:, cap.pos : cap.pos + n] = audio[:, :n]
                 cap.pos += n
             # An idle channel (no sound for longer than any effect's tail) costs nothing: no chain, no mixing.
-            if channel.quiet_frames > 0 and frames and (
-                channel.board is None or channel.quiet_frames > self.sample_rate * SILENCE_TAIL_SECONDS
+            if (
+                channel.quiet_frames > 0
+                and frames
+                and (channel.board is None or channel.quiet_frames > self.sample_rate * SILENCE_TAIL_SECONDS)
             ):
                 channel.asleep = channel.board is not None
                 channel.recent *= RECENT_DECAY
@@ -426,6 +589,9 @@ class Graph:
             if frames:
                 mix.peak = max(mix.peak, float(np.max(np.abs(out))))
             outputs[mid] = out
+        if self._sync_after_block:
+            self._sync_after_block = False
+            self._sync_native()  # (on the audio thread, between blocks: the next one may be the Rust graph's)
         return outputs
 
     def _limit(self, mix: MixDsp, audio: np.ndarray) -> np.ndarray:

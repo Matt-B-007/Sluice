@@ -13,6 +13,7 @@ Colours a file leaves out come from its ``base`` theme (``dark`` or ``light``). 
 ``themes`` folder next to the settings file. Every colour is checked to be a hex value before it goes anywhere near the
 style sheet, so a theme file cannot change anything but colours.
 """
+
 from __future__ import annotations
 
 import json
@@ -24,124 +25,503 @@ from pathlib import Path
 from string import Template
 from typing import Optional
 
-SYSTEM = "system"          # "Match my system": follows the desktop's light or dark setting
+SYSTEM = "system"  # "Match my system": follows the desktop's light or dark setting
 CUSTOM_PREFIX = "custom:"  # an imported theme: custom:<file name without .json>
 MAX_FILE_BYTES = 64 * 1024
-MAX_CUSTOM = 40            # imported themes shown (the rest of a crowded folder is ignored)
+MAX_CUSTOM = 40  # imported themes shown (the rest of a crowded folder is ignored)
 
 TOKEN_NAMES = (
-    "bg", "panel", "mix", "border", "border_soft", "text", "text_dim", "text_faint", "text_off", "title", "strong",
-    "input", "well", "chip", "button", "button_text", "button_border", "hover", "line", "accent", "select",
-    "select_soft", "select_text", "popup", "dialog", "fill", "handle", "handle_edge", "handle_hover", "applied",
-    "scroll_track", "scroll_hover", "scroll_press", "row_hover", "list_text", "check_text", "link", "code", "ok",
-    "alarm", "warn", "error", "muted", "mute", "limiter", "linked", "on_color",
+    "bg",
+    "panel",
+    "mix",
+    "border",
+    "border_soft",
+    "text",
+    "text_dim",
+    "text_faint",
+    "text_off",
+    "title",
+    "strong",
+    "input",
+    "well",
+    "chip",
+    "button",
+    "button_text",
+    "button_border",
+    "hover",
+    "line",
+    "accent",
+    "select",
+    "select_soft",
+    "select_text",
+    "popup",
+    "dialog",
+    "fill",
+    "handle",
+    "handle_edge",
+    "handle_hover",
+    "applied",
+    "scroll_track",
+    "scroll_hover",
+    "scroll_press",
+    "row_hover",
+    "list_text",
+    "check_text",
+    "link",
+    "code",
+    "ok",
+    "alarm",
+    "warn",
+    "error",
+    "muted",
+    "mute",
+    "limiter",
+    "linked",
+    "on_color",
     # added in 0.10.0. A theme file that does not list them gets them worked out from its own colours (see ``complete``).
-    "surface2", "border2", "text2", "track", "meter_bg", "accent_bg", "accent_text", "mute_bg", "mute_fg", "live_bg",
-    "live_fg", "dashed", "focus",
+    "surface2",
+    "border2",
+    "text2",
+    "track",
+    "meter_bg",
+    "accent_bg",
+    "accent_text",
+    "mute_bg",
+    "mute_fg",
+    "live_bg",
+    "live_fg",
+    "dashed",
+    "focus",
+    # added in 0.13.1 (House Standard v1.3): a card's edge in the accent at about 18%, and the sidebar shade
+    "card_edge",
+    "sidebar",
 )
-NEW_TOKENS = TOKEN_NAMES[TOKEN_NAMES.index("surface2"):]
+NEW_TOKENS = TOKEN_NAMES[TOKEN_NAMES.index("surface2") :]
 
-DARK = {
-    "bg": "#0e1116", "panel": "#151a22", "mix": "#18202b", "border": "#232b37", "border_soft": "#232b37",
-    "text": "#e7ecf3", "text_dim": "#8794a7", "text_faint": "#8794a7", "text_off": "#667386", "title": "#f4f7fb",
-    "strong": "#f2f5fa", "input": "#10141b", "well": "#10141b", "chip": "#1b212b", "button": "#1b212b",
-    "button_text": "#e7ecf3", "button_border": "#2a3340", "hover": "#4a5668", "line": "#2f3948", "accent": "#3ddbc0",
-    "select": "#17423d", "select_soft": "#12342e", "select_text": "#ffffff", "popup": "#151a22", "dialog": "#12161d",
-    "fill": "#3ddbc0", "handle": "#f2f5fa", "handle_edge": "#f2f5fa", "handle_hover": "#ffffff", "applied": "#12342e",
-    "scroll_track": "#12161d", "scroll_hover": "#3a4556", "scroll_press": "#4a5668", "row_hover": "#1b212b",
-    "list_text": "#e7ecf3", "check_text": "#b7c1cf", "link": "#6ab0ff", "code": "#e6c07b", "ok": "#5be3b0",
-    "alarm": "#b3262c", "warn": "#f5c542", "error": "#ff7a88", "muted": "#6f7887", "mute": "#ef5258",
-    "limiter": "#35d0c0", "linked": "#3ddbc0", "on_color": "#0e1116",
-    "surface2": "#1b212b", "border2": "#2a3340", "text2": "#b7c1cf", "track": "#222a36", "meter_bg": "#10141b",
-    "accent_bg": "#12342e", "accent_text": "#3ddbc0", "mute_bg": "#3a1b22", "mute_fg": "#ff7a88", "live_bg": "#12261f",
-    "live_fg": "#5be3b0", "dashed": "#2f3948", "focus": "#3b82f6",
+DARK = {  # 0.13.1: the House Standard's navy "hull" (v1.3), with Sluice's blue accent
+    "bg": "#0c1016",
+    "panel": "#131922",
+    "mix": "#161d27",
+    "border": "#263040",
+    "border_soft": "#263040",
+    "text": "#e8edf4",
+    "text_dim": "#9aa6b8",
+    "text_faint": "#9aa6b8",
+    "text_off": "#6b788c",
+    "title": "#f3f6fa",
+    "strong": "#f3f6fa",
+    "input": "#080b10",
+    "well": "#080b10",
+    "chip": "#1a212c",
+    "button": "#1a212c",
+    "button_text": "#e8edf4",
+    "button_border": "#2f3a4c",
+    "hover": "#4a5870",
+    "line": "#2f3a4c",
+    "accent": "#60a5fa",
+    "select": "#1e3a5f",
+    "select_soft": "#172b45",
+    "select_text": "#ffffff",
+    "popup": "#131922",
+    "dialog": "#101620",
+    "fill": "#60a5fa",
+    "handle": "#f3f6fa",
+    "handle_edge": "#f3f6fa",
+    "handle_hover": "#ffffff",
+    "applied": "#172b45",
+    "scroll_track": "#0f141c",
+    "scroll_hover": "#3a4659",
+    "scroll_press": "#4a5870",
+    "row_hover": "#212a37",
+    "list_text": "#e8edf4",
+    "check_text": "#c3ccd8",
+    "link": "#93c5fd",
+    "code": "#e6c07b",
+    "ok": "#6ee7b7",
+    "alarm": "#b3262c",
+    "warn": "#fbbf24",
+    "error": "#f87171",
+    "muted": "#7c889b",
+    "mute": "#ef5258",
+    "limiter": "#35d0c0",
+    "linked": "#60a5fa",
+    "on_color": "#0c1016",
+    "surface2": "#1a212c",
+    "border2": "#2f3a4c",
+    "text2": "#c3ccd8",
+    "track": "#212a37",
+    "meter_bg": "#080b10",
+    "accent_bg": "#172b45",
+    "accent_text": "#60a5fa",
+    "mute_bg": "#3a1b22",
+    "mute_fg": "#f87171",
+    "live_bg": "#0f2a22",
+    "live_fg": "#6ee7b7",
+    "dashed": "#2f3a4c",
+    "focus": "#60a5fa",
+    "card_edge": "#22334c",
+    "sidebar": "#080b10",
 }
 
-LIGHT = {
-    "bg": "#f3f5f9", "panel": "#ffffff", "mix": "#f8fafc", "border": "#dde2eb", "border_soft": "#dde2eb",
-    "text": "#121722", "text_dim": "#5b6678", "text_faint": "#5b6678", "text_off": "#8a94a2", "title": "#0b0f17",
-    "strong": "#111827", "input": "#eef1f6", "well": "#e3e8f0", "chip": "#eef1f6", "button": "#eef1f6",
-    "button_text": "#121722", "button_border": "#d3d9e4", "hover": "#7a8493", "line": "#b9c2d1", "accent": "#0f9d8a",
-    "select": "#c9ece6", "select_soft": "#d6f2ec", "select_text": "#0b0f17", "popup": "#ffffff", "dialog": "#f8fafc",
-    "fill": "#0f9d8a", "handle": "#ffffff", "handle_edge": "#bfc8d6", "handle_hover": "#f0f4fa", "applied": "#d6f2ec",
-    "scroll_track": "#e6eaf2", "scroll_hover": "#98a2b0", "scroll_press": "#7f8b9b", "row_hover": "#eef1f6",
-    "list_text": "#121722", "check_text": "#2e3748", "link": "#1f5fcc", "code": "#8a5a00", "ok": "#0a7a55",
-    "alarm": "#c62828", "warn": "#8a5a00", "error": "#c62e42", "muted": "#7a8493", "mute": "#e0414a",
-    "limiter": "#1fb3a3", "linked": "#0b7f70", "on_color": "#0e1014",
-    "surface2": "#eef1f6", "border2": "#d3d9e4", "text2": "#2e3748", "track": "#e3e8f0", "meter_bg": "#e6eaf2",
-    "accent_bg": "#d6f2ec", "accent_text": "#0b7f70", "mute_bg": "#fde3e6", "mute_fg": "#c62e42", "live_bg": "#ddf5ec",
-    "live_fg": "#0a7a55", "dashed": "#b9c2d1", "focus": "#2563eb",
+LIGHT = {  # 0.13.1: the House Standard's light "hull" (v1.3), with Sluice's blue accent
+    "bg": "#f5f7fa",
+    "panel": "#ffffff",
+    "mix": "#f8fafc",
+    "border": "#dce3eb",
+    "border_soft": "#dce3eb",
+    "text": "#0f1620",
+    "text_dim": "#556274",
+    "text_faint": "#556274",
+    "text_off": "#8a95a5",
+    "title": "#0a1018",
+    "strong": "#0a1018",
+    "input": "#f1f4f8",
+    "well": "#e9eef4",
+    "chip": "#f1f4f8",
+    "button": "#f1f4f8",
+    "button_text": "#0f1620",
+    "button_border": "#cdd6e1",
+    "hover": "#7a8596",
+    "line": "#c3cdd9",
+    "accent": "#1d4ed8",
+    "select": "#dbe6fd",
+    "select_soft": "#e8effe",
+    "select_text": "#0a1018",
+    "popup": "#ffffff",
+    "dialog": "#f8fafc",
+    "fill": "#1d4ed8",
+    "handle": "#ffffff",
+    "handle_edge": "#c0cad7",
+    "handle_hover": "#f1f4f8",
+    "applied": "#e8effe",
+    "scroll_track": "#e9eef4",
+    "scroll_hover": "#98a3b3",
+    "scroll_press": "#7f8b9c",
+    "row_hover": "#e9eef4",
+    "list_text": "#0f1620",
+    "check_text": "#2b3646",
+    "link": "#1d4ed8",
+    "code": "#8a5a00",
+    "ok": "#047857",
+    "alarm": "#c62828",
+    "warn": "#975a06",
+    "error": "#b91c1c",
+    "muted": "#7a8596",
+    "mute": "#e0414a",
+    "limiter": "#1fb3a3",
+    "linked": "#1d4ed8",
+    "on_color": "#ffffff",
+    "surface2": "#f1f4f8",
+    "border2": "#cdd6e1",
+    "text2": "#2b3646",
+    "track": "#e3e9f0",
+    "meter_bg": "#e9eef4",
+    "accent_bg": "#e8effe",
+    "accent_text": "#1d4ed8",
+    "mute_bg": "#fde3e6",
+    "mute_fg": "#b91c1c",
+    "live_bg": "#ddf5ec",
+    "live_fg": "#047857",
+    "dashed": "#c3cdd9",
+    "focus": "#1d4ed8",
+    "card_edge": "#cdd9f5",
+    "sidebar": "#edf1f5",
 }
 
 CONTRAST = {
-    "bg": "#000000", "panel": "#0a0a0a", "mix": "#0f0f0f", "border": "#9aa0a6", "border_soft": "#9aa0a6",
-    "text": "#ffffff", "text_dim": "#d6dade", "text_faint": "#d6dade", "text_off": "#9aa0a6", "title": "#ffffff",
-    "strong": "#ffffff", "input": "#000000", "well": "#2b2b2b", "chip": "#1a1a1a", "button": "#161616",
-    "button_text": "#ffffff", "button_border": "#c0c5cb", "hover": "#ffd400", "line": "#9aa0a6", "accent": "#ffd400",
-    "select": "#1f4fd8", "select_soft": "#1f4fd8", "select_text": "#ffffff", "popup": "#000000", "dialog": "#050505",
-    "fill": "#00a86b", "handle": "#ffffff", "handle_edge": "#ffffff", "handle_hover": "#ffd400", "applied": "#1f4fd8",
-    "scroll_track": "#161616", "scroll_hover": "#c0c5cb", "scroll_press": "#ffd400", "row_hover": "#1a1a1a",
-    "list_text": "#ffffff", "check_text": "#ffffff", "link": "#8fd3ff", "code": "#ffd400", "ok": "#7dff9a",
-    "alarm": "#d40000", "warn": "#ffd400", "error": "#ff6b6b", "muted": "#9aa0a6", "mute": "#ff5a5f",
-    "limiter": "#35d0c0", "linked": "#c0c5cb", "on_color": "#000000",
+    "bg": "#000000",
+    "panel": "#0a0a0a",
+    "mix": "#0f0f0f",
+    "border": "#9aa0a6",
+    "border_soft": "#9aa0a6",
+    "text": "#ffffff",
+    "text_dim": "#d6dade",
+    "text_faint": "#d6dade",
+    "text_off": "#9aa0a6",
+    "title": "#ffffff",
+    "strong": "#ffffff",
+    "input": "#000000",
+    "well": "#2b2b2b",
+    "chip": "#1a1a1a",
+    "button": "#161616",
+    "button_text": "#ffffff",
+    "button_border": "#c0c5cb",
+    "hover": "#ffd400",
+    "line": "#9aa0a6",
+    "accent": "#ffd400",
+    "select": "#1f4fd8",
+    "select_soft": "#1f4fd8",
+    "select_text": "#ffffff",
+    "popup": "#000000",
+    "dialog": "#050505",
+    "fill": "#00a86b",
+    "handle": "#ffffff",
+    "handle_edge": "#ffffff",
+    "handle_hover": "#ffd400",
+    "applied": "#1f4fd8",
+    "scroll_track": "#161616",
+    "scroll_hover": "#c0c5cb",
+    "scroll_press": "#ffd400",
+    "row_hover": "#1a1a1a",
+    "list_text": "#ffffff",
+    "check_text": "#ffffff",
+    "link": "#8fd3ff",
+    "code": "#ffd400",
+    "ok": "#7dff9a",
+    "alarm": "#d40000",
+    "warn": "#ffd400",
+    "error": "#ff6b6b",
+    "muted": "#9aa0a6",
+    "mute": "#ff5a5f",
+    "limiter": "#35d0c0",
+    "linked": "#c0c5cb",
+    "on_color": "#000000",
 }
 
-PURPLE = {
-    "bg": "#150c2b", "panel": "#21143f", "mix": "#1d1138", "border": "#4a2f7d", "border_soft": "#4a2f7d",
-    "text": "#efe4ff", "text_dim": "#b39ddb", "text_faint": "#a58fd0", "text_off": "#7a68a0", "title": "#ffffff",
-    "strong": "#f7efff", "input": "#0e0720", "well": "#0a0518", "chip": "#2d1b57", "button": "#2f1c5a",
-    "button_text": "#d9c6ff", "button_border": "#6a45b0", "hover": "#ff4fd8", "line": "#5a3a96", "accent": "#ff4fd8",
-    "select": "#6b2a8f", "select_soft": "#5a2480", "select_text": "#ffffff", "popup": "#1a0f35", "dialog": "#1b1033",
-    "fill": "#12b5c8", "handle": "#fff1ff", "handle_edge": "#ff4fd8", "handle_hover": "#ffffff", "applied": "#6b2a8f",
-    "scroll_track": "#24164a", "scroll_hover": "#7a52b8", "scroll_press": "#ff4fd8", "row_hover": "#2a1a52",
-    "list_text": "#f4eaff", "check_text": "#e5d5ff", "link": "#8fd3ff", "code": "#ffd166", "ok": "#6dffb0",
-    "alarm": "#c2185b", "warn": "#ffd166", "error": "#ff6b8b", "muted": "#8d78bd", "mute": "#ef5258",
-    "limiter": "#2ee6d6", "linked": "#a58fd0", "on_color": "#0a0518",
+
+COLOUR_BLIND = {  # 0.13.1: built in; sky blue accent (Okabe-Ito), not orange, which reads as a warning
+    "bg": "#10151c",
+    "panel": "#192230",
+    "mix": "#141c26",
+    "border": "#33445c",
+    "border_soft": "#273548",
+    "text": "#e3e9f2",
+    "text_dim": "#98a6bb",
+    "text_faint": "#98a6bb",
+    "text_off": "#586476",
+    "title": "#f4f6fa",
+    "strong": "#eef2f7",
+    "input": "#0a0e12",
+    "well": "#07090d",
+    "chip": "#293240",
+    "button": "#2d3643",
+    "button_text": "#c9d2df",
+    "button_border": "#536277",
+    "hover": "#56b4e9",
+    "line": "#33445c",
+    "accent": "#56b4e9",
+    "select": "#0f4f8f",
+    "select_soft": "#0f3861",
+    "select_text": "#ffffff",
+    "popup": "#131a23",
+    "dialog": "#151d28",
+    "fill": "#2a76c2",
+    "handle": "#f1f4f8",
+    "handle_edge": "#98a6bb",
+    "handle_hover": "#ffffff",
+    "applied": "#0f4f8f",
+    "scroll_track": "#151d28",
+    "scroll_hover": "#5a626e",
+    "scroll_press": "#7e8691",
+    "row_hover": "#232c3a",
+    "list_text": "#e3e9f2",
+    "check_text": "#d4dce7",
+    "link": "#6fb4ff",
+    "code": "#ffd27a",
+    "ok": "#7fc3ff",
+    "alarm": "#b3262c",
+    "warn": "#e0a030",
+    "error": "#ef5258",
+    "muted": "#6f7887",
+    "mute": "#ef5258",
+    "limiter": "#35d0c0",
+    "linked": "#98a6bb",
+    "on_color": "#0e1014",
+    "surface2": "#232c3a",
+    "border2": "#45546b",
+    "text2": "#c9d2df",
+    "track": "#2d3643",
+    "meter_bg": "#141a24",
+    "accent_bg": "#473c2c",
+    "accent_text": "#56b4e9",
+    "mute_bg": "#482d39",
+    "mute_fg": "#f37d82",
+    "live_bg": "#223140",
+    "live_fg": "#7fc3ff",
+    "dashed": "#32373e",
+    "focus": "#3b82f6",
 }
 
-MIDNIGHT = {
-    "bg": "#0b1220", "panel": "#121c31", "mix": "#0e1728", "border": "#2a3c60", "border_soft": "#1f2e4b",
-    "text": "#d6e0f2", "text_dim": "#8ea0bf", "text_faint": "#8ea0bf", "text_off": "#505e78", "title": "#eff3fa",
-    "strong": "#e6ecf7", "input": "#070c15", "well": "#05080e", "chip": "#222c40", "button": "#263044",
-    "button_text": "#bdcae0", "button_border": "#495a7a", "hover": "#4aa3ff", "line": "#2a3c60", "accent": "#4aa3ff",
-    "select": "#1f4a85", "select_soft": "#17345d", "select_text": "#ffffff", "popup": "#0d1626", "dialog": "#0f182a",
-    "fill": "#2c6a8f", "handle": "#eaf0f8", "handle_edge": "#8ea0bf", "handle_hover": "#ffffff", "applied": "#1f4a85",
-    "scroll_track": "#0f182a", "scroll_hover": "#515b6f", "scroll_press": "#747e92", "row_hover": "#1c263b",
-    "list_text": "#d6e0f2", "check_text": "#c8d3e8", "link": "#6fb3ff", "code": "#e6c07b", "ok": "#8fd19e",
-    "alarm": "#b3262c", "warn": "#e0a030", "error": "#ef5258", "muted": "#6f7887", "mute": "#ef5258",
-    "limiter": "#35d0c0", "linked": "#8ea0bf", "on_color": "#0e1014",
+OLED = {  # 0.13.1: built in (was a download)
+    "bg": "#000000",
+    "panel": "#0b0b0d",
+    "mix": "#060606",
+    "border": "#26272c",
+    "border_soft": "#1a1a1e",
+    "text": "#e4e6ea",
+    "text_dim": "#8c9099",
+    "text_faint": "#8c9099",
+    "text_off": "#4c4e53",
+    "title": "#f4f5f7",
+    "strong": "#eff0f2",
+    "input": "#000000",
+    "well": "#17181b",
+    "chip": "#1c1d1f",
+    "button": "#212123",
+    "button_text": "#c5c8ce",
+    "button_border": "#48494e",
+    "hover": "#6ea8ff",
+    "line": "#26272c",
+    "accent": "#6ea8ff",
+    "select": "#1d3f73",
+    "select_soft": "#112645",
+    "select_text": "#ffffff",
+    "popup": "#040405",
+    "dialog": "#070708",
+    "fill": "#2b6a55",
+    "handle": "#f2f2f4",
+    "handle_edge": "#8c9099",
+    "handle_hover": "#ffffff",
+    "applied": "#1d3f73",
+    "scroll_track": "#070708",
+    "scroll_hover": "#505154",
+    "scroll_press": "#78787c",
+    "row_hover": "#161618",
+    "list_text": "#e4e6ea",
+    "check_text": "#d2d5da",
+    "link": "#8ab8ff",
+    "code": "#e6c07b",
+    "ok": "#8fd19e",
+    "alarm": "#b3262c",
+    "warn": "#e0a030",
+    "error": "#ef5258",
+    "muted": "#6f7887",
+    "mute": "#ef5258",
+    "limiter": "#35d0c0",
+    "linked": "#8c9099",
+    "on_color": "#0e1014",
+    "surface2": "#161618",
+    "border2": "#393a3f",
+    "text2": "#c5c8ce",
+    "track": "#212123",
+    "meter_bg": "#040405",
+    "accent_bg": "#1f2a3d",
+    "accent_text": "#6ea8ff",
+    "mute_bg": "#3d1b1e",
+    "mute_fg": "#f05b60",
+    "live_bg": "#172119",
+    "live_fg": "#8fd19e",
+    "dashed": "#242525",
+    "focus": "#3b82f6",
 }
 
-AMBER = {
-    "bg": "#14100b", "panel": "#1f1912", "mix": "#1a140e", "border": "#4a3a24", "border_soft": "#372b1c",
-    "text": "#f0dcb4", "text_dim": "#b39a6e", "text_faint": "#b39a6e", "text_off": "#695a40", "title": "#f9f1e1",
-    "strong": "#f6ead2", "input": "#0d0a07", "well": "#090705", "chip": "#30291f", "button": "#342c22",
-    "button_text": "#dbc59c", "button_border": "#68573e", "hover": "#ffb000", "line": "#4a3a24", "accent": "#ffb000",
-    "select": "#6a4a10", "select_soft": "#48330e", "select_text": "#fff3d6", "popup": "#18130d", "dialog": "#1b150f",
-    "fill": "#2f6b4f", "handle": "#ffe9bd", "handle_edge": "#b39a6e", "handle_hover": "#ffffff", "applied": "#6a4a10",
-    "scroll_track": "#1b150f", "scroll_hover": "#625746", "scroll_press": "#887a63", "row_hover": "#29231a",
-    "list_text": "#f0dcb4", "check_text": "#e4cfa6", "link": "#ffc94d", "code": "#ffd980", "ok": "#8fd19e",
-    "alarm": "#b3262c", "warn": "#e0a030", "error": "#ef5258", "muted": "#6f7887", "mute": "#ef5258",
-    "limiter": "#35d0c0", "linked": "#b39a6e", "on_color": "#0e1014",
+SYNTHWAVE = {  # 0.13.1: built in (was a download)
+    "bg": "#0e0b24",
+    "panel": "#191340",
+    "mix": "#140f32",
+    "border": "#3d2f86",
+    "border_soft": "#2d2266",
+    "text": "#e8e4ff",
+    "text_dim": "#9f98d8",
+    "text_faint": "#9f98d8",
+    "text_off": "#5c568c",
+    "title": "#f6f4ff",
+    "strong": "#f1efff",
+    "input": "#090717",
+    "well": "#060510",
+    "chip": "#2a244f",
+    "button": "#2e2853",
+    "button_text": "#cec9f1",
+    "button_border": "#5c509c",
+    "hover": "#ff2fa6",
+    "line": "#3d2f86",
+    "accent": "#00e5ff",
+    "select": "#0a5a8a",
+    "select_soft": "#0c3a61",
+    "select_text": "#ffffff",
+    "popup": "#120e2e",
+    "dialog": "#151035",
+    "fill": "#c4208a",
+    "handle": "#fff0fb",
+    "handle_edge": "#9f98d8",
+    "handle_hover": "#ffffff",
+    "applied": "#0a5a8a",
+    "scroll_track": "#151035",
+    "scroll_hover": "#5b567d",
+    "scroll_press": "#807ca0",
+    "row_hover": "#231d4a",
+    "list_text": "#e8e4ff",
+    "check_text": "#d9d5f7",
+    "link": "#5ff0ff",
+    "code": "#ffd166",
+    "ok": "#8fd19e",
+    "alarm": "#b3262c",
+    "warn": "#e0a030",
+    "error": "#ef5258",
+    "muted": "#6f7887",
+    "mute": "#ef5258",
+    "limiter": "#35d0c0",
+    "linked": "#9f98d8",
+    "on_color": "#0e1014",
+    "surface2": "#231d4a",
+    "border2": "#4e4192",
+    "text2": "#cec9f1",
+    "track": "#2e2853",
+    "meter_bg": "#120e2f",
+    "accent_bg": "#143d66",
+    "accent_text": "#00e5ff",
+    "mute_bg": "#482145",
+    "mute_fg": "#f16c71",
+    "live_bg": "#232b38",
+    "live_fg": "#8fd19e",
+    "dashed": "#312e47",
+    "focus": "#3b82f6",
 }
 
 PAPER = {
-    "bg": "#f1ece2", "panel": "#fbf8f2", "mix": "#f6f2ea", "border": "#cfc6b4", "border_soft": "#e3dcd0",
-    "text": "#2b2620", "text_dim": "#665e50", "text_faint": "#665e50", "text_off": "#b0aba1", "title": "#110f0d",
-    "strong": "#1a1713", "input": "#fdfcf9", "well": "#d4d0c7", "chip": "#eae7e1", "button": "#e6e3dd",
-    "button_text": "#403a31", "button_border": "#b1a999", "hover": "#857b68", "line": "#cfc6b4", "accent": "#b4532a",
-    "select": "#f0d3c2", "select_soft": "#f0ddcf", "select_text": "#101418", "popup": "#fbf8f2", "dialog": "#f7f3ec",
-    "fill": "#46a97b", "handle": "#ffffff", "handle_edge": "#665e50", "handle_hover": "#f0f4fa", "applied": "#f0d3c2",
-    "scroll_track": "#f7f3ec", "scroll_hover": "#b8b5af", "scroll_press": "#938f89", "row_hover": "#f1eee8",
-    "list_text": "#2b2620", "check_text": "#37312a", "link": "#9a3f1a", "code": "#8a5a00", "ok": "#237a43",
-    "alarm": "#c62828", "warn": "#8a5a00", "error": "#c62828", "muted": "#7a8493", "mute": "#e0414a",
-    "limiter": "#1fb3a3", "linked": "#9a917c", "on_color": "#0e1014",
+    "bg": "#f1ece2",
+    "panel": "#fbf8f2",
+    "mix": "#f6f2ea",
+    "border": "#cfc6b4",
+    "border_soft": "#e3dcd0",
+    "text": "#2b2620",
+    "text_dim": "#665e50",
+    "text_faint": "#665e50",
+    "text_off": "#b0aba1",
+    "title": "#110f0d",
+    "strong": "#1a1713",
+    "input": "#fdfcf9",
+    "well": "#d4d0c7",
+    "chip": "#eae7e1",
+    "button": "#e6e3dd",
+    "button_text": "#403a31",
+    "button_border": "#b1a999",
+    "hover": "#857b68",
+    "line": "#cfc6b4",
+    "accent": "#b4532a",
+    "select": "#f0d3c2",
+    "select_soft": "#f0ddcf",
+    "select_text": "#101418",
+    "popup": "#fbf8f2",
+    "dialog": "#f7f3ec",
+    "fill": "#46a97b",
+    "handle": "#ffffff",
+    "handle_edge": "#665e50",
+    "handle_hover": "#f0f4fa",
+    "applied": "#f0d3c2",
+    "scroll_track": "#f7f3ec",
+    "scroll_hover": "#b8b5af",
+    "scroll_press": "#938f89",
+    "row_hover": "#f1eee8",
+    "list_text": "#2b2620",
+    "check_text": "#37312a",
+    "link": "#9a3f1a",
+    "code": "#8a5a00",
+    "ok": "#237a43",
+    "alarm": "#c62828",
+    "warn": "#8a5a00",
+    "error": "#c62828",
+    "muted": "#7a8493",
+    "mute": "#e0414a",
+    "limiter": "#1fb3a3",
+    "linked": "#9a917c",
+    "on_color": "#0e1014",
 }
 
 
 # ----------------------------------------------------------------------------- working out the colours a file leaves out
 def _rgb(value: str) -> tuple:
-    return tuple(int(value[i:i + 2], 16) for i in (1, 3, 5))
+    return tuple(int(value[i : i + 2], 16) for i in (1, 3, 5))
 
 
 def mix(a: str, b: str, amount: float) -> str:
@@ -191,6 +571,8 @@ def complete(colors: dict, given=()) -> dict:
     for surface in (c["bg"], c["panel"]):
         focus = readable(focus, surface, 3.2)
     put("focus", focus)
+    put("card_edge", mix(c["panel"], c["accent"], 0.18))
+    put("sidebar", mix(c["bg"], "#000000" if not light else c["border"], 0.3))
     return c
 
 
@@ -198,7 +580,7 @@ def complete(colors: dict, given=()) -> dict:
 class Theme:
     id: str
     name: str
-    base: str            # "dark" or "light": what a theme file's missing colours come from
+    base: str  # "dark" or "light": what a theme file's missing colours come from
     colors: dict
 
 
@@ -206,10 +588,10 @@ BUILT_IN: dict = {
     "dark": Theme("dark", "Dark", "dark", DARK),
     "light": Theme("light", "Light", "light", LIGHT),
     "contrast": Theme("contrast", "High contrast", "dark", CONTRAST),
-    "purple": Theme("purple", "Retro Purple", "dark", PURPLE),
-    "midnight": Theme("midnight", "Midnight Blue", "dark", MIDNIGHT),
-    "amber": Theme("amber", "Amber Console", "dark", AMBER),
+    "colourblind": Theme("colourblind", "Colour-blind friendly", "dark", COLOUR_BLIND),
+    "oled": Theme("oled", "OLED Black", "dark", OLED),
     "paper": Theme("paper", "Paper", "light", PAPER),
+    "synthwave": Theme("synthwave", "Synthwave", "dark", SYNTHWAVE),
 }
 DEFAULT = "dark"
 SYSTEM_LABEL = "Match my system"
@@ -221,23 +603,30 @@ class ThemeError(ValueError):
 
 # ----------------------------------------------------------------------------- style sheet
 STYLE_TEMPLATE = Template("""
-/* The look of 0.10.0. Spacing in steps of 8, three text sizes (12 caption, 14 body, 20 title), corners 8 / 12 / 24. */
+/* The look of 0.13.1 (House Standard): spacing in steps of 4/8, text 12 / 14 / 16 / 22, corners 8 controls / 12 cards / 16 panels. */
 QMainWindow, QWidget#root, QScrollArea, QWidget#channels, QWidget#sources { background: $bg; }
 QWidget { color: $text; font-size: 14px; }
 QToolTip { background: $popup; color: $text; border: 1px solid $button_border; padding: 8px; border-radius: 8px; }
 QFrame#strip, QFrame#row {
-    background: $panel; border: 1px solid $border; border-radius: 24px;
+    background: $panel; border: 1px solid $card_edge; border-radius: 12px;
 }
-QFrame#row { border-radius: 20px; }
+QFrame#row { border-radius: 12px; }
 QFrame#strip[empty="true"] { background: transparent; border: 2px dashed $dashed; }
-QFrame#mix { background: $mix; border: 1px solid $border2; border-radius: 24px; }
+QFrame#mix { background: $mix; border: 1px solid $card_edge; border-radius: 12px; }
 QFrame#sourcechip { background: $surface2; border: none; border-radius: 8px; }
 QFrame#chip { background: $surface2; border: none; border-radius: 8px; }
 QFrame#statuschip { background: transparent; border: 1px solid $border; border-radius: 12px; }
 QFrame#divider { background: $border2; max-width: 1px; min-width: 1px; }
-QFrame#empty { background: transparent; border: 2px dashed $dashed; border-radius: 24px; }
-QFrame#firstrun { background: $panel; border: 1px solid $border2; border-radius: 24px; }
+QFrame#empty { background: transparent; border: 2px dashed $dashed; border-radius: 12px; }
+QFrame#firstrun { background: $panel; border: 1px solid $card_edge; border-radius: 16px; }
 QFrame#accent { border: none; border-radius: 2px; }
+QPushButton#danger { color: #ffffff; background: $alarm; border: 1px solid $alarm; font-weight: 600; }
+QPushButton#updatepill { color: $on_color; background: $accent; border: none; border-radius: 16px; padding: 6px 14px;
+    font-weight: 600; }
+QPushButton#helpbutton { font-size: 16px; font-weight: 700; color: $text; background: transparent; border: 1px solid $border;
+    border-radius: 8px; }
+QPushButton#helpbutton:hover { background: $row_hover; }
+QPushButton#danger:hover { background: $mute; }
 QLabel { background: transparent; }
 QLabel#appname { font-size: 20px; font-weight: 700; color: $title; }
 QLabel#title { font-size: 20px; font-weight: 700; color: $title; }
@@ -257,8 +646,8 @@ QLabel#mixheading[mix="stream"] { color: $broadcast_text; }
 QLabel#hint { font-size: 13px; color: $text_dim; }
 QLabel#feedback { font-size: 13px; color: $text_dim; }
 QLabel#chiptext { font-size: 13px; color: $text2; background: transparent; }
-QFrame#livepanel { background: $panel; border: 1px solid $border; border-radius: 24px; }
-QFrame#detail { background: $panel; border: 1px solid $border; border-radius: 24px; }
+QFrame#livepanel { background: $panel; border: 1px solid $card_edge; border-radius: 16px; }
+QFrame#detail { background: $panel; border: 1px solid $card_edge; border-radius: 16px; }
 QLabel#swatch { border-radius: 6px; background: $text_dim; }
 QLabel#swatch[who="out"] { background: $accent; }
 QLabel#bigvalue { font-size: 20px; font-weight: 700; color: $title; background: transparent; }
@@ -402,6 +791,7 @@ QFrame#menupanel QPushButton#panellink:hover { text-decoration: underline; }
 QFrame#menupanel QPushButton#panellink:focus { color: $text; text-decoration: underline; }
 QFrame#menupanel QFrame#panelline { background: $border; border: none; }
 QDialog QFrame#settingsgroup { background: $panel; border: 1px solid $border; border-radius: 16px; }
+QDialog QFrame#settingsgroup[danger="true"] { border: 1px solid $alarm; }
 QDialog QFrame#settingsrow { background: transparent; border: none; border-top: 1px solid $border_soft; }
 QDialog QFrame#settingsrow[first="true"] { border-top: none; }
 QDialog QFrame#settingsrow QLabel#rowname { font-size: 14px; font-weight: 500; color: $text; background: transparent; }
@@ -488,13 +878,9 @@ def mix_colors(colors: dict, skin: Optional[str] = None) -> dict:
     """The two colours that tell the mixes apart in the Rows layout: Listen (what you hear) and Broadcast (what your audience hears),
     each with a tint for its background, an edge, and a text colour that reads on the panel. They come from the theme's own colours;
     if the theme's link and accent colours are close, Broadcast takes the theme's warm colour instead so the two stay apart."""
-    if valid_skin(skin if skin is not None else _skin) == "nexus":  # Nexus: Listen cyan (its accent), Broadcast coral or the 2nd colour
-        from .skin_nexus import mix_pair
-        listen, broadcast = mix_pair(colors)
-    else:
-        listen, broadcast = colors["link"], colors["accent"]
-        if contrast_ratio(listen, broadcast) < 1.35:
-            broadcast = colors["code"]
+    listen, broadcast = colors["link"], colors["accent"]
+    if contrast_ratio(listen, broadcast) < 1.35:
+        broadcast = colors["code"]
     out = {}
     for name, base in (("listen", listen), ("broadcast", broadcast)):
         out[name] = base
@@ -504,7 +890,13 @@ def mix_colors(colors: dict, skin: Optional[str] = None) -> dict:
     return out
 
 
-SKINS = {"calm": "Calm", "nexus": "Nexus", "tile": "Tile", "glass": "Glass"}  # the Look setting: shapes, sizes and painting, apart from colour
+SKINS = {"calm": "Calm", "tile": "Tile"}
+# 0.13.1: Nexus and Glass were retired (House Standard: two skins to keep up; no blur). A saved choice of one shows the closest.
+RETIRED_SKINS = {
+    "nexus": "tile",
+    "glass": "calm",
+    "original": "calm",
+}  # the Look setting: shapes, sizes and painting, apart from colour
 DEFAULT_SKIN = "calm"
 
 
@@ -548,8 +940,7 @@ _reduce = False
 _skin_colors = True
 # With "Look's own colours" on (the default), a look may show its own colours on the plain Dark theme, and Tile on Light too (0.11.5,
 # option A). Every other theme keeps its own colours in every look, with full depth worked out from them (``depth``).
-NEXUS_THEMES = ("dark",)
-TILE_DARK_THEMES = ("dark",)    # the Tile look's graphite keys (skin_tile.TILE_DARK)
+TILE_DARK_THEMES = ("dark",)  # the Tile look's graphite keys (skin_tile.TILE_DARK)
 TILE_LIGHT_THEMES = ("light",)  # ...and its white keys (skin_tile.TILE_LIGHT)
 
 
@@ -579,22 +970,14 @@ def skin_colors(theme: "Theme", skin: str) -> dict:
     small and drawn things can be seen."""
     skin = valid_skin(skin)
     colors = theme.colors
-    if skin == "nexus" and is_light_theme(theme):  # 0.12.2: Nexus is dark only; a light theme shows Nexus's own dark colours
-        from .skin_nexus import NEXUS_DARK
-        return finish(complete({**DARK, **NEXUS_DARK}, given=NEXUS_DARK.keys()))
-    if skin == "nexus" and theme.id in NEXUS_THEMES and _skin_colors:
-        from .skin_nexus import NEXUS_DARK
-        colors = complete({**theme.colors, **NEXUS_DARK}, given=NEXUS_DARK.keys())
-    elif skin == "glass" and _skin_colors and theme.id in ("dark", "light"):  # 0.12.2: Glass's night blue and frosted white
-        from .skin_glass import GLASS_THEMES
-        own = GLASS_THEMES[theme.id]
-        colors = complete({**theme.colors, **own}, given=own.keys())
-    elif skin == "calm" and _skin_colors and theme.id in ("dark", "light"):  # 0.12.2: Calm's warm white and graphite
+    if skin == "calm" and _skin_colors and theme.id in ("dark", "light"):  # 0.12.2: Calm's warm white and graphite
         from .skin_calm import CALM_THEMES
+
         own = CALM_THEMES[theme.id]
         colors = complete({**theme.colors, **own}, given=own.keys())
     elif skin == "tile" and _skin_colors and theme.id in TILE_DARK_THEMES + TILE_LIGHT_THEMES:
         from .skin_tile import TILE_DARK, TILE_LIGHT
+
         own = TILE_DARK if theme.id in TILE_DARK_THEMES else TILE_LIGHT
         colors = complete({**theme.colors, **own}, given=own.keys())
     return finish(colors)
@@ -604,8 +987,6 @@ def is_light_theme(theme: "Theme") -> bool:
     """Whether a theme is a light one (its cards are light): Nexus shows its dark colours instead (0.12.2)."""
     return luminance(theme.colors["panel"]) >= 0.4
 
-
-NEXUS_DARK_ONLY = "Nexus is dark only: it stays dark with a light theme. Light shows in Calm, Tile and Glass."
 
 TEXT_OFF_MINIMUM = 3.0  # greyed-out text (a switched-off control, an empty hint): still readable
 
@@ -620,6 +1001,7 @@ def finish(colors: dict) -> dict:
     c["mute_fg"] = readable(c["mute_fg"], c["mute_bg"], 4.5)
     if luminance(c["panel"]) >= 0.4:
         from .depth import stand_out
+
         c["handle_edge"] = stand_out(c["handle_edge"], c["track"])
         if contrast_ratio(c["handle"], c["track"]) < 1.3 and contrast_ratio(c["handle_edge"], c["handle"]) < 3:
             c["handle_edge"] = stand_out(c["text2"], c["handle"])
@@ -631,15 +1013,18 @@ def chevron_file(color: str) -> str:
     (a style sheet can only show a picture from a file). "" when it cannot be made (no window system yet, or no writable folder)."""
     import os
     from pathlib import Path
+
     folder = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "sluice" / "icons"
     path = folder / f"chevron-{color.lstrip('#')}.png"
     if path.is_file():
         return path.as_posix()
     try:
         from PySide6.QtGui import QGuiApplication
+
         if QGuiApplication.instance() is None:
             return ""
         from . import ui_icons
+
         folder.mkdir(parents=True, exist_ok=True)
         if ui_icons.render("chevron_down", color, 32).save(str(path), "PNG"):
             return path.as_posix()
@@ -650,6 +1035,8 @@ def chevron_file(color: str) -> str:
 
 def valid_skin(skin) -> str:
     """A saved look id that exists, or the default (an id from a newer or older Sluice never breaks the window)."""
+    if isinstance(skin, str) and skin in RETIRED_SKINS:
+        return RETIRED_SKINS[skin]
     return skin if isinstance(skin, str) and skin in SKINS else DEFAULT_SKIN
 
 
@@ -659,41 +1046,57 @@ def _style_for(items: tuple, skin: str = DEFAULT_SKIN) -> str:
     values.update(mix_colors(values, skin.split("+")[0]))
     values["accent_edge"] = mix(values["panel"], values["accent"], 0.5)  # a thin neon outline for Nexus
     values["accent_soft"] = mix(values["panel"], values["accent"], 0.22)
-    values["menu_off"] = mix(values["text_off"], values["text_dim"], 0.45)  # a greyed-out menu item: plainly off, still easy to read
+    values["menu_off"] = mix(
+        values["text_off"], values["text_dim"], 0.45
+    )  # a greyed-out menu item: plainly off, still easy to read
     values["chevron_url"] = chevron_file(values["text_dim"])
     if skin == "tile":  # the Calm sheet with the Tile rules after it: flat surfaces with a hairline edge
         from .skin_tile import TILE_STYLE_EXTRA, tile_colors
+
         values.update(tile_colors(values, mix))
         return STYLE_TEMPLATE.substitute(values) + TILE_STYLE_EXTRA.substitute(values)
-    if skin == "nexus":  # the Calm sheet with Nexus's rules after it: the later rule wins where both name the same thing
-        from .skin_nexus import NEXUS_STYLE_EXTRA, card_values
-        values.update(card_values(values))
-        return STYLE_TEMPLATE.substitute(values) + NEXUS_STYLE_EXTRA.substitute(values)
-    if skin in ("glass", "glass+see"):  # the Calm sheet with Glass's frosted panes after it (0.11.6; see-through window 0.11.7)
-        from .skin_glass import GLASS_STYLE_EXTRA, glass_values as frosted
-        values.update(frosted(values, skin == "glass+see"))
-        return STYLE_TEMPLATE.substitute(values) + GLASS_STYLE_EXTRA.substitute(values)
-    return STYLE_TEMPLATE.substitute(values)
+    css = STYLE_TEMPLATE.substitute(values)
+    if skin == "calm+grid":
+        dots = grid_file(values["text"], luminance(values["bg"]) >= 0.4)
+        if dots:  # (the House Standard's optional faint pattern, at about 4%: only behind the channel area)
+            css += f"\nQWidget#channels {{ background: {values['bg']} url({dots}) repeat; }}\n"
+    return css
 
 
-_see_through = False  # 0.11.7: the main window itself is see-through (Glass on KDE, blurred by KWin): see set_see_through
+def grid_file(color: str, light: bool) -> str:
+    """0.13.1: a 16-pixel tile with one faint dot (about 4% of the text colour), saved once for the style sheet. "" if it cannot
+    be made."""
+    import os
+
+    folder = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "sluice" / "icons"
+    path = folder / f"grid-{color.lstrip('#')}.png"
+    if path.is_file():
+        return path.as_posix()
+    try:
+        from PySide6.QtGui import QColor, QGuiApplication, QImage
+
+        if QGuiApplication.instance() is None:
+            return ""
+        folder.mkdir(parents=True, exist_ok=True)
+        image = QImage(16, 16, QImage.Format.Format_ARGB32)
+        image.fill(0)
+        dot = QColor(color)
+        dot.setAlphaF(0.07 if light else 0.05)
+        for x, y in ((7, 7), (8, 7), (7, 8), (8, 8)):
+            image.setPixelColor(x, y, dot)
+        if image.save(str(path), "PNG"):
+            return path.as_posix()
+    except Exception:  # noqa: BLE001 - only the pattern is lost
+        pass
+    return ""
 
 
-def set_see_through(on: bool) -> None:
-    global _see_through
-    _see_through = bool(on)
-
-
-def see_through() -> bool:
-    return _see_through
-
-
-def build_style(colors: dict, skin: str = DEFAULT_SKIN, see: Optional[bool] = None) -> str:
+def build_style(colors: dict, skin: str = DEFAULT_SKIN, see: Optional[bool] = None) -> str:  # (``see`` is ignored: Glass is gone)
     """The window's style sheet for a complete colour set in a look (cached: switching back costs nothing). Glass has a second
     form for a see-through window (``see``; the window's own state when not given)."""
     skin = valid_skin(skin)
-    if skin == "glass" and (_see_through if see is None else see):
-        skin = "glass+see"
+    if skin == "calm" and not _reduce:
+        skin = "calm+grid"  # 0.13.1: the faint dot grid behind the channels (off with "Reduce effects")
     return _style_for(tuple(sorted(colors.items())), skin)
 
 
@@ -787,17 +1190,20 @@ def parse(data, fallback_name: str = "Imported theme") -> tuple:
         raise ThemeError("That file does not look like a Sluice theme (it should be a JSON object).")
     name = data.get("name", fallback_name)
     if not isinstance(name, str) or not name.strip():
-        raise ThemeError("The theme needs a name, for example \"name\": \"Midnight\".")
+        raise ThemeError('The theme needs a name, for example "name": "Midnight".')
     name = " ".join(name.split())[:40]
     base = data.get("base", "dark")
     if base not in ("dark", "light"):
-        raise ThemeError("\"base\" must be \"dark\" or \"light\": it supplies any colour the file leaves out.")
+        raise ThemeError('"base" must be "dark" or "light": it supplies any colour the file leaves out.')
     given = data.get("colors", {})
     if not isinstance(given, dict):
-        raise ThemeError("\"colors\" must be a list of name: colour pairs.")
+        raise ThemeError('"colors" must be a list of name: colour pairs.')
     colors = dict(DARK if base == "dark" else LIGHT)
     notes = []
-    from .depth import DEPTH_TOKENS  # the depth colours (0.11.5) are optional: worked out from the others when a file leaves them out
+    from .depth import (
+        DEPTH_TOKENS,
+    )  # the depth colours (0.11.5) are optional: worked out from the others when a file leaves them out
+
     for key, value in given.items():
         if key not in TOKEN_NAMES and key not in DEPTH_TOKENS:
             notes.append(f"ignored “{str(key)[:40]}”: not a colour Sluice uses")
@@ -829,7 +1235,7 @@ def _channel(value: int) -> float:
 
 
 def luminance(hex_color: str) -> float:
-    r, g, b = (int(hex_color[i:i + 2], 16) for i in (1, 3, 5))
+    r, g, b = (int(hex_color[i : i + 2], 16) for i in (1, 3, 5))
     return 0.2126 * _channel(r) + 0.7152 * _channel(g) + 0.0722 * _channel(b)
 
 
@@ -871,6 +1277,28 @@ CONTRAST_CHECKS = (
 def polish(colors: dict) -> dict:
     """The built-in themes only: small text moved just far enough to read (4.5 to 1) on every surface it sits on."""
     c = dict(colors)
+    c.setdefault("sidebar", mix(c["bg"], "#000000", 0.3))
+    for name in (
+        "text",
+        "text_dim",
+        "text_faint",
+        "text2",
+        "list_text",
+        "button_text",
+        "strong",
+        "title",
+        "check_text",
+        "ok",
+        "warn",
+        "error",
+        "link",
+    ):  # 0.13.1: every surface of the House Standard's check, not only three
+        for surface in ("bg", "panel", "mix", "surface2", "button", "chip", "row_hover", "dialog", "popup", "sidebar"):
+            c[name] = readable(c[name], c[surface], 4.5)
+    if contrast_ratio(c["on_color"], c["accent"]) < 4.5:  # the ink on a filled accent button: dark or white, whichever reads
+        c["on_color"] = (
+            "#0c1016" if contrast_ratio("#0c1016", c["accent"]) >= contrast_ratio("#ffffff", c["accent"]) else "#ffffff"
+        )
     for name in ("text_dim", "text_faint"):
         for surface in ("bg", "panel", "surface2"):
             c[name] = readable(c[name], c[surface], 4.5)
@@ -882,7 +1310,13 @@ def polish(colors: dict) -> dict:
     return c
 
 
-for _palette in (CONTRAST, PURPLE, MIDNIGHT, AMBER, PAPER):  # the older sets get the 0.10.0 colours worked out from their own
+for _palette in (
+    CONTRAST,
+    PAPER,
+    COLOUR_BLIND,
+    OLED,
+    SYNTHWAVE,
+):  # the older sets get the 0.10.0 colours worked out from their own
     _palette.update(polish(complete(_palette)))
 for _palette in (DARK, LIGHT):
     _palette.update(polish(_palette))
@@ -900,6 +1334,39 @@ def contrast_problems(colors: dict, strict: bool = False) -> list:
         ratio = contrast_ratio(colors[fg], colors[bg])
         if ratio < need:
             problems.append(f"{what} ({fg} on {bg}) is hard to read: contrast {ratio:.1f}, it should be at least {need:g}")
+    return problems
+
+
+# 0.13.1 (House Standard v1.3): every text colour on every surface it can sit on, 4.5 to 1, and the ink on a filled accent
+HOUSE_TEXT = (
+    "text",
+    "text_dim",
+    "text_faint",
+    "text2",
+    "list_text",
+    "button_text",
+    "strong",
+    "title",
+    "check_text",
+    "ok",
+    "warn",
+    "error",
+    "link",
+)
+HOUSE_SURFACES = ("bg", "panel", "mix", "surface2", "button", "chip", "row_hover", "dialog", "popup", "sidebar")
+
+
+def house_contrast_problems(colors: dict) -> list:
+    """The House Standard's check, for the built-in themes: each text colour on each surface, and on_color on the accent."""
+    problems = []
+    for fg in HOUSE_TEXT:
+        for bg in HOUSE_SURFACES:
+            ratio = contrast_ratio(colors[fg], colors[bg])
+            if ratio < 4.5:
+                problems.append(f"{fg} on {bg}: {ratio:.2f}")
+    ratio = contrast_ratio(colors["on_color"], colors["accent"])
+    if ratio < 4.5:
+        problems.append(f"on_color on accent (a filled button): {ratio:.2f}")
     return problems
 
 
@@ -948,7 +1415,7 @@ def save_custom(theme: Theme, folder: Path) -> Theme:
 def remove_custom(theme_id: str, folder: Optional[Path]) -> bool:
     if folder is None or not theme_id.startswith(CUSTOM_PREFIX):
         return False
-    name = theme_id[len(CUSTOM_PREFIX):]
+    name = theme_id[len(CUSTOM_PREFIX) :]
     if not name or Path(name).name != name or name.startswith("."):  # a file name, never a path
         return False
     try:
@@ -960,6 +1427,7 @@ def remove_custom(theme_id: str, folder: Optional[Path]) -> bool:
 
 def export_dict(theme: Theme) -> dict:
     from .depth import DEPTH_TOKENS
+
     colors = {k: theme.colors[k] for k in TOKEN_NAMES}
     colors.update({k: theme.colors[k] for k in DEPTH_TOKENS if k in theme.colors})  # depth colours the theme set by hand
     return {"name": theme.name, "base": theme.base, "colors": colors}
@@ -979,8 +1447,20 @@ def canonical_id(theme_id: str, folder: Optional[Path] = None) -> str:
 # Themes the pack no longer ships (0.11.5). A file someone imported stays in their themes folder and keeps working; only if the file is
 # gone does the saved choice fall back, and then to the closest built-in theme.
 RETIRED_THEMES = {
-    "amber-console": "amber", "halloween": "amber", "midnight-blue": "midnight", "ocean": "midnight",
-    "paper": "paper", "cassette": "paper", "sepia-reader": "paper", "studio-slate": "dark", "vintage-hi-fi": "dark",
+    "amber-console": "dark",
+    "halloween": "dark",
+    "midnight-blue": "dark",
+    "ocean": "dark",
+    "paper": "paper",
+    "cassette": "paper",
+    "sepia-reader": "paper",
+    "studio-slate": "dark",
+    "vintage-hi-fi": "dark",
+    # 0.13.1: retired built-in themes (House Standard v1.3: Midnight Blue became the default's look, Amber Console's amber now
+    # means "warning", and seven themes are kept). Settings that chose them show Dark; imported themes are never touched.
+    "purple": "dark",
+    "midnight": "dark",
+    "amber": "dark",
 }
 
 
@@ -994,7 +1474,7 @@ def resolve(theme_id: str, system_dark: bool = True, folder: Optional[Path] = No
         for theme in custom_themes(folder, hide_duplicates=False):
             if theme.id == theme_id:
                 return theme
-        nearest = RETIRED_THEMES.get(theme_id[len(CUSTOM_PREFIX):])
+        nearest = RETIRED_THEMES.get(theme_id[len(CUSTOM_PREFIX) :])
         if nearest:  # a theme from the old pack whose file has gone: the closest built-in one, not plain Dark
             return BUILT_IN[nearest]
     return BUILT_IN[DEFAULT]

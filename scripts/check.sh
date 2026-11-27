@@ -68,6 +68,9 @@ find_tools() {
                 if [ "$have_python" = true ] && ! has_module pyflakes; then
                     need "pyflakes for $PY (or: pip install pyflakes)" python-pyflakes
                 fi
+                if ! command -v ruff >/dev/null 2>&1; then
+                    need "ruff, the Python formatter (or: pip install ruff==$RUFF_VERSION)" ruff
+                fi
                 ;;
             rust)
                 if ! command -v cargo >/dev/null 2>&1; then
@@ -80,6 +83,7 @@ find_tools() {
                 if [ "$have_python" = true ]; then
                     if ! has_module pytest; then need "pytest for $PY (or: pip install -e \".[dev]\")" python-pytest; fi
                     if ! has_module numpy; then need "numpy for $PY" python-numpy; fi
+                    if ! has_module cryptography; then need "cryptography for $PY (checks signed updates)" python-cryptography; fi
                     if ! has_module PySide6; then need "PySide6 for $PY" pyside6; fi
                     if ! has_module pulsectl; then
                         need "pulsectl for $PY (it is in the AUR; or: pip install pulsectl)" python-pulsectl aur
@@ -155,8 +159,10 @@ check_shell() {
 
 # ------------------------------------------------------------------------------------------------------------ python
 check_python() {
-    step "Python: pyflakes (any finding fails)"
+    step "Python: pyflakes (any finding fails), then ruff format --check"
     "$PY" -m pyflakes sluice tests tools
+    # 0.13.1: one layout for all Python (pyproject.toml [tool.ruff]); "ruff format" fixes what this finds
+    pinned ruff "$(ruff --version | sed -n 's/^ruff //p')" "$RUFF_VERSION" ruff format --check sluice tests tools
     step "The version files and the changelogs agree"
     "$PY" tools/check-version.py
 }

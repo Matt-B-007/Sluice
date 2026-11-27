@@ -5,6 +5,7 @@ One list, used by the Setup check in Settings, by ``sluice --diagnose`` (and so 
 what it is for, whether Sluice needs it, whether it is here (and why not), and the command that installs it on this distribution.
 Nothing here installs anything: the person runs the command (Settings has a Copy button for it).
 """
+
 from __future__ import annotations
 
 import os
@@ -20,10 +21,10 @@ from . import distro
 class Part:
     key: str
     name: str
-    purpose: str              # what it is for, in a line
+    purpose: str  # what it is for, in a line
     required: bool
-    needs: tuple = ()         # distro.PACKAGES keys for the install command
-    check: Callable = None    # () -> (ok, reason); ok is None when it cannot be told from here (the reason says when it can)
+    needs: tuple = ()  # distro.PACKAGES keys for the install command
+    check: Callable = None  # () -> (ok, reason); ok is None when it cannot be told from here (the reason says when it can)
     applies: Callable = None  # () -> bool: False when this desktop has no use for it (KDE parts elsewhere)
     command: Callable = None  # (result) -> str: a fix other than installing packages
 
@@ -45,21 +46,26 @@ class Result:
 # ----------------------------------------------------------------------------- the checks
 def _pulse() -> tuple:
     from .diagnose import _pulse as check
+
     ok, detail = check()
     if ok:
         return ok, detail
-    return ok, (detail.split(". Is pipewire-pulse running?")[0] + ". If it is installed, start it with: "
-                "systemctl --user enable --now pipewire pipewire-pulse wireplumber")
+    return ok, (
+        detail.split(". Is pipewire-pulse running?")[0] + ". If it is installed, start it with: "
+        "systemctl --user enable --now pipewire pipewire-pulse wireplumber"
+    )
 
 
 def _jack() -> tuple:
     from .diagnose import _jack as check
+
     ok, detail = check()
     return ok, detail if ok else detail.split(". Install pipewire-jack")[0]
 
 
 def _pw_link() -> tuple:
     from .linker import PwLinker
+
     if PwLinker().available():
         return True, "pw-link works"
     return False, "not found, or PipeWire is not running"
@@ -67,14 +73,17 @@ def _pw_link() -> tuple:
 
 def _kde() -> bool:
     from .desktop_place import kde
+
     return kde()
 
 
 def _kde_wayland() -> bool:
     from .desktop_place import kde_wayland
+
     platform = ""
     try:
         from PySide6.QtGui import QGuiApplication
+
         if QGuiApplication.instance() is not None:
             platform = QGuiApplication.platformName() or ""
     except Exception:  # no Qt here (sluice --diagnose): the environment decides, as in desktop_place
@@ -84,12 +93,14 @@ def _kde_wayland() -> bool:
 
 def _layer_shell() -> tuple:
     from .desktop_place import layer_shell
+
     shell = layer_shell()
     return (True, "the desktop widgets place themselves and stay on top") if shell.available else (False, shell.reason)
 
 
 def _blur() -> tuple:
     from .desktop_place import blur
+
     glass = blur()
     return (True, "KWin blurs what is behind the Glass skin") if glass.available else (False, glass.reason)
 
@@ -97,6 +108,7 @@ def _blur() -> tuple:
 def _blur_command(result: Result) -> str:
     """The system's Qt and Sluice's differ: KWindowSystem is installed but cannot load, so the fix is PySide6 of the same version."""
     from .desktop_place import system_qt
+
     version, plugins = system_qt()
     if plugins is not None and version and "same version" in result.reason:
         minor = ".".join(version.split(".")[:2])
@@ -111,12 +123,14 @@ def _kconfig() -> tuple:
 
 def _rust() -> tuple:
     from . import spectral
+
     if os.environ.get("SLUICE_NO_RUST"):
         return True, "switched off (SLUICE_NO_RUST)"
     if spectral.RUST_VERSION:
         if spectral.rust_is_older():
-            return False, (f"engine {spectral.RUST_VERSION} is older than this Sluice's {spectral.RUST_EXPECTED}: rebuild it under "
-                           "Updates")
+            return False, (
+                f"engine {spectral.RUST_VERSION} is older than this Sluice's {spectral.RUST_EXPECTED}: rebuild it under Updates"
+            )
         return True, f"engine {spectral.RUST_VERSION} (numbered apart from Sluice)"
     if spectral.RUST_ERROR:
         return False, f"the engine could not be used: {spectral.RUST_ERROR}"
@@ -132,6 +146,7 @@ def _rust_command(result: Result) -> str:
 def _pedalboard() -> tuple:
     try:
         import pedalboard
+
         return True, f"pedalboard {pedalboard.__version__}"
     except Exception as exc:
         return False, f"not installed ({type(exc).__name__})"
@@ -144,6 +159,7 @@ def _pip() -> str:
 def _tray() -> tuple:
     try:
         from PySide6.QtWidgets import QApplication, QSystemTrayIcon
+
         if QApplication.instance() is None:
             return None, "checked while Sluice is running"
         if QSystemTrayIcon.isSystemTrayAvailable():
@@ -162,25 +178,79 @@ def _tray_command(result: Result) -> str:
 
 
 PARTS = (
-    Part("pulse", "PipeWire's PulseAudio service (pipewire-pulse)", "Finds your apps and devices and moves apps onto channels.",
-         True, ("pipewire", "pulse", "session", "libpulse"), _pulse),
-    Part("jack", "PipeWire's JACK library (pipewire-jack)", "Carries the sound through Sluice's channels and mixes.",
-         True, ("jack",), _jack),
-    Part("pwlink", "pw-link", "Connects Sluice to your microphones, speakers and headphones.",
-         True, ("pipewire", "pwlink", "session"), _pw_link),
-    Part("layershell", "KDE layer-shell (LayerShellQt)", "Lets the desktop widgets place themselves and stay on top on Plasma (Wayland).",
-         False, ("layershell",), _layer_shell, _kde_wayland),
-    Part("kwindowsystem", "KDE window system (KWindowSystem)",
-         "Blurs what is behind the Glass skin on Plasma. It needs the same Qt version as Sluice's.",
-         False, ("kwindowsystem",), _blur, _kde, _blur_command),
-    Part("kconfig", "KDE kwriteconfig6 (KConfig)", "Adds the KWin rule that keeps the widgets on top when layer-shell is missing.",
-         False, ("kconfig",), _kconfig, _kde),
-    Part("rust", "Rust (the faster audio engine)", "Builds Sluice's own audio engine: the same sound with less CPU, and the "
-         "steeper high-pass filter.", False, ("rust",), _rust, None, _rust_command),
-    Part("pedalboard", "pedalboard", "Hosts VST3 plugins, and runs the built-in EQ and Gain when the Rust engine is missing.",
-         False, (), _pedalboard, None, lambda result: f"{_pip()} install pedalboard"),
-    Part("tray", "System tray", "Keeps Sluice running in the tray when its window is closed.",
-         False, ("tray",), _tray, None, _tray_command),
+    Part(
+        "pulse",
+        "PipeWire's PulseAudio service (pipewire-pulse)",
+        "Finds your apps and devices and moves apps onto channels.",
+        True,
+        ("pipewire", "pulse", "session", "libpulse"),
+        _pulse,
+    ),
+    Part(
+        "jack",
+        "PipeWire's JACK library (pipewire-jack)",
+        "Carries the sound through Sluice's channels and mixes.",
+        True,
+        ("jack",),
+        _jack,
+    ),
+    Part(
+        "pwlink",
+        "pw-link",
+        "Connects Sluice to your microphones, speakers and headphones.",
+        True,
+        ("pipewire", "pwlink", "session"),
+        _pw_link,
+    ),
+    Part(
+        "layershell",
+        "KDE layer-shell (LayerShellQt)",
+        "Lets the desktop widgets place themselves and stay on top on Plasma (Wayland).",
+        False,
+        ("layershell",),
+        _layer_shell,
+        _kde_wayland,
+    ),
+    # (0.13.1: KDE's window-system library is no longer listed: it only blurred what was behind the Glass skin, retired)
+    Part(
+        "kconfig",
+        "KDE kwriteconfig6 (KConfig)",
+        "Adds the KWin rule that keeps the widgets on top when layer-shell is missing.",
+        False,
+        ("kconfig",),
+        _kconfig,
+        _kde,
+    ),
+    Part(
+        "rust",
+        "Rust (the faster audio engine)",
+        "Builds Sluice's own audio engine: the same sound with less CPU, and the steeper high-pass filter.",
+        False,
+        ("rust",),
+        _rust,
+        None,
+        _rust_command,
+    ),
+    Part(
+        "pedalboard",
+        "pedalboard",
+        "Hosts VST3 plugins, and runs the built-in EQ and Gain when the Rust engine is missing.",
+        False,
+        (),
+        _pedalboard,
+        None,
+        lambda result: f"{_pip()} install pedalboard",
+    ),
+    Part(
+        "tray",
+        "System tray",
+        "Keeps Sluice running in the tray when its window is closed.",
+        False,
+        ("tray",),
+        _tray,
+        None,
+        _tray_command,
+    ),
 )
 
 BY_KEY = {part.key: part for part in PARTS}

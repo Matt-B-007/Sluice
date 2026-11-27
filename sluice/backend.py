@@ -11,6 +11,7 @@ talks the PulseAudio protocol (served by pipewire-pulse on CachyOS) to
 
 ``MockSystem`` is an in-memory fake used by tests and ``--demo`` mode.
 """
+
 from __future__ import annotations
 
 import logging
@@ -34,7 +35,7 @@ class Device:
     name: str
     description: str
     monitor: bool = False  # "what this output device is playing" rather than a microphone or line input
-    channels: int = 2      # more than 2: a multichannel interface; sluice only uses its first two channels
+    channels: int = 2  # more than 2: a multichannel interface; sluice only uses its first two channels
 
 
 @dataclass
@@ -105,7 +106,9 @@ class AudioSystem(ABC):
     def default_sink(self) -> Optional[str]: ...
 
     @abstractmethod
-    def ensure_null_sink(self, name: str, description: str, as_source: bool = False, source_description: Optional[str] = None) -> None:
+    def ensure_null_sink(
+        self, name: str, description: str, as_source: bool = False, source_description: Optional[str] = None
+    ) -> None:
         """Create (or adopt) a virtual sink. With ``as_source`` also expose its monitor
         as a microphone-style source named ``<name>_mic``."""
 
@@ -169,7 +172,9 @@ class MockSystem(AudioSystem):
     def default_sink(self) -> Optional[str]:
         return self.default_snk
 
-    def ensure_null_sink(self, name: str, description: str, as_source: bool = False, source_description: Optional[str] = None) -> None:
+    def ensure_null_sink(
+        self, name: str, description: str, as_source: bool = False, source_description: Optional[str] = None
+    ) -> None:
         self.null_sinks[name] = (description, as_source)
 
     def remove_null_sink(self, name: str) -> None:
@@ -259,7 +264,9 @@ class PulseSystem(AudioSystem):
     label = "PipeWire (JACK)"
 
     def __init__(self, purge: bool = True) -> None:
-        self._pulse = connect_pulse("sluice")  # raises if the server is unreachable (pulsectl is imported there, so demo mode works without it)
+        self._pulse = connect_pulse(
+            "sluice"
+        )  # raises if the server is unreachable (pulsectl is imported there, so demo mode works without it)
         self._modules: dict = {}  # virtual device name -> [module indexes]
         log.info("connected to the PulseAudio protocol")
         if purge:
@@ -308,7 +315,9 @@ class PulseSystem(AudioSystem):
             found = next((d for d in listing if d.name == name), None)
             if found is None or _same_text(found.description, description):
                 return index  # right name (or the device is not listed, so it cannot be checked)
-            log.warning("%s was named %r instead of %r; trying another way to write the name", name, found.description, description)
+            log.warning(
+                "%s was named %r instead of %r; trying another way to write the name", name, found.description, description
+            )
             try:
                 self._pulse.module_unload(index)
             except Exception as exc:
@@ -319,14 +328,18 @@ class PulseSystem(AudioSystem):
             return self._pulse.module_load(module, base)
         return index
 
-    def ensure_null_sink(self, name: str, description: str, as_source: bool = False, source_description: Optional[str] = None) -> None:
+    def ensure_null_sink(
+        self, name: str, description: str, as_source: bool = False, source_description: Optional[str] = None
+    ) -> None:
         description = _safe_description(description)
         source_description = _safe_description(source_description) if source_description else f"{description} (Mic)"
         existing = {s.name: s for s in self._pulse.sink_list()}
         if name in existing:
             self._remember(name, existing[name].owner_module)  # left over from a crash: take it over
         else:
-            self._remember(name, self._load_described("module-null-sink", f"sink_name={name}", "sink_properties", description, name, "sink"))
+            self._remember(
+                name, self._load_described("module-null-sink", f"sink_name={name}", "sink_properties", description, name, "sink")
+            )
 
         if as_source:
             source_name = f"{name}_mic"
@@ -335,7 +348,12 @@ class PulseSystem(AudioSystem):
                 self._remember(name, existing_sources[source_name].owner_module)
             else:
                 base = f"master={name}.monitor source_name={source_name}"
-                self._remember(name, self._load_described("module-remap-source", base, "source_properties", source_description, source_name, "source"))
+                self._remember(
+                    name,
+                    self._load_described(
+                        "module-remap-source", base, "source_properties", source_description, source_name, "source"
+                    ),
+                )
 
     def begin_shutdown(self) -> None:
         """0.12.4: Sluice is quitting. A broken connection is not replaced any more (at logout the audio server is shutting
@@ -354,8 +372,10 @@ class PulseSystem(AudioSystem):
             except Exception as exc:
                 if self.__dict__.get("_quitting"):
                     self.__dict__["_server_gone"] = True
-                    log.info("the audio server is already gone (logging out?), and Sluice's devices with it: nothing to "
-                             "remove (%s)", exc)
+                    log.info(
+                        "the audio server is already gone (logging out?), and Sluice's devices with it: nothing to remove (%s)",
+                        exc,
+                    )
                     return
                 log.warning("could not unload module %s (%s): %s", index, name, exc)
 
@@ -440,8 +460,13 @@ class PulseSystem(AudioSystem):
                 continue
             aliases = {
                 (props.get(name) or "").strip().lower()
-                for name in ("application.name", "application.process.binary", "application.id",
-                             "pipewire.access.portal.app_id", "application.icon_name")
+                for name in (
+                    "application.name",
+                    "application.process.binary",
+                    "application.id",
+                    "pipewire.access.portal.app_id",
+                    "application.icon_name",
+                )
             }
             steam = self._steam_id(props.get("application.process.id"))
             if steam:
@@ -449,8 +474,16 @@ class PulseSystem(AudioSystem):
             aliases.update(name[:-4] for name in {key, *aliases} if name.endswith(".exe") and len(name) > 4)
             aliases.discard("")
             aliases.discard(key)
-            streams.append(Stream(item.index, key, app_name or binary, sink, frozenset(aliases),
-                                  (props.get("application.icon_name") or "").strip()))
+            streams.append(
+                Stream(
+                    item.index,
+                    key,
+                    app_name or binary,
+                    sink,
+                    frozenset(aliases),
+                    (props.get("application.icon_name") or "").strip(),
+                )
+            )
         return streams
 
     def _steam_id(self, pid) -> Optional[str]:

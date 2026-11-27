@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """0.10.2: Sluice reports how much of the computer it uses itself, and the tray icon watches the microphone while the window is hidden."""
+
 import json
 
 import pytest
@@ -57,15 +58,34 @@ def test_a_snapshot_has_numbers_only(ui):
 
 
 def test_the_flags_point_at_wasteful_behaviour():
-    base = {"seconds": 600.0, "cpu_seconds": 6.0, "by_state": {"open": {"seconds": 600.0, "cpu_seconds": 6.0, "meter_updates": 18000}},
-            "audio_load_samples": 100, "audio_load_average": 0.05, "audio_load_worst": 0.2, "rss_mb": 150.0, "dsp": "rust"}
+    base = {
+        "seconds": 600.0,
+        "cpu_seconds": 6.0,
+        "by_state": {"open": {"seconds": 600.0, "cpu_seconds": 6.0, "meter_updates": 18000}},
+        "audio_load_samples": 100,
+        "audio_load_average": 0.05,
+        "audio_load_worst": 0.2,
+        "rss_mb": 150.0,
+        "dsp": "rust",
+    }
     assert efficiency.flags(base) == []
     assert efficiency.summary_line(base).endswith("no flags.")
     heavy = dict(base, audio_load_average=0.4, audio_load_worst=0.95, rss_mb=700.0, rss_baseline_mb=300.0, dsp="python")
-    heavy["by_state"] = {"open": {"seconds": 100.0, "cpu_seconds": 30.0, "meter_updates": 3000},
-                         "tray": {"seconds": 300.0, "cpu_seconds": 9.0, "meter_updates": 6000}}
+    heavy["by_state"] = {
+        "open": {"seconds": 100.0, "cpu_seconds": 30.0, "meter_updates": 3000},
+        "tray": {"seconds": 300.0, "cpu_seconds": 9.0, "meter_updates": 6000},
+    }
     notes = " ".join(efficiency.flags(heavy))
-    for words in ("on average", "at worst", "window was open", "hidden (tray)", "meter updates a second", "700 MB", "grew by", "Rust engine"):
+    for words in (
+        "on average",
+        "at worst",
+        "window was open",
+        "hidden (tray)",
+        "meter updates a second",
+        "700 MB",
+        "grew by",
+        "Rust engine",
+    ):
         assert words in notes, words
     assert "flags." in efficiency.summary_line(heavy)
 
@@ -102,7 +122,9 @@ def test_a_terminal_report_reads_the_snapshot_a_session_left(tmp_path, monkeypat
     efficiency.activate(None)
     assert efficiency.for_report()[0] is None
     (tmp_path / "sluice").mkdir()
-    (tmp_path / "sluice" / efficiency.SNAPSHOT_NAME).write_text(json.dumps({"taken": 0, "seconds": 120.0, "cpu_seconds": 1.2, "pid": 1}))
+    (tmp_path / "sluice" / efficiency.SNAPSHOT_NAME).write_text(
+        json.dumps({"taken": 0, "seconds": 120.0, "cpu_seconds": 1.2, "pid": 1})
+    )
     data, where = efficiency.for_report()
     assert data["seconds"] == 120.0 and "last Sluice session" in where
 
@@ -152,8 +174,9 @@ def test_the_tray_watcher_runs_only_while_the_window_is_hidden_in_the_tray(ui, t
     assert not win.tray_timer.isActive() and win.tracker.state == "open"
 
 
-def test_the_tray_watcher_lights_the_icon_and_costs_nothing_without_a_tray(ui, tray):
+def test_the_tray_watcher_lights_the_icon_and_costs_nothing_without_a_tray(ui, tray, monkeypatch):
     win, _, engine = ui
+    monkeypatch.setattr("sluice.ui_tray.TRAY_HOLD", 0.0)  # (the 400 ms hold is tested in test_obs_routing)
     win.close_actions["tray"].trigger()
     win.hide()
     win._window_state_changed()
@@ -229,7 +252,9 @@ def test_the_question_has_the_buttons_and_the_checkbox_decides_if_quit_is_rememb
     monkeypatch.setattr(QMessageBox, "exec", fake_exec)
     monkeypatch.setattr(QMessageBox, "clickedButton", lambda self: self._chosen)
     picked["want"] = "Quit Sluice"
-    assert win._ask_close_choice() is True and engine.mixer.close_action == "quit" and "closechoice" not in engine.mixer.hints_seen
+    assert (
+        win._ask_close_choice() is True and engine.mixer.close_action == "quit" and "closechoice" not in engine.mixer.hints_seen
+    )
     assert sorted(picked["texts"]) == ["Cancel", "Keep running in the tray", "Quit Sluice"]
     picked["tick"] = True
     assert win._ask_close_choice() is True and "closechoice" in engine.mixer.hints_seen
@@ -291,6 +316,7 @@ def test_sluice_keeps_the_maths_libraries_to_one_worker_thread():
     import os
     import subprocess
     import sys
+
     code = "import sluice, os; print(os.environ['OPENBLAS_NUM_THREADS'], os.environ['OMP_NUM_THREADS'])"
     env = {k: v for k, v in os.environ.items() if k not in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS")}
     assert subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True).stdout.split() == ["1", "1"]

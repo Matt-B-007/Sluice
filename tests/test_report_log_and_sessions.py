@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The bug report keeps this session's log, dates the crash trace, and names who shows dropouts; Sluice notices a
 session that did not end normally; restarts the person asked for bring the window back; the extra themes."""
+
 import json
 import os
 import sys
@@ -61,7 +62,9 @@ def test_the_report_log_starts_at_the_current_session_and_ends_with_the_one_befo
 
 def test_the_current_session_is_cut_to_the_limit_and_says_so():
     words = ["alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel", "india", "juliet"]
-    lines = _session("0.9.2", 0) + [f"2026-11-09 19:00:{i % 60:02d},000 INFO    sluice: {words[i % 10]} {words[(i * 3) % 10]} step{i}x" for i in range(100)]
+    lines = _session("0.9.2", 0) + [
+        f"2026-11-09 19:00:{i % 60:02d},000 INFO    sluice: {words[i % 10]} {words[(i * 3) % 10]} step{i}x" for i in range(100)
+    ]
     out = report.session_log("\n".join(lines), limit=10)
     assert "first 91 lines of this session not shown" in out and "step99x" in out and "step0x" not in out
 
@@ -71,12 +74,15 @@ def test_an_empty_log_is_reported_as_empty():
 
 
 # ----------------------------------------------------------------------------- report: crash log
-TRACE = ["Current thread 0x1 (most recent call first):", "  File \"x.py\", line 3 in f"]
+TRACE = ["Current thread 0x1 (most recent call first):", '  File "x.py", line 3 in f']
 
 
 def test_a_trace_is_labelled_with_the_session_it_belongs_to():
-    text = "\n".join(["--- sluice session started 2026-11-09 19:50:10 (pid 7) ---"] + TRACE
-                     + ["--- sluice session started 2026-11-09 21:00:00 (pid 8) ---"])
+    text = "\n".join(
+        ["--- sluice session started 2026-11-09 19:50:10 (pid 7) ---"]
+        + TRACE
+        + ["--- sluice session started 2026-11-09 21:00:00 (pid 8) ---"]
+    )
     out = report.crash_summary(text, modified=1.0)
     assert "the session that started 2026-11-09 19:50:10" in out and "x.py" in out and "File last written:" in out
 
@@ -87,14 +93,20 @@ def test_a_trace_before_any_session_line_says_its_time_is_unknown():
 
 
 def test_a_file_with_only_session_lines_means_no_crash():
-    out = report.crash_summary("--- sluice session started 2026-11-09 19:50:10 (pid 7) ---\n--- sluice session started 2026-11-09 20:00:00 (pid 8) ---\n")
+    out = report.crash_summary(
+        "--- sluice session started 2026-11-09 19:50:10 (pid 7) ---\n--- sluice session started 2026-11-09 20:00:00 (pid 8) ---\n"
+    )
     assert "No native crash in the last 2 session(s)" in out
 
 
 def test_only_the_last_two_traces_are_shown_and_long_ones_are_cut():
     text = ""
     for n in range(4):
-        text += f"--- sluice session started 2026-11-0{n + 1} 10:00:00 (pid {n}) ---\n" + "\n".join(f"  frame {n}-{i}" for i in range(60)) + "\n"
+        text += (
+            f"--- sluice session started 2026-11-0{n + 1} 10:00:00 (pid {n}) ---\n"
+            + "\n".join(f"  frame {n}-{i}" for i in range(60))
+            + "\n"
+        )
     out = report.crash_summary(text)
     assert "2026-11-04" in out and "2026-11-03" in out and "2026-11-02" not in out
     assert "(20 more lines)" in out
@@ -116,7 +128,10 @@ def test_top_errors_names_the_programs_with_dropouts_most_first():
 
 
 def test_top_errors_says_so_when_nothing_has_dropouts():
-    assert report.top_errors(PW_TOP.replace("31", "0").replace("27", "0")) == "No audio program or device shows dropouts in this snapshot."
+    assert (
+        report.top_errors(PW_TOP.replace("31", "0").replace("27", "0"))
+        == "No audio program or device shows dropouts in this snapshot."
+    )
     assert "No audio program" in report.top_errors("")
 
 
@@ -128,7 +143,7 @@ def test_the_hardware_summary_never_fails_and_has_the_headings():
 # ----------------------------------------------------------------------------- running marker
 def test_a_clean_session_leaves_no_marker_and_no_notice(state):
     logs.setup()
-    assert not logs.running_path().exists()      # setting up the log alone does not mark a session
+    assert not logs.running_path().exists()  # setting up the log alone does not mark a session
     logs.begin_session()
     assert logs.running_path().exists()
     logs.shutdown()
@@ -179,7 +194,7 @@ def test_the_heartbeat_touches_the_marker_only_every_few_seconds(state, monkeypa
     logs.mark_running()
     old = time.time() - 100
     os.utime(logs.running_path(), (old, old))
-    logs.heartbeat()                      # too soon after mark_running: nothing happens
+    logs.heartbeat()  # too soon after mark_running: nothing happens
     assert abs(logs.running_path().stat().st_mtime - old) < 1
     monkeypatch.setattr(logs, "_last_heartbeat", time.monotonic() - 10)
     logs.heartbeat()
@@ -194,8 +209,8 @@ def test_the_heartbeat_without_a_marker_does_nothing(state, monkeypatch):
 # ----------------------------------------------------------------------------- restarts
 def test_a_restart_the_person_asked_for_shows_the_window(monkeypatch):
     monkeypatch.setattr(sys, "orig_argv", ["python", "-m", "sluice", "--minimized"], raising=False)
-    assert reconnect.restart_command()[-1] == "--minimized"                       # an unattended restart stays minimized
-    assert "--minimized" not in reconnect.restart_command(show_window=True)       # a button press brings the window back
+    assert reconnect.restart_command()[-1] == "--minimized"  # an unattended restart stays minimized
+    assert "--minimized" not in reconnect.restart_command(show_window=True)  # a button press brings the window back
     assert reconnect.restart_command(show_window=True)[-2:] == ["-m", "sluice"]
 
 
@@ -206,7 +221,12 @@ def test_show_window_leaves_other_arguments_alone(monkeypatch):
 
 # ----------------------------------------------------------------------------- themes
 def test_the_three_new_built_in_themes_exist_and_are_readable():
-    for theme_id, name, base in (("midnight", "Midnight Blue", "dark"), ("amber", "Amber Console", "dark"), ("paper", "Paper", "light")):
+    for theme_id, name, base in (
+        ("oled", "OLED Black", "dark"),
+        ("colourblind", "Colour-blind friendly", "dark"),
+        ("synthwave", "Synthwave", "dark"),
+        ("paper", "Paper", "light"),
+    ):
         theme = themes.BUILT_IN[theme_id]
         assert theme.name == name and theme.base == base
         assert themes.contrast_problems(theme.colors, True) == []
@@ -220,7 +240,7 @@ def _write(folder, stem, colors, name=None, base="dark"):
 
 def test_an_imported_copy_of_a_built_in_theme_is_not_listed_twice(tmp_path):
     folder = tmp_path / "themes"
-    _write(folder, "midnight-blue", themes.MIDNIGHT, name="Midnight Blue")
+    _write(folder, "oled-black", themes.OLED, name="OLED Black")
     _write(folder, "mine", {**themes.DARK, "accent": "#ff0000"})
     names = [t.name for t in themes.custom_themes(folder)]
     assert names == ["mine"]
@@ -229,16 +249,16 @@ def test_an_imported_copy_of_a_built_in_theme_is_not_listed_twice(tmp_path):
 
 def test_a_built_in_theme_that_the_person_renamed_or_changed_is_their_own_and_stays_listed(tmp_path):
     folder = tmp_path / "themes"
-    _write(folder, "my-night", themes.MIDNIGHT, name="My Night")                      # same colours, their name
-    _write(folder, "midnight-blue-2", {**themes.MIDNIGHT, "accent": "#ff00aa"}, name="Midnight Blue")  # their name clashes, colours differ
-    assert sorted(t.name for t in themes.custom_themes(folder)) == ["Midnight Blue", "My Night"]
+    _write(folder, "my-night", themes.OLED, name="My Night")  # same colours, their name
+    _write(folder, "oled-black-2", {**themes.OLED, "accent": "#ff00aa"}, name="OLED Black")  # their name clashes, colours differ
+    assert sorted(t.name for t in themes.custom_themes(folder)) == ["My Night", "OLED Black"]
 
 
 def test_a_saved_choice_of_an_imported_copy_counts_as_the_built_in_theme(tmp_path):
     folder = tmp_path / "themes"
-    _write(folder, "midnight-blue", themes.MIDNIGHT, name="Midnight Blue")
-    assert themes.canonical_id("custom:midnight-blue", folder) == "midnight"
-    assert themes.resolve("custom:midnight-blue", folder=folder).colors == themes.MIDNIGHT   # not Dark
+    _write(folder, "oled-black", themes.OLED, name="OLED Black")
+    assert themes.canonical_id("custom:oled-black", folder) == "oled"
+    assert themes.resolve("custom:oled-black", folder=folder).colors == themes.OLED  # not Dark
     _write(folder, "mine", {**themes.DARK, "accent": "#ff0000"})
     assert themes.canonical_id("custom:mine", folder) == "custom:mine"
     assert themes.canonical_id("dark", folder) == "dark" and themes.canonical_id("custom:gone", folder) == "custom:gone"
@@ -249,13 +269,13 @@ THEME_PACK = Path(__file__).resolve().parent.parent / "themes"
 
 @pytest.mark.skipif(not THEME_PACK.is_dir(), reason="the theme collection folder is not part of this checkout")
 def test_every_theme_in_the_collection_imports_cleanly_and_is_readable():
+    """0.13.1: the pack is unmaintained (not held to the contrast test or new colour names), but every file still imports."""
     files = sorted(THEME_PACK.glob("*.json"))
-    assert len(files) == 21
+    assert len(files) == 18
     names = set()
     for path in files:
         theme, notes = themes.load_file(path)
         assert notes == [], f"{path.name} has entries Sluice ignores: {notes}"
-        assert themes.contrast_problems(theme.colors, True) == [], path.name
         assert set(theme.colors) == set(themes.TOKEN_NAMES), path.name
         assert theme.name not in names, f"two themes are called {theme.name}"
         names.add(theme.name)
@@ -270,7 +290,10 @@ def test_a_killed_process_that_has_not_been_cleared_away_counts_as_dead(state):
         assert logs._pid_alive(child.pid)
         child.kill()
         for _ in range(100):  # killed but not waited for: a zombie, still visible to os.kill
-            if Path(f"/proc/{child.pid}/stat").exists() and Path(f"/proc/{child.pid}/stat").read_text().rsplit(")", 1)[1].split()[0] == "Z":
+            if (
+                Path(f"/proc/{child.pid}/stat").exists()
+                and Path(f"/proc/{child.pid}/stat").read_text().rsplit(")", 1)[1].split()[0] == "Z"
+            ):
                 break
             time.sleep(0.02)
         assert not logs._pid_alive(child.pid)
@@ -293,7 +316,7 @@ def test_a_command_never_takes_over_or_removes_the_running_sluices_marker(state)
     logs.running_path().parent.mkdir(parents=True)
     logs.running_path().write_text(f"{other}\n2026-11-09 19:50:10\n")
     assert main(["--report", str(state / "r.txt")]) == 0
-    assert logs.running_path().read_text().startswith(f"{other}\n")        # still the running Sluice's
+    assert logs.running_path().read_text().startswith(f"{other}\n")  # still the running Sluice's
     main(["--diagnose"])
     assert logs.running_path().read_text().startswith(f"{other}\n")
 
@@ -302,10 +325,10 @@ def test_a_command_does_not_warn_about_the_last_session_either(state):
     from sluice.__main__ import main
 
     logs.running_path().parent.mkdir(parents=True)
-    logs.running_path().write_text("999999999\n2026-11-09 19:50:10\n")     # a dead session's marker
+    logs.running_path().write_text("999999999\n2026-11-09 19:50:10\n")  # a dead session's marker
     main(["--report", str(state / "r.txt")])
     assert "did not end normally" not in logs.log_path().read_text()
-    assert logs.running_path().exists()                                      # left for the next real start to report
+    assert logs.running_path().exists()  # left for the next real start to report
 
 
 def test_a_command_adds_to_the_current_session_instead_of_starting_a_new_one(state):
@@ -328,7 +351,7 @@ def test_a_trace_during_a_command_is_labelled_as_one():
 def test_only_the_process_that_owns_the_marker_removes_it(state):
     logs.mark_running()
     mine = logs.running_path().read_text()
-    logs.running_path().write_text("1\n" + mine.split("\n", 1)[1])          # now somebody else's
+    logs.running_path().write_text("1\n" + mine.split("\n", 1)[1])  # now somebody else's
     logs.mark_clean_exit()
     assert logs.running_path().exists()
     logs.running_path().write_text(mine)
@@ -343,8 +366,8 @@ def test_a_second_start_hands_over_without_touching_the_running_sluices_marker(s
     other = _other_marker()
     logs.running_path().parent.mkdir(parents=True)
     logs.running_path().write_text(f"{other}\n2026-11-09 19:50:10\n")
-    monkeypatch.setattr(entry, "_acquire_lock", lambda: None)        # the first Sluice holds the lock
-    monkeypatch.setattr(control_socket, "send", lambda *a, **k: {})         # "show your window"
+    monkeypatch.setattr(entry, "_acquire_lock", lambda: None)  # the first Sluice holds the lock
+    monkeypatch.setattr(control_socket, "send", lambda *a, **k: {})  # "show your window"
     assert entry.main([]) == 0
     assert "already running" in capsys.readouterr().err
     assert logs.running_path().read_text().startswith(f"{other}\n")
@@ -372,15 +395,15 @@ def test_a_real_session_is_marked_once_it_runs_and_unmarked_when_it_ends(state, 
     from sluice.linker import NullLinker
 
     class FakeJack(NullIO):
-        demo = False         # what makes Sluice treat the backend as a real audio server
+        demo = False  # what makes Sluice treat the backend as a real audio server
 
     seen = []
     monkeypatch.setattr(entry, "_real_parts", lambda: (MockSystem(), FakeJack(realtime=False), NullLinker()))
     monkeypatch.setattr(entry, "_acquire_lock", lambda: object())
     monkeypatch.setattr(ui.MainWindow, "show", lambda self: seen.append(logs.running_path().exists()))
     entry.main(["--screenshot", str(state / "real.png")])
-    assert seen and all(seen)                      # marked by the time the window was shown
-    assert not logs.running_path().exists()        # a normal exit removes it
+    assert seen and all(seen)  # marked by the time the window was shown
+    assert not logs.running_path().exists()  # a normal exit removes it
 
 
 def test_short_path_and_anonymize(tmp_path, monkeypatch):

@@ -1,5 +1,6 @@
 """A layout that puts its widgets side by side and starts a new line when the width runs out (so a window that gets narrower
 wraps its cards instead of scrolling sideways)."""
+
 from __future__ import annotations
 
 from PySide6.QtCore import QPoint, QRect, QSize, Qt
@@ -93,6 +94,7 @@ class FlowLayout(QLayout):
 
 def _item(widget):
     from PySide6.QtWidgets import QWidgetItem
+
     return QWidgetItem(widget)
 
 

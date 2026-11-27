@@ -1,5 +1,6 @@
 """0.12.6: whose dropout it was is decided by the slowest of the last few blocks, and the time a block waits for Python's lock
 (held by the window) is measured apart from its own work, logged with dropouts and shown in the bug report."""
+
 import logging
 import sys
 
@@ -96,7 +97,10 @@ def test_audio_blocks_get_the_lock_sooner():
 
 def test_the_rust_engine_measures_the_wait():
     sluice_dsp = pytest.importorskip("sluice_dsp")
-    assert sluice_dsp.VERSION == "0.11.1" and hasattr(sluice_dsp.JackEngine, "take_wait")
+    from sluice import spectral
+
+    # 0.11.1 and later measure the wait (0.13.1 ships 0.12.0)
+    assert not spectral.rust_is_older(sluice_dsp.VERSION, "0.11.1") and hasattr(sluice_dsp.JackEngine, "take_wait")
 
 
 # ----------------------------------------------------------------------------- 0.12.6: start-up is measured

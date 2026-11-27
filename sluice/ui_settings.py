@@ -12,21 +12,37 @@ is chosen once and then left alone, in six sections, opened by the ⚙ button be
 
 Every control here is bound to one of the window's actions (``window.autostart_actions``, ``window.buffer_actions`` and the rest). The
 action keeps the state and does the work, as before; this window only shows it and changes it, so nothing is done in two places."""
+
 from __future__ import annotations
 
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
-    QAbstractButton, QButtonGroup, QComboBox, QDialog, QFrame, QGridLayout, QHBoxLayout, QLabel, QListWidget, QPushButton,
-    QRadioButton, QScrollArea, QStackedWidget, QVBoxLayout, QWidget,
+    QAbstractButton,
+    QButtonGroup,
+    QComboBox,
+    QDialog,
+    QFrame,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QPushButton,
+    QRadioButton,
+    QScrollArea,
+    QStackedWidget,
+    QVBoxLayout,
+    QWidget,
 )
 
 from . import themes, ui_icons as icons
 from .ui_base import plain
 from .ui_panel import Switch
 
-SECTIONS = ("Themes and skins", "Audio", "Startup and background", "Controllers", "Updates", "Setup check", "Backup and reset")
-SECTION_ICONS = ("palette", "wave", "power", "sliders", "refresh", "checklist", "save")
+# 0.13.1: the House Standard's order: General, Appearance, Updates, Privacy, Sluice's own sections, Advanced, About & uninstall
+SECTIONS = ("General", "Appearance", "Updates", "Privacy", "Audio", "Controllers", "Setup check", "Advanced", "About & uninstall")
+SECTION_ICONS = ("power", "palette", "refresh", "eye", "wave", "sliders", "checklist", "save", "info")
+OLD_SECTION_NAMES = {"Themes and skins": "Appearance", "Startup and background": "General", "Backup and reset": "Advanced"}
 SETUP = "Setup check"
 
 
@@ -62,7 +78,9 @@ class _Bound:
         self.button.setChecked(self.action.isChecked())
         self.button.setEnabled(self.action.isEnabled())
         self.button.setVisible(self.action.isVisible())
-        self.button.setToolTip(self.action.toolTip() if self.action.toolTip() != plain(self.action.text(), keep_dots=True) else "")
+        self.button.setToolTip(
+            self.action.toolTip() if self.action.toolTip() != plain(self.action.text(), keep_dots=True) else ""
+        )
         self.button.setAccessibleName(plain(self.action.text(), keep_dots=True))
         self.button.blockSignals(False)
         if self.name is not None:  # a switch row: the name is a label beside it
@@ -93,6 +111,7 @@ class SkinCard(QPushButton):
         box.addWidget(self.picture)
         box.addWidget(self.caption, 0, Qt.AlignmentFlag.AlignHCenter)
         from .ui_skins import H, W
+
         self.setFixedSize(W + 16, H + 44)
 
     def keyPressEvent(self, event) -> None:
@@ -110,6 +129,7 @@ class SkinCard(QPushButton):
 
     def show_preview(self, theme) -> None:
         from .ui_skins import BLURBS, draw_preview
+
         self.picture.setPixmap(draw_preview(self.skin_id, themes.skin_colors(theme, self.skin_id), self.devicePixelRatioF()))
         self.setToolTip(BLURBS.get(self.skin_id, ""))
 
@@ -131,8 +151,20 @@ class SettingsWindow(QDialog):
         self.sections.setFixedWidth(240)
         self.pages = QStackedWidget()
         self.setup_results: list = []
-        for name, build in zip(SECTIONS, (self._appearance, self._audio, self._startup, self._controllers, self._updates,
-                                          self._setup, self._backup)):
+        for name, build in zip(
+            SECTIONS,
+            (
+                self._startup,
+                self._appearance,
+                self._updates,
+                self._privacy,
+                self._audio,
+                self._controllers,
+                self._setup,
+                self._backup,
+                self._about,
+            ),
+        ):
             page = QWidget()
             column = QVBoxLayout(page)
             column.setContentsMargins(28, 20, 28, 20)
@@ -150,8 +182,9 @@ class SettingsWindow(QDialog):
             self.pages.addWidget(scroll)
         self.sections.currentRowChanged.connect(self.pages.setCurrentIndex)
         self.sections.currentRowChanged.connect(lambda _row: self.isVisible() and self.refresh())
-        self.sections.currentRowChanged.connect(lambda row: row == SECTIONS.index(SETUP) and not self.setup_results
-                                                and self.check_setup())
+        self.sections.currentRowChanged.connect(
+            lambda row: row == SECTIONS.index(SETUP) and not self.setup_results and self.check_setup()
+        )
         self.sections.setCurrentRow(0)
         close = QPushButton("Close")
         close.clicked.connect(self.close)
@@ -220,7 +253,11 @@ class SettingsWindow(QDialog):
         if radio is not None:
             button = QRadioButton()
             radio.addButton(button)
-            if isinstance(column, QVBoxLayout) and column.parentWidget() is not None and column.parentWidget().objectName() == "settingsgroup":
+            if (
+                isinstance(column, QVBoxLayout)
+                and column.parentWidget() is not None
+                and column.parentWidget().objectName() == "settingsgroup"
+            ):
                 row = QFrame()
                 row.setObjectName("settingsrow")
                 row.setProperty("first", column.count() == 0)
@@ -235,7 +272,12 @@ class SettingsWindow(QDialog):
                 self.bound.append(_Bound(button, action))
             return button
         button = Switch()
-        row, name = self._row(column, plain(action.text(), keep_dots=True), button, hint or (action.toolTip() if action.toolTip() != plain(action.text(), keep_dots=True) else ""))
+        row, name = self._row(
+            column,
+            plain(action.text(), keep_dots=True),
+            button,
+            hint or (action.toolTip() if action.toolTip() != plain(action.text(), keep_dots=True) else ""),
+        )
         self.bound.append(_Bound(button, action, row, name))
         return button
 
@@ -259,7 +301,11 @@ class SettingsWindow(QDialog):
     def _appearance(self, column: QVBoxLayout) -> None:
         w = self.window_
         column.addWidget(_heading("Skin"))
-        column.addWidget(_note("How the window and the desktop widgets are shaped and drawn. Each picture is drawn in the theme you are using."))
+        column.addWidget(
+            _note(
+                "How the window and the desktop widgets are shaped and drawn. Each picture is drawn in the theme you are using."
+            )
+        )
         grid = QGridLayout()
         grid.setSpacing(12)
         self.skin_cards = {}
@@ -280,9 +326,6 @@ class SettingsWindow(QDialog):
         self.theme_button.setAccessibleName("Theme")
         self.theme_button.setMinimumWidth(200)
         self._row(window, "Theme", self.theme_button, "The colours, in any skin. Import, export or remove themes from its menu.")
-        see = getattr(w, "see_through_action", None)
-        if see is not None:
-            self._bind(window, see)
         self._bind(window, w.skin_colors_action)
         self._bind(window, w.reduce_action)
         layout = self._group(column, "Layout")
@@ -290,8 +333,12 @@ class SettingsWindow(QDialog):
         for action in w.layout_actions.values():
             self._bind(layout, action, group)
         self._levels(column)
-        widgets = self._group(column, "Desktop widgets", "The widgets you keep on the desktop can have a skin and a theme of their "
-                              "own, for example Glass widgets over your wallpaper with the window in Calm.")
+        widgets = self._group(
+            column,
+            "Desktop widgets",
+            "The widgets you keep on the desktop can have a skin and a theme of their "
+            "own, for example Glass widgets over your wallpaper with the window in Calm.",
+        )
         self.widget_skin = QComboBox()
         self.widget_skin.setAccessibleName("Desktop widgets' skin")
         self.widget_skin.activated.connect(self._widget_skin_chosen)
@@ -304,25 +351,37 @@ class SettingsWindow(QDialog):
 
     def _levels(self, column: QVBoxLayout) -> None:
         """0.12.3: dB, percent or both."""
-        group = self._group(column, "Show levels as", "Percent is the scale your desktop's volume slider uses: 100% is 0 dB "
-                            "and 50% is about -18 dB. You can type either into a level's number box (for example -12 or 50%).")
+        group = self._group(
+            column,
+            "Show levels as",
+            "Percent is the scale your desktop's volume slider uses: 100% is 0 dB "
+            "and 50% is about -18 dB. You can type either into a level's number box (for example -12 or 50%).",
+        )
         choice = QButtonGroup(self)
         for action in self.window_.units_actions.values():
             self._bind(group, action, choice)
 
     def _audio(self, column: QVBoxLayout) -> None:
         w = self.window_
-        group = self._group(column, "Audio buffer", "How much sound Sluice handles at a time. A smaller buffer means less delay; a "
-                            "larger one uses less CPU and is less likely to drop out. It takes effect when Sluice starts again: Sluice offers to "
-                            "restart now.")
+        group = self._group(
+            column,
+            "Audio buffer",
+            "How much sound Sluice handles at a time. A smaller buffer means less delay; a "
+            "larger one uses less CPU and is less likely to drop out. It takes effect when Sluice starts again: Sluice offers to "
+            "restart now.",
+        )
         choice = QButtonGroup(self)
         for action in w.buffer_actions.values():
             self._bind(group, action, choice)
         # 0.12.4
-        devices = self._group(column, "Recording devices for OBS", "A channel's own recording device, such as \u201cSluice "
-                              "(Game)\u201d, carries just that channel. With this on, an app channel's device follows its Broadcast "
-                              "fader and mute, so muting Broadcast mutes it in OBS too. A microphone's device always stays on, "
-                              "because voice chats such as Discord often use it.")
+        devices = self._group(
+            column,
+            "Recording devices for OBS",
+            "A channel's own recording device, such as \u201cSluice "
+            "(Game)\u201d, carries just that channel. With this on, an app channel's device follows its Broadcast "
+            "fader and mute, so muting Broadcast mutes it in OBS too. A microphone's device always stays on, "
+            "because voice chats such as Discord often use it.",
+        )
         self._bind(devices, w.follow_action)
         self._bind(devices, w.devices_action)  # 0.12.6: one switch for every app channel (each can still turn its own off)
 
@@ -357,10 +416,14 @@ class SettingsWindow(QDialog):
     def _updates(self, column: QVBoxLayout) -> None:
         w = self.window_
         group = self._group(column, "New versions")
+        self._bind(group, w.check_daily_action)
         self._bind(group, w.auto_update_action)
         self._action_button(group, "Check now", w.check_for_updates, name="Check for updates")
-        channel = self._group(column, "Which versions", "Stable gets tested releases. Beta also gets test versions before they "
-                              "are released, to try new features first.")
+        channel = self._group(
+            column,
+            "Which versions",
+            "Stable gets tested releases. Beta also gets test versions before they are released, to try new features first.",
+        )
         choice = QButtonGroup(self)
         for action in w.channel_actions.values():
             self._bind(channel, action, choice)
@@ -368,22 +431,32 @@ class SettingsWindow(QDialog):
         if w.runs_from_download():  # 0.12.0: installed the old way, in the folder it was downloaded to
             where = self._group(column, "Where Sluice is installed")
             self.move_button = self._action_button(
-                where, "Move", w.move_install, name="Move Sluice to its own folder",
+                where,
+                "Move",
+                w.move_install,
+                name="Move Sluice to its own folder",
                 hint="Sluice runs from the folder you downloaded. Moving it puts it in ~/.local/share/sluice and deletes that "
-                     "folder; your settings stay.")
+                "folder; your settings stay.",
+            )
         engine = self._group(column, "Audio engine")
-        self.rebuild_button = self._action_button(engine, "Rebuild", w.rebuild_engine, name="Rebuild the audio engine",
-                                                  hint="Builds the Rust engine again from the copy that came with this Sluice.")
+        self.rebuild_button = self._action_button(
+            engine,
+            "Rebuild",
+            w.rebuild_engine,
+            name="Rebuild the audio engine",
+            hint="Builds the Rust engine again from the copy that came with this Sluice.",
+        )
         self.rebuild_hint = self.rebuild_button.parentWidget().findChildren(QLabel)[-1]
-        remove = self._group(column, "Remove Sluice")
-        self._action_button(remove, "Uninstall…", w.uninstall_action, name="Uninstall Sluice",
-                            hint="Removes Sluice, its virtual devices and its launcher. You are asked first.")
 
     # ------------------------------------------------------------------ the setup check (0.12.0)
     def _setup(self, column: QVBoxLayout) -> None:
-        column.addWidget(_note("What Sluice uses from your system: what each part is for, whether it is here, and the command that "
-                               "installs it. Sluice never installs anything itself: copy a command and run it in a terminal, then "
-                               "press Check again."))
+        column.addWidget(
+            _note(
+                "What Sluice uses from your system: what each part is for, whether it is here, and the command that "
+                "installs it. Sluice never installs anything itself: copy a command and run it in a terminal, then "
+                "press Check again."
+            )
+        )
         self.setup_summary = QLabel()
         self.setup_summary.setObjectName("settingsheading")
         self.setup_summary.setWordWrap(True)
@@ -406,6 +479,7 @@ class SettingsWindow(QDialog):
         from PySide6.QtWidgets import QApplication
 
         from . import setup_check
+
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             self.setup_results = setup_check.check_all()
@@ -416,6 +490,7 @@ class SettingsWindow(QDialog):
 
     def _show_setup(self, results: list) -> None:
         from . import setup_check
+
         while self.setup_column.count():
             item = self.setup_column.takeAt(0)
             if item.widget() is not None:
@@ -425,8 +500,10 @@ class SettingsWindow(QDialog):
         if needed:
             self.setup_summary.setText(f"Sluice needs {len(needed)} more part{'s' if len(needed) > 1 else ''} to play sound.")
         elif optional:
-            self.setup_summary.setText(f"Everything Sluice needs is here. {len(optional)} optional part"
-                                       f"{'s are' if len(optional) > 1 else ' is'} missing.")
+            self.setup_summary.setText(
+                f"Everything Sluice needs is here. {len(optional)} optional part"
+                f"{'s are' if len(optional) > 1 else ' is'} missing."
+            )
         else:
             self.setup_summary.setText("Everything is here.")
         for heading, required in (("Needed", True), ("Optional", False)):
@@ -444,6 +521,7 @@ class SettingsWindow(QDialog):
         # lay the new rows out now, not a frame later: a row with a command is taller, and a wrapped label needs two passes (one to
         # learn its width, one to take the height that width gives it)
         from PySide6.QtCore import QCoreApplication, QEvent
+
         for _ in range(2):
             QCoreApplication.sendPostedEvents(None, QEvent.Type.LayoutRequest)
 
@@ -493,14 +571,67 @@ class SettingsWindow(QDialog):
     def _copy_command(self, command: str, button: QPushButton) -> None:
         from PySide6.QtCore import QTimer
         from PySide6.QtGui import QGuiApplication
+
         QGuiApplication.clipboard().setText(command)
         button.setText("Copied")
         QTimer.singleShot(1500, lambda: button.setText("Copy"))
 
+    def _privacy(self, column: QVBoxLayout) -> None:
+        """0.13.1 (House Standard): what Sluice never collects, and where its reports and logs stay."""
+        w = self.window_
+        group = self._group(
+            column,
+            "What Sluice sends",
+            "Nothing, by itself. There is no telemetry and no account. Sluice uses "
+            "the internet only for updates: when you check for one, or if automatic updates are on (Updates).",
+        )
+        group.addWidget(
+            _note(
+                "Never collected: your audio, settings, logs or reports, the names of your devices, apps, channels or "
+                "games, usage statistics, crash reports, or anything that identifies you or your computer."
+            )
+        )
+        reports = self._group(
+            column,
+            "Bug reports",
+            "A report stays on this computer until you send it yourself. Before saving, "
+            "Sluice replaces your home folder, user name, computer name, network and hardware addresses, serial "
+            "numbers, Steam account number and any token with placeholders. Device and app names stay in.",
+        )
+        self._action_button(reports, "Report…", w.report_action, name="Report a problem")
+        self._action_button(reports, "Open…", w.open_log_folder, name="Open the log folder")
+
+    def _about(self, column: QVBoxLayout) -> None:
+        """0.13.1 (House Standard): about Sluice, then the red Uninstall box, always last."""
+        from . import __version__
+
+        w = self.window_
+        about = self._group(
+            column,
+            f"Sluice {__version__}",
+            "A virtual audio mixer for PipeWire, for streaming and gaming. Free software under the GNU GPL, version 3 or later.",
+        )
+        self._action_button(about, "Open", w.show_about, name="About Sluice")
+        self._action_button(about, "Open", w.show_whats_new, name="What's new in this version")
+        remove = self._group(column, "Uninstall")
+        remove.parentWidget().setProperty("danger", True)  # the red box (House Standard: always last)
+        button = self._action_button(
+            remove,
+            "Uninstall…",
+            w.uninstall_action,
+            name="Uninstall Sluice",
+            hint="Removes Sluice, its virtual devices and its launcher. Your settings stay unless you "
+            "choose otherwise. You are asked first.",
+        )
+        button.setObjectName("danger")
+
     def _backup(self, column: QVBoxLayout) -> None:
         w = self.window_
-        group = self._group(column, "Your settings", "Sluice saves your settings by itself; these are for keeping a copy or moving "
-                            "them to another computer.")
+        group = self._group(
+            column,
+            "Your settings",
+            "Sluice saves your settings by itself; these are for keeping a copy or moving them to another computer.",
+        )
         self._action_button(group, "Save", w.save_settings_action, name="Save settings now", hint="Ctrl+S")
         self._action_button(group, "Import…", w.import_action, name="Import settings")
         self._action_button(group, "Export…", w.export_action, name="Export settings")
@@ -513,8 +644,13 @@ class SettingsWindow(QDialog):
         folders.setAccessibleName("Open folder")
         self._row(group, "Open folder", folders, "Settings, logs and themes.")
         reset = self._group(column, "Start again")
-        self._action_button(reset, "Reset…", w.reset_settings, name="Reset all settings to the defaults",
-                            hint="Every setting back to how it was when Sluice was new. Your settings are backed up first.")
+        self._action_button(
+            reset,
+            "Reset…",
+            w.reset_settings,
+            name="Reset all settings to the defaults",
+            hint="Every setting back to how it was when Sluice was new. Your settings are backed up first.",
+        )
 
     # ------------------------------------------------------------------ keeping it up to date
     def _choose_skin(self, skin_id: str) -> None:
@@ -535,7 +671,10 @@ class SettingsWindow(QDialog):
         choices = [("Same as the window", "")] + [(t.name, t.id) for t in themes.BUILT_IN.values()]
         choices.append((themes.SYSTEM_LABEL, themes.SYSTEM))
         choices += [(t.name, t.id) for t in themes.custom_themes(w._themes_folder())]
-        for combo, items, chosen in ((self.widget_skin, skins, mixer.widget_skin), (self.widget_theme, choices, mixer.widget_theme)):
+        for combo, items, chosen in (
+            (self.widget_skin, skins, mixer.widget_skin),
+            (self.widget_theme, choices, mixer.widget_theme),
+        ):
             combo.blockSignals(True)
             combo.clear()
             for label, data in items:
@@ -572,20 +711,25 @@ class SettingsWindow(QDialog):
         has_controls = controls is not None and hasattr(controls, "hub")
         if has_controls and self.controllers_panel is None:
             from .ui_controllers import ControllersPanel
+
             self.controllers_panel = ControllersPanel(controls, self)
             self.controllers_box.addWidget(self.controllers_panel)
         self.controllers_missing.setVisible(not has_controls)
         for index in range(self.sections.count()):
             item = self.sections.item(index)
             selected = index == self.sections.currentRow()
-            item.setIcon(icons.icon(item.data(Qt.ItemDataRole.UserRole), themes.color("accent_text" if selected else "text2"), 18))
+            item.setIcon(
+                icons.icon(item.data(Qt.ItemDataRole.UserRole), themes.color("accent_text" if selected else "text2"), 18)
+            )
         from . import __version__
+
         self.version_note.setText(f"Sluice {__version__}")
         offer = w.engine_rebuild_state()
         self.rebuild_button.setEnabled(offer[0])
         self.rebuild_hint.setText(offer[1])
 
     def open_at(self, section: str = "") -> None:
+        section = OLD_SECTION_NAMES.get(section, section)
         if section in SECTIONS:
             self.sections.setCurrentRow(SECTIONS.index(section))
         self.refresh()

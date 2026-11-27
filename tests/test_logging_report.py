@@ -187,7 +187,17 @@ def test_report_contains_every_section_and_survives_missing_tools(state):
     logging.getLogger("sluice.test").info("marker line for the report")
     Mixer.demo().save()
     text = report.build_report()
-    for heading in ("sluice", "Self-check", "PipeWire", "pactl info", "sluice ports and links", "Settings", "Computer (CPU and USB", "Log: this session", "Native crash log"):
+    for heading in (
+        "sluice",
+        "Self-check",
+        "PipeWire",
+        "pactl info",
+        "sluice ports and links",
+        "Settings",
+        "Computer (CPU and USB",
+        "Log: this session",
+        "Native crash log",
+    ):
         assert f"===== {heading}" in text, heading
     assert "marker line for the report" in text  # the log tail
     assert '"channels"' in text  # the saved settings
@@ -262,8 +272,14 @@ def test_the_real_command_exits_with_the_right_codes(tmp_path):
     import subprocess
     import sys
 
-    env = {**os.environ, "QT_QPA_PLATFORM": "offscreen", "XDG_STATE_HOME": str(tmp_path / "s"),
-           "XDG_CONFIG_HOME": str(tmp_path / "c"), "XDG_RUNTIME_DIR": str(tmp_path), "SLUICE_SOCKET": str(tmp_path / "x.sock")}
+    env = {
+        **os.environ,
+        "QT_QPA_PLATFORM": "offscreen",
+        "XDG_STATE_HOME": str(tmp_path / "s"),
+        "XDG_CONFIG_HOME": str(tmp_path / "c"),
+        "XDG_RUNTIME_DIR": str(tmp_path),
+        "SLUICE_SOCKET": str(tmp_path / "x.sock"),
+    }
 
     def run(*args):
         return subprocess.run([sys.executable, "-m", "sluice", *args], env=env, capture_output=True, text=True, timeout=60)
@@ -293,6 +309,7 @@ def test_a_name_clash_with_another_sluice_is_explained(monkeypatch):
             pass
 
     import sluice.audio_io, sluice.backend, sluice.jackfix, sluice.linker
+
     monkeypatch.setattr(sluice.audio_io, "JackIO", Boom)
     monkeypatch.setattr(sluice.backend, "PulseSystem", lambda *a, **k: FakeSystem())
     monkeypatch.setattr(sluice.jackfix, "retry_with_pipewire_jack", lambda: None)

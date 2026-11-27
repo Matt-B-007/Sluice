@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The Rust mixing kernels give the numpy results (to float rounding)."""
+
 import numpy as np
 import pytest
 

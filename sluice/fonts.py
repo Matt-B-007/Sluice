@@ -2,6 +2,7 @@
 """The fonts Sluice ships: Inter for the Tile look's text and JetBrains Mono for its values (both SIL Open Font License 1.1; the
 licences are next to the files in ``sluice/data/fonts``). They are added for Sluice alone, not installed on the system, so the Tile
 look reads the same on every computer. A missing or unreadable file only means the next font in the style sheet's list is used."""
+
 from __future__ import annotations
 
 import logging
@@ -9,11 +10,18 @@ from pathlib import Path
 
 log = logging.getLogger("sluice.fonts")
 FOLDER = Path(__file__).resolve().parent / "data" / "fonts"
-FILES = ("Inter-Regular.ttf", "Inter-Medium.ttf", "Inter-SemiBold.ttf", "Inter-Bold.ttf",
-         "JetBrainsMono-Regular.ttf", "JetBrainsMono-Medium.ttf",
-         # 0.12.7: the Tile look's names are JetBrains Mono at weight 600 (SemiBold). Without its own file, Qt made that weight
-         # from whatever the computer had, so a name fitted on one computer and was cut off on another (GitHub's).
-         "JetBrainsMono-SemiBold.ttf", "JetBrainsMono-Bold.ttf")
+FILES = (
+    "Inter-Regular.ttf",
+    "Inter-Medium.ttf",
+    "Inter-SemiBold.ttf",
+    "Inter-Bold.ttf",
+    "JetBrainsMono-Regular.ttf",
+    "JetBrainsMono-Medium.ttf",
+    # 0.12.7: the Tile look's names are JetBrains Mono at weight 600 (SemiBold). Without its own file, Qt made that weight
+    # from whatever the computer had, so a name fitted on one computer and was cut off on another (GitHub's).
+    "JetBrainsMono-SemiBold.ttf",
+    "JetBrainsMono-Bold.ttf",
+)
 UI_FAMILY = "Inter"
 UI_POINT_SIZE = 10
 _loaded: list = []

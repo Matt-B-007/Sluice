@@ -107,9 +107,9 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - name: Install pyflakes and the pinned shellcheck (version in scripts/tool-versions)
+      - name: Install pyflakes, the pinned shellcheck and the pinned ruff (versions in scripts/tool-versions)
         run: |
           . scripts/tool-versions
-          pip install pyflakes "shellcheck-py==$SHELLCHECK_PY"
-      - name: Check shell scripts (bash -n + shellcheck), Python (pyflakes) and the version files (scripts/check.sh shell python)
+          pip install pyflakes "shellcheck-py==$SHELLCHECK_PY" "ruff==$RUFF_VERSION"
+      - name: Check shell scripts (bash -n + shellcheck), Python (pyflakes, ruff format --check) and the version files (scripts/check.sh shell python)
         run: bash scripts/check.sh shell python

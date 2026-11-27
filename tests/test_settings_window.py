@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The Settings window and the top bar (0.11.5): ☰ and ⚙ together on the left, status on the right, room under the bar, and every
 setting in the window bound to the same action the menus use."""
+
 import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -29,14 +30,15 @@ def make(qapp, tmp_path, skin="calm"):
     return win, engine
 
 
-def test_the_menu_and_settings_buttons_sit_together_on_the_left_and_status_on_the_right(qapp, tmp_path):
+def test_the_menu_is_on_the_left_and_help_and_settings_sit_together_on_the_right(qapp, tmp_path):
+    """0.13.1 (House Standard): ☰ stays on the left; Help (?) and the Settings gear sit together at the top right."""
     win, _ = make(qapp, tmp_path)
     try:
         bar = win.top_bar
-        menu, gear = win.menu_button.geometry(), win.settings_button.geometry()
-        assert menu.x() < gear.x() < win.app_name.geometry().x()
-        assert gear.x() - menu.right() <= 12  # beside each other
-        assert win.status_chip.geometry().right() > bar.width() - 40  # the status is what is on the right
+        menu, help_, gear = win.menu_button.geometry(), win.help_button.geometry(), win.settings_button.geometry()
+        assert menu.x() < win.app_name.geometry().x() < win.status_chip.geometry().x() < help_.x() < gear.x()
+        assert gear.x() - help_.right() <= 12  # beside each other
+        assert gear.right() > bar.width() - 40  # the gear is the last thing on the right
         assert win.settings_button.menu() is None  # it opens the window, not a dropdown
     finally:
         win.shutdown()
@@ -44,7 +46,8 @@ def test_the_menu_and_settings_buttons_sit_together_on_the_left_and_status_on_th
 
 def test_there_is_room_between_the_top_bar_buttons_and_its_line(qapp, tmp_path):
     from sluice.ui_base import TOP_BAR_GAP
-    for skin in ("calm", "nexus", "tile"):
+
+    for skin in ("calm", "tile"):
         win, _ = make(qapp, tmp_path, skin)
         try:
             bottom = max(w.geometry().bottom() for w in (win.menu_button, win.settings_button, win.live_chip, win.status_chip))
@@ -61,8 +64,17 @@ def test_the_settings_window_has_five_sections_and_opens_from_the_gear(qapp, tmp
         window = win.settings_window
         assert window.isVisible()
         assert [window.sections.item(i).text() for i in range(window.sections.count())] == list(SECTIONS)
-        assert SECTIONS == ("Themes and skins", "Audio", "Startup and background", "Controllers", "Updates", "Setup check",
-                            "Backup and reset")
+        assert SECTIONS == (
+            "General",
+            "Appearance",
+            "Updates",
+            "Privacy",
+            "Audio",
+            "Controllers",
+            "Setup check",
+            "Advanced",
+            "About & uninstall",
+        )  # 0.13.1: the House Standard's order
         win.open_settings("Updates")
         assert window.pages.currentIndex() == SECTIONS.index("Updates")
         assert window is win.settings_window  # one window, kept
@@ -75,9 +87,13 @@ def test_every_setting_in_the_window_is_bound_to_the_action_the_menus_use(qapp, 
     try:
         win.open_settings()
         window = win.settings_window
-        actions = ([win.skin_colors_action, win.reduce_action, win.launcher_action, win.auto_update_action]
-                   + list(win.layout_actions.values()) + list(win.buffer_actions.values()) + list(win.autostart_actions.values())
-                   + list(win.close_actions.values()))
+        actions = (
+            [win.skin_colors_action, win.reduce_action, win.launcher_action, win.auto_update_action]
+            + list(win.layout_actions.values())
+            + list(win.buffer_actions.values())
+            + list(win.autostart_actions.values())
+            + list(win.close_actions.values())
+        )
         bound = {item.action for item in window.bound}
         assert all(action in bound for action in actions)
         buffer = next(i for i in window.bound if i.action is win.buffer_actions[1024])
@@ -89,11 +105,14 @@ def test_every_setting_in_the_window_is_bound_to_the_action_the_menus_use(qapp, 
         qapp.processEvents()
         assert engine.mixer.layout == "rows"
         win.choose_skin("tile")
+        window.sections.setCurrentRow(SECTIONS.index("Appearance"))  # (0.13.1: Settings opens on General)
         window.refresh()
         colours = next(i for i in window.bound if i.action is win.skin_colors_action)
-        assert isinstance(colours.button, QCheckBox) and colours.button.isVisible() and colours.button.isChecked()
+        assert (
+            isinstance(colours.button, QCheckBox) and colours.button.isVisible() and not colours.button.isChecked()
+        )  # (off: 0.13.1)
         colours.button.click()
-        assert engine.mixer.skin_colors is False
+        assert engine.mixer.skin_colors is True
     finally:
         win.shutdown()
 
@@ -103,9 +122,9 @@ def test_picking_a_look_card_changes_the_look_and_the_pictures_follow_the_theme(
     try:
         win.open_settings("Themes and skins")
         window = win.settings_window
-        window.skin_cards["nexus"].click()
+        window.skin_cards["tile"].click()
         qapp.processEvents()
-        assert engine.mixer.skin == "nexus" and window.skin_cards["nexus"].isChecked()
+        assert engine.mixer.skin == "tile" and window.skin_cards["tile"].isChecked()
         assert not window.skin_cards["calm"].isChecked()
         before = window.skin_cards["calm"].picture.pixmap().toImage()
         win.choose_theme("light")
@@ -129,6 +148,7 @@ def test_the_main_menu_has_a_settings_item_with_a_shortcut(qapp, tmp_path):
 
 def test_the_settings_window_looks_the_same_in_every_skin(qapp, tmp_path):
     from PySide6.QtWidgets import QLabel, QPushButton
+
     seen = {}
     for skin in themes.SKINS:
         win, _ = make(qapp, tmp_path, skin)
@@ -139,9 +159,13 @@ def test_the_settings_window_looks_the_same_in_every_skin(qapp, tmp_path):
             heading = next(w for w in window.findChildren(QLabel) if w.objectName() == "settingsheading")
             close = next(b for b in window.findChildren(QPushButton) if b.text() == "Close")
             card = window.skin_cards[skin]
-            seen[skin] = (heading.fontInfo().pixelSize(), heading.fontInfo().bold(), close.sizeHint().height(),
-                          window.sections.font().pixelSize() if window.sections.font().pixelSize() > 0 else heading.font().pointSize(),
-                          card.size().toTuple())
+            seen[skin] = (
+                heading.fontInfo().pixelSize(),
+                heading.fontInfo().bold(),
+                close.sizeHint().height(),
+                window.sections.font().pixelSize() if window.sections.font().pixelSize() > 0 else heading.font().pointSize(),
+                card.size().toTuple(),
+            )
         finally:
             win.shutdown()
     assert len(set(seen.values())) == 1, seen

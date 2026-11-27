@@ -4,6 +4,7 @@
 ``EffectInstance`` wraps the live plugin objects for one ``model.Effect``. The model
 holds only the saved description; instances are created by the engine.
 """
+
 from __future__ import annotations
 
 import logging
@@ -93,8 +94,10 @@ class Toolbox:
     def _native_factory(self, name: str):
         cls = getattr(self._native, name)
         if name in ("LowShelfFilter", "HighShelfFilter", "PeakFilter"):
+
             def make(cutoff_frequency_hz, gain_db, q=0.7071067690849304):  # pedalboard's default Q
                 return cls(cutoff_frequency_hz, gain_db, q)
+
             return make
 
         return cls  # the Rust classes take the same keyword names as pedalboard's
@@ -194,11 +197,15 @@ class JointStage:
         self._sample_rate = 0
         self._joint = None
 
-    def process(self, audio: np.ndarray, sample_rate: int) -> np.ndarray:
+    def ensure(self, sample_rate: int):
+        """The joined processor (made on first use, for the sample rate); 0.13.1: the Rust graph takes it whole."""
         if self._joint is None or sample_rate != self._sample_rate:
             self._joint = Joint([stage.ensure(sample_rate) for stage in self.stages])
             self._sample_rate = sample_rate
-        return self._joint.process(audio)
+        return self._joint
+
+    def process(self, audio: np.ndarray, sample_rate: int) -> np.ndarray:
+        return self.ensure(sample_rate).process(audio)
 
     def wake(self) -> None:
         if self._joint is not None:
@@ -228,20 +235,20 @@ class Tap:
         mono_before = before[..., :n].mean(axis=0) if before.ndim == 2 else before[:n]
         mono_after = after[..., :n].mean(axis=0) if after.ndim == 2 else after[:n]
         if n >= self.RING:
-            self.pre[:] = mono_before[-self.RING:]
-            self.post[:] = mono_after[-self.RING:]
+            self.pre[:] = mono_before[-self.RING :]
+            self.post[:] = mono_after[-self.RING :]
             self.pos = 0
             return
         end = self.pos + n
         if end <= self.RING:
-            self.pre[self.pos:end] = mono_before
-            self.post[self.pos:end] = mono_after
+            self.pre[self.pos : end] = mono_before
+            self.post[self.pos : end] = mono_after
         else:
             first = self.RING - self.pos
-            self.pre[self.pos:] = mono_before[:first]
-            self.pre[:end - self.RING] = mono_before[first:]
-            self.post[self.pos:] = mono_after[:first]
-            self.post[:end - self.RING] = mono_after[first:]
+            self.pre[self.pos :] = mono_before[:first]
+            self.pre[: end - self.RING] = mono_before[first:]
+            self.post[self.pos :] = mono_after[:first]
+            self.post[: end - self.RING] = mono_after[first:]
         self.pos = end % self.RING
 
     def drain_peaks(self) -> list:
@@ -351,9 +358,13 @@ def _build_eq(pb, v):
         pb.HighShelfFilter(cutoff_frequency_hz=v["high_hz"], gain_db=v["high_db"]),
     ]
     targets = {
-        "low_hz": (0, "cutoff_frequency_hz"), "low_db": (0, "gain_db"),
-        "mid_hz": (1, "cutoff_frequency_hz"), "mid_db": (1, "gain_db"), "mid_q": (1, "q"),
-        "high_hz": (2, "cutoff_frequency_hz"), "high_db": (2, "gain_db"),
+        "low_hz": (0, "cutoff_frequency_hz"),
+        "low_db": (0, "gain_db"),
+        "mid_hz": (1, "cutoff_frequency_hz"),
+        "mid_db": (1, "gain_db"),
+        "mid_q": (1, "q"),
+        "high_hz": (2, "cutoff_frequency_hz"),
+        "high_db": (2, "gain_db"),
     }
     return plugins, targets
 
@@ -394,8 +405,8 @@ BUILTINS: dict = {
         None,
         stage=lambda v: Stage(lambda sr: EchoReducer(sr), v),
         hint="Made for a microphone. Lowers the tail of your room's echo while you talk. Set \u201cRoom echo time\u201d to how "
-             "long your room rings (about 0.3 s with carpet and curtains, 0.6\u20131 s with bare walls). If your voice "
-             "sounds thin or watery, turn Reduction down. Together with the Noise Reducer it adds about 16 ms of delay.",
+        "long your room rings (about 0.3 s with carpet and curtains, 0.6\u20131 s with bare walls). If your voice "
+        "sounds thin or watery, turn Reduction down. Together with the Noise Reducer it adds about 16 ms of delay.",
     ),
     "noise_reducer": BuiltinDef(
         BUILTIN_NAMES["noise_reducer"],
@@ -403,8 +414,8 @@ BUILTINS: dict = {
         None,
         stage=lambda v: Stage(lambda sr: NoiseReducer(sr), v),
         hint="Made for a microphone. Lowers steady noise (fan, air conditioner, road hiss) while you talk, and needs a "
-             "second or two to learn it. It cannot tell a TV or other people talking from you. If your voice sounds "
-             "thin or watery, turn Reduction down. Together with the Echo Reducer it adds about 16 ms of delay.",
+        "second or two to learn it. It cannot tell a TV or other people talking from you. If your voice sounds "
+        "thin or watery, turn Reduction down. Together with the Echo Reducer it adds about 16 ms of delay.",
     ),
     "noise_gate": BuiltinDef(
         BUILTIN_NAMES["noise_gate"],
@@ -418,7 +429,7 @@ BUILTINS: dict = {
         None,
         stage=lambda v: PlainStage(lambda sr: VoiceGate(sr), v),
         hint="Turns the room down between your words. Opens above the Threshold, stays open for the Hold time after you stop, "
-             "closes a little below the Threshold (so it does not flutter), and then turns the room down by the Depth.",
+        "closes a little below the Threshold (so it does not flutter), and then turns the room down by the Depth.",
     ),
     "eq": BuiltinDef(
         BUILTIN_NAMES["eq"],
@@ -445,7 +456,7 @@ BUILTINS: dict = {
         None,
         stage=lambda v: PlainStage(lambda sr: LinkedCompressor(sr), v),
         hint="Evens out your volume: what goes over the Threshold is turned down by the Ratio, gently (a soft knee), and both "
-             "sides together so a stereo sound stays where it is. Makeup gain brings the whole back up.",
+        "sides together so a stereo sound stays where it is. Makeup gain brings the whole back up.",
     ),
     "limiter": BuiltinDef(
         BUILTIN_NAMES["limiter"],
@@ -456,7 +467,7 @@ BUILTINS: dict = {
         None,
         stage=lambda v: PlainStage(lambda sr: CeilingLimiter(sr), v),
         hint="Nothing gets past the Ceiling: a shout or a bang is held just under it, and everything quieter comes out as it "
-             "went in.",
+        "went in.",
     ),
 }
 
@@ -556,8 +567,9 @@ class EffectInstance:
             if definition is None:
                 return []
             return [
-                ParamInfo(s.key, s.label, s.lo, s.hi, float(self.effect.params.get(s.key, s.default)), s.unit,
-                          default=float(s.default))
+                ParamInfo(
+                    s.key, s.label, s.lo, s.hi, float(self.effect.params.get(s.key, s.default)), s.unit, default=float(s.default)
+                )
                 for s in definition.params
             ]
         if self._vst3 is None:
@@ -566,8 +578,18 @@ class EffectInstance:
         for key, param in self._vst3.parameters.items():
             try:
                 default = getattr(param, "default_raw_value", None)
-                infos.append(ParamInfo(key, str(getattr(param, "name", key)), 0.0, 1.0, float(param.raw_value), "", True,
-                                       float(default) if isinstance(default, (int, float)) else None))
+                infos.append(
+                    ParamInfo(
+                        key,
+                        str(getattr(param, "name", key)),
+                        0.0,
+                        1.0,
+                        float(param.raw_value),
+                        "",
+                        True,
+                        float(default) if isinstance(default, (int, float)) else None,
+                    )
+                )
             except Exception as exc:  # one odd parameter must not hide the others
                 log.debug("skipping plugin parameter %s: %s", key, exc)
                 continue
@@ -591,7 +613,7 @@ class EffectInstance:
                 self.stage.set(key, min(spec.hi, max(spec.lo, float(value))))
             elif spec is not None and self.plugins and key in self._targets:
                 target = self._targets[key]
-                for index, attr in (target if isinstance(target, list) else [target]):  # (some controls drive two plugins)
+                for index, attr in target if isinstance(target, list) else [target]:  # (some controls drive two plugins)
                     setattr(self.plugins[index], attr, min(spec.hi, max(spec.lo, float(value))))
         elif self._vst3 is not None and key in self._vst3.parameters:
             self._vst3.parameters[key].raw_value = min(1.0, max(0.0, float(value)))
@@ -677,5 +699,5 @@ def vst3_plugin_names(path: str) -> list:
 
 
 def native_backend() -> str:
-    """"rust" when the built-in effects run in Rust, else "python" (pedalboard's own)."""
+    """ "rust" when the built-in effects run in Rust, else "python" (pedalboard's own)."""
     return "rust" if _native_module() is not None else "python"

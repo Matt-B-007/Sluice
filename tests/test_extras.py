@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Mic mute, the Recording mix, reconnecting and measuring the echo through the engine."""
+
 import numpy as np
 import pytest
 
@@ -90,7 +91,7 @@ def test_the_recording_mix_gets_its_own_device_and_output(tmp_path):
     engine = Engine(mixer, system, io, NullLinker())
     engine.start()
     try:
-        assert system.null_sinks["sluice_recording"] == ("Sluice (Recording) feed", True)
+        assert system.null_sinks["sluice_recording"] == ("Sluice (Recording) for OBS", True)
         assert RECORDING in io.mix_ids
         only(engine, io, music=0.2)
         engine.set_mute("music", STREAM, True)  # the audience does not hear it, the recorder does

@@ -21,10 +21,23 @@ RELEASES = {
 }
 
 
-@pytest.mark.parametrize("name,expected", [
-    ("cachyos", "arch"), ("arch", "arch"), ("manjaro", "arch"), ("ubuntu", "debian"), ("mint", "debian"), ("pop", "debian"),
-    ("debian", "debian"), ("fedora", "fedora"), ("nobara", "fedora"), ("tumbleweed", "suse"), ("leap", "suse"), ("void", "void"),
-])
+@pytest.mark.parametrize(
+    "name,expected",
+    [
+        ("cachyos", "arch"),
+        ("arch", "arch"),
+        ("manjaro", "arch"),
+        ("ubuntu", "debian"),
+        ("mint", "debian"),
+        ("pop", "debian"),
+        ("debian", "debian"),
+        ("fedora", "fedora"),
+        ("nobara", "fedora"),
+        ("tumbleweed", "suse"),
+        ("leap", "suse"),
+        ("void", "void"),
+    ],
+)
 def test_families_are_recognised(name, expected):
     assert distro.family(RELEASES[name]) == expected
 
@@ -32,7 +45,9 @@ def test_families_are_recognised(name, expected):
 def test_unknown_systems_get_no_family_and_a_plain_hint():
     for info in ({"ID": "alpine"}, {"ID": "nixos"}, {"ID": "gentoo"}, {}):
         assert distro.family(info) is None
-        assert distro.install_hint(["pipewire"], info) == "Install the equivalent packages for your distribution (see the README)."
+        assert (
+            distro.install_hint(["pipewire"], info) == "Install the equivalent packages for your distribution (see the README)."
+        )
 
 
 def test_install_commands_use_each_distributions_own_names():

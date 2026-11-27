@@ -10,6 +10,7 @@ The code lives in five modules (0.11.5 split the old 3,800-line file):
 - ``ui_window``: the main window
 
 Every name in them is reachable here as ``ui.NAME``, as it always was."""
+
 from __future__ import annotations
 
 from . import ui_base, ui_channel, ui_meters, ui_mix, ui_window

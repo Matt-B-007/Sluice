@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Every menu and every window opened from them, in every skin (0.11.6): headings that show their words (no blank bands), room
 between each item and its shortcut, no shortcut used twice, and windows with nothing cut off, overlapping or outside them."""
+
 import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -70,11 +71,23 @@ def test_menus_have_word_headings_and_room_before_every_shortcut(qapp, tmp_path,
                 problems.append((name, "ends with a heading"))
             menu.ensurePolished()
             metrics = menu.fontMetrics()
-            names = [metrics.horizontalAdvance(plain(a.text())) for a in shown if not a.isSeparator() and not a.property("heading")]
-            keys = [metrics.horizontalAdvance(a.shortcut().toString(QKeySequence.SequenceFormat.NativeText)) for a in shown
-                    if not a.shortcut().isEmpty()]
+            names = [
+                metrics.horizontalAdvance(plain(a.text())) for a in shown if not a.isSeparator() and not a.property("heading")
+            ]
+            keys = [
+                metrics.horizontalAdvance(a.shortcut().toString(QKeySequence.SequenceFormat.NativeText))
+                for a in shown
+                if not a.shortcut().isEmpty()
+            ]
             if names and keys:
-                room = max(menu.width(), menu.minimumWidth(), menu.sizeHint().width()) - max(names) - max(keys) - 2 * 24 - 2 * 22 - 2 * 9
+                room = (
+                    max(menu.width(), menu.minimumWidth(), menu.sizeHint().width())
+                    - max(names)
+                    - max(keys)
+                    - 2 * 24
+                    - 2 * 22
+                    - 2 * 9
+                )
                 if room < SHORTCUT_GAP - 1:
                     problems.append((name, "shortcuts too close to the names", room))
             for a in shown:
@@ -92,9 +105,30 @@ def test_no_shortcut_is_used_twice_and_all_are_in_the_list(qapp, tmp_path):
         keys = [a.shortcut().toString() for a in win.actions() if not a.shortcut().isEmpty()]
         assert len(keys) == len(set(keys)), sorted(keys)
         listed = {k for k, _ in win.shortcut_rows()}
-        assert set(a.shortcut().toString(QKeySequence.SequenceFormat.NativeText) for a in win.actions() if not a.shortcut().isEmpty()) == listed
-        for wanted in ("Ctrl+Q", "Ctrl+,", "Ctrl+S", "Ctrl+N", "F5", "Ctrl+1", "Ctrl+2", "Ctrl+Shift+W", "F11", "Ctrl+0", "Ctrl+M",
-                       "Ctrl+Shift+L", "Ctrl+Shift+B", "Ctrl+H", "Ctrl+Shift+G", "F1"):
+        assert (
+            set(
+                a.shortcut().toString(QKeySequence.SequenceFormat.NativeText) for a in win.actions() if not a.shortcut().isEmpty()
+            )
+            == listed
+        )
+        for wanted in (
+            "Ctrl+Q",
+            "Ctrl+,",
+            "Ctrl+S",
+            "Ctrl+N",
+            "F5",
+            "Ctrl+1",
+            "Ctrl+2",
+            "Ctrl+Shift+W",
+            "F11",
+            "Ctrl+0",
+            "Ctrl+M",
+            "Ctrl+Shift+L",
+            "Ctrl+Shift+B",
+            "Ctrl+H",
+            "Ctrl+Shift+G",
+            "F1",
+        ):
             assert wanted in keys, wanted
         assert "Ctrl+B" not in keys  # Hear Broadcast moved away from Mute Broadcast's Ctrl+Shift+B
     finally:
@@ -117,6 +151,7 @@ def test_ctrl_shift_w_closes_and_reopens_the_widgets_you_had(qapp, tmp_path):
 def test_widgets_put_away_come_back_after_a_restart(qapp, tmp_path):
     """0.11.7: Ctrl+Shift+W remembered the widgets only while Sluice ran; quitting (or an update's restart) lost them."""
     from sluice.model import Mixer
+
     win, engine = make(qapp, tmp_path, "calm")
     try:
         win.desktop.open("channel", channel="mic", x=300, y=200)
@@ -132,6 +167,7 @@ def test_widgets_put_away_come_back_after_a_restart(qapp, tmp_path):
     from sluice.backend import MockSystem
     from sluice.engine import Engine
     from sluice.linker import NullLinker
+
     engine2 = Engine(mixer, MockSystem(), NullIO(realtime=False), NullLinker())
     engine2.start()
     win2 = MainWindow(engine2, tmp_path / "config2.json")
@@ -145,6 +181,7 @@ def test_widgets_put_away_come_back_after_a_restart(qapp, tmp_path):
 @pytest.mark.parametrize("skin", SKINS)
 def test_windows_opened_from_the_menus_have_nothing_cut_off_or_overlapping(qapp, tmp_path, skin):
     from sluice.ui_channel import OwnDevicesDialog
+
     win, engine = make(qapp, tmp_path, skin)
     found = []
     try:
@@ -166,6 +203,7 @@ def test_windows_opened_from_the_menus_have_nothing_cut_off_or_overlapping(qapp,
         win._notes_dialog.close()
         strip = next(s for s in win.strips if s.channel.id == "mic")
         from sluice.ui_effects import EffectsDialog
+
         effects = EffectsDialog(engine, strip.channel, win)  # the menu runs it with exec(); show it without blocking
         effects.show()
         qapp.processEvents()
@@ -179,9 +217,10 @@ def test_windows_opened_from_the_menus_have_nothing_cut_off_or_overlapping(qapp,
 def test_settings_window_can_be_used_from_the_keyboard(qapp, tmp_path):
     from PySide6.QtCore import Qt
     from PySide6.QtTest import QTest
+
     win, engine = make(qapp, tmp_path, "calm")
     try:
-        win.open_settings()
+        win.open_settings("Appearance")  # 0.13.1: Settings opens on General
         window = win.settings_window
         cards = [window.skin_cards[k] for k in themes.SKINS]
         assert all(card.focusPolicy() & Qt.FocusPolicy.TabFocus for card in cards)
@@ -203,6 +242,7 @@ def test_a_suspended_window_hides_into_the_tray_on_wayland(qapp, tmp_path):
     """0.11.7: Wayland never says a window was minimized, so Sluice stayed in the taskbar. KWin marks a minimized window suspended
     (Qt: not exposed); when that comes right after the window was in use and the tray is on, Sluice hides into the tray."""
     from sluice.ui_tray import SuspendWatcher
+
     win, engine = make(qapp, tmp_path, "calm")
     try:
         watcher = SuspendWatcher(win)

@@ -6,6 +6,7 @@ game lists of Lutris, Heroic/Epic (legendary) and Bottles. Nothing here touches 
 (its binary, its window/app name, a Steam game id), so ``Catalog.expand`` turns the one name a
 channel remembers into all the names that mean the same program.
 """
+
 from __future__ import annotations
 
 import logging
@@ -25,11 +26,11 @@ _STEAM_URL = re.compile(r"steam://(?:rungameid|run)/(\d+)")
 
 @dataclass(frozen=True)
 class AppEntry:
-    name: str            # shown to the user
-    key: str             # what a channel remembers (lower case)
-    kind: str            # "app" or "game"
-    aliases: frozenset   # every lower-case name that identifies this program, including the key
-    icon: str = ""       # icon name or file path from the desktop entry (or Steam's steam_icon_<id>); "" when there is none
+    name: str  # shown to the user
+    key: str  # what a channel remembers (lower case)
+    kind: str  # "app" or "game"
+    aliases: frozenset  # every lower-case name that identifies this program, including the key
+    icon: str = ""  # icon name or file path from the desktop entry (or Steam's steam_icon_<id>); "" when there is none
 
 
 class Catalog:
@@ -55,8 +56,9 @@ class Catalog:
 
     # --------------------------------------------------------------------- scanning
     @classmethod
-    def scan(cls, desktop_dirs: Optional[list] = None, steam_roots: Optional[list] = None,
-             home: Optional[Path] = None) -> "Catalog":
+    def scan(
+        cls, desktop_dirs: Optional[list] = None, steam_roots: Optional[list] = None, home: Optional[Path] = None
+    ) -> "Catalog":
         entries: dict = {}
         try:
             for path in desktop_files(desktop_dirs if desktop_dirs is not None else default_desktop_dirs()):
@@ -129,7 +131,7 @@ def binary_from_exec(command: str) -> tuple:
     first = os.path.basename(tokens[0]).lower()
     extra: set = set()
     if first == "flatpak" and "run" in tokens:
-        rest = tokens[tokens.index("run") + 1:]
+        rest = tokens[tokens.index("run") + 1 :]
         command_option = next((t.split("=", 1)[1] for t in rest if t.startswith("--command=")), "")
         app_id = next((t for t in rest if not t.startswith("-")), "")
         if app_id:
@@ -152,7 +154,9 @@ def parse_desktop_file(path: Path) -> Optional[AppEntry]:
     categories = {c for c in values.get("Categories", "").split(";") if c}
     if steam:
         key = f"{STEAM_PREFIX}{steam.group(1)}"
-        return AppEntry(name, key, "game", frozenset({key, name.lower()}), values.get("Icon", "") or f"steam_icon_{steam.group(1)}")
+        return AppEntry(
+            name, key, "game", frozenset({key, name.lower()}), values.get("Icon", "") or f"steam_icon_{steam.group(1)}"
+        )
     binary, extra = binary_from_exec(command)
     if not binary or binary in ("steam", "sh", "bash", "env"):
         return None  # the Steam launcher itself and shell wrappers cannot be recognised by their binary
@@ -225,7 +229,7 @@ def steam_id_of_process(pid: int) -> Optional[str]:
     for item in data.split(b"\0"):
         for var in (b"SteamGameId=", b"SteamAppId="):
             if item.startswith(var):
-                value = item[len(var):].decode("ascii", "ignore")
+                value = item[len(var) :].decode("ascii", "ignore")
                 if value.isdigit() and value != "0":
                     found[var] = value
     value = found.get(b"SteamGameId=") or found.get(b"SteamAppId=")
@@ -248,9 +252,13 @@ def lutris_games(home: Path) -> Iterable[AppEntry]:
     """Installed Lutris games (its ``pga.db`` lists them; each game's ``.yml`` names the program file)."""
     import sqlite3
 
-    for data, config in ((home / ".local" / "share" / "lutris", home / ".config" / "lutris"),
-                         (home / ".var" / "app" / "net.lutris.Lutris" / "data" / "lutris",
-                          home / ".var" / "app" / "net.lutris.Lutris" / "config" / "lutris")):
+    for data, config in (
+        (home / ".local" / "share" / "lutris", home / ".config" / "lutris"),
+        (
+            home / ".var" / "app" / "net.lutris.Lutris" / "data" / "lutris",
+            home / ".var" / "app" / "net.lutris.Lutris" / "config" / "lutris",
+        ),
+    ):
         db = data / "pga.db"
         if not db.is_file():
             continue
@@ -282,9 +290,19 @@ def legendary_games(home: Path) -> Iterable[AppEntry]:
     """Installed Epic games, from the ``installed.json`` of legendary and of Heroic."""
     import json
 
-    for path in (home / ".config" / "legendary" / "installed.json",
-                 home / ".config" / "heroic" / "legendaryConfig" / "legendary" / "installed.json",
-                 home / ".var" / "app" / "com.heroicgameslauncher.hgl" / "config" / "heroic" / "legendaryConfig" / "legendary" / "installed.json"):
+    for path in (
+        home / ".config" / "legendary" / "installed.json",
+        home / ".config" / "heroic" / "legendaryConfig" / "legendary" / "installed.json",
+        home
+        / ".var"
+        / "app"
+        / "com.heroicgameslauncher.hgl"
+        / "config"
+        / "heroic"
+        / "legendaryConfig"
+        / "legendary"
+        / "installed.json",
+    ):
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
@@ -295,14 +313,17 @@ def legendary_games(home: Path) -> Iterable[AppEntry]:
             if not isinstance(item, dict) or not item.get("title"):
                 continue
             key = f"epic:{app_name}".lower()
-            yield AppEntry(str(item["title"]), key, "game",
-                           _exe_aliases(str(item["title"]), key, str(item.get("executable") or "")))
+            yield AppEntry(
+                str(item["title"]), key, "game", _exe_aliases(str(item["title"]), key, str(item.get("executable") or ""))
+            )
 
 
 def bottles_programs(home: Path) -> Iterable[AppEntry]:
     """Programs added to Bottles bottles (each bottle's ``bottle.yml`` lists them with a name and a program file)."""
-    for root in (home / ".local" / "share" / "bottles" / "bottles",
-                 home / ".var" / "app" / "com.usebottles.bottles" / "data" / "bottles" / "bottles"):
+    for root in (
+        home / ".local" / "share" / "bottles" / "bottles",
+        home / ".var" / "app" / "com.usebottles.bottles" / "data" / "bottles" / "bottles",
+    ):
         try:
             files = sorted(root.glob("*/bottle.yml"))
         except OSError:

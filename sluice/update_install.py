@@ -19,6 +19,7 @@ How it works, and what it will never do:
 A copy of Sluice that is a git checkout, or that sits in a folder you cannot write to, is never changed: it is
 updated with ``git pull`` or the way you installed it.
 """
+
 from __future__ import annotations
 
 import json
@@ -37,8 +38,8 @@ from typing import Callable, Optional
 
 log = logging.getLogger("sluice.update_install")
 
-WORK = ".update"          # where a downloaded release waits (inside the Sluice folder: same disk, so renames are instant)
-PREVIOUS = ".previous"    # the files of the version before the last update
+WORK = ".update"  # where a downloaded release waits (inside the Sluice folder: same disk, so renames are instant)
+PREVIOUS = ".previous"  # the files of the version before the last update
 READY = "ready.json"
 PROTECTED = {".venv", ".git", WORK, PREVIOUS, "sluice.egg-info"}  # never replaced, never removed
 MAX_ZIP_BYTES = 100 * 1024 * 1024
@@ -83,8 +84,10 @@ def install_root(package_file: Optional[str] = None) -> Optional[Path]:
 def unavailable_reason(root: Optional[Path]) -> str:
     """Why this copy cannot update itself, or '' when it can."""
     if root is None:
-        return ("This copy of Sluice was not installed from the release zip (there is no Sluice folder next to its code), "
-                "so it cannot replace itself. Update it the way you installed it.")
+        return (
+            "This copy of Sluice was not installed from the release zip (there is no Sluice folder next to its code), "
+            "so it cannot replace itself. Update it the way you installed it."
+        )
     if (root / ".git").exists():
         return "This copy is a git checkout. Update it with: git pull"
     if not os.access(root, os.W_OK):
@@ -261,8 +264,12 @@ def _install_dependencies(root: Path, tree: Path, run: Callable) -> None:
         return
     log.info("the new version needs other packages: %s", wanted)
     try:
-        done = run([sys.executable, "-m", "pip", "install", "--quiet", "--disable-pip-version-check", *wanted],
-                   capture_output=True, text=True, timeout=900)
+        done = run(
+            [sys.executable, "-m", "pip", "install", "--quiet", "--disable-pip-version-check", *wanted],
+            capture_output=True,
+            text=True,
+            timeout=900,
+        )
     except (OSError, subprocess.SubprocessError) as exc:
         raise UpdateError(f"The new version needs packages that could not be installed ({exc}). Sluice is unchanged.") from exc
     if done.returncode != 0:
@@ -286,8 +293,42 @@ def discard_staged(root: Path) -> None:
     shutil.rmtree(root / WORK, ignore_errors=True)
 
 
-def stage(result, root: Path, progress: Optional[Callable[[int, int], None]] = None,
-          fetch_text: Callable = fetch_text, download: Callable = download, run: Optional[Callable] = None) -> str:
+def _check_signature(result, checksum_text: str, fetch_text: Callable) -> None:
+    """0.13.1 (House Standard): the checksum file must carry a good minisign signature from one of Sluice's two keys. A
+    signature that is there but wrong always stops the update; a missing one does too once signing.REQUIRE_SIGNATURE is on."""
+    from . import signing
+
+    url = getattr(result, "signature_url", "")
+    if not url:
+        if signing.REQUIRE_SIGNATURE:
+            raise UpdateError("This release is not signed, so Sluice will not install it. Try again later.")
+        log.info("the release has no signature yet; accepted (signatures are required from the next release)")
+        return
+    _check_url(url)
+    try:
+        signature = fetch_text(url)
+    except UpdateError:
+        raise
+    except Exception as exc:
+        raise UpdateError(f"Could not download the signature: {exc}") from exc
+    if not signing.available() and not signing.REQUIRE_SIGNATURE:
+        log.warning("the cryptography package is missing, so the signature was not checked")
+        return
+    try:
+        who = signing.verify(checksum_text.encode("utf-8"), signature)
+    except signing.SignatureError as exc:
+        raise UpdateError(f"The release's signature is not valid ({exc}). Nothing was downloaded or installed.") from exc
+    log.info("the release's checksum file is signed with Sluice's %s key", who)
+
+
+def stage(
+    result,
+    root: Path,
+    progress: Optional[Callable[[int, int], None]] = None,
+    fetch_text: Callable = fetch_text,
+    download: Callable = download,
+    run: Optional[Callable] = None,
+) -> str:
     """Download, verify and unpack the release in ``result`` (an update_check.UpdateResult) into ``root/.update``.
 
     Nothing of the running Sluice is changed. Returns the version. Raises UpdateError with a readable message."""
@@ -315,6 +356,7 @@ def stage(result, root: Path, progress: Optional[Callable[[int, int], None]] = N
             raise
         except Exception as exc:
             raise UpdateError(f"Could not download the checksum file: {exc}") from exc
+        _check_signature(result, text, fetch_text)
         wanted = parse_checksum(text, name)
         if not wanted:
             raise UpdateError("The checksum file for this release could not be read, so it was not downloaded.")
@@ -326,7 +368,9 @@ def stage(result, root: Path, progress: Optional[Callable[[int, int], None]] = N
         except Exception as exc:
             raise UpdateError(f"Could not download the update: {exc}") from exc
         if sha256_of(archive) != wanted:
-            raise UpdateError("The downloaded file does not match its checksum (it is damaged or incomplete). Nothing was installed.")
+            raise UpdateError(
+                "The downloaded file does not match its checksum (it is damaged or incomplete). Nothing was installed."
+            )
         tree = extract(archive, work / "tree")
         archive.unlink()
         check_tree(tree, version)
@@ -344,14 +388,39 @@ def _verify_new_code(tree: Path, root: Path, expected: str, run: Callable) -> No
     env = {k: v for k, v in os.environ.items() if k not in ("PYTHONPATH", "PYTHONHOME")}
     env.setdefault("QT_QPA_PLATFORM", "offscreen")
     try:
-        done = run([sys.executable, "-I", "-c", _CHECK, str(tree.resolve()), str(root.resolve())], capture_output=True, text=True,
-                   timeout=CHECK_SECONDS, env=env, cwd=str(tree))
+        done = run(
+            [sys.executable, "-I", "-c", _CHECK, str(tree.resolve()), str(root.resolve())],
+            capture_output=True,
+            text=True,
+            timeout=CHECK_SECONDS,
+            env=env,
+            cwd=str(tree),
+        )
     except (OSError, subprocess.SubprocessError) as exc:
         raise UpdateError(f"The new version could not be tried out ({exc}), so it was not installed.") from exc
     if done.returncode != 0 or done.stdout.strip().splitlines()[-1:] != [expected]:
         tail = (done.stderr or done.stdout or "").strip().splitlines()[-3:]
-        raise UpdateError("The new version did not start properly when tried, so it was not installed. Sluice is unchanged.\n"
-                          + "\n".join(tail))
+        raise UpdateError(
+            "The new version did not start properly when tried, so it was not installed. Sluice is unchanged.\n" + "\n".join(tail)
+        )
+    if (tree / "sluice" / "selftest.py").is_file():  # 0.13.1 (House Standard): the new version's own quick self-test too
+        code = "import sys; sys.path.insert(0, sys.argv[1]); from sluice.selftest import quick; raise SystemExit(quick())"
+        try:
+            done = run(
+                [sys.executable, "-I", "-c", code, str(tree.resolve())],
+                capture_output=True,
+                text=True,
+                timeout=CHECK_SECONDS,
+                env=env,
+                cwd=str(tree),
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise UpdateError(f"The new version's self-test could not run ({exc}), so it was not installed.") from exc
+        if done.returncode != 0:
+            tail = (done.stdout or done.stderr or "").strip().splitlines()[-2:]
+            raise UpdateError(
+                "The new version failed its own self-test, so it was not installed. Sluice is unchanged.\n" + "\n".join(tail)
+            )
 
 
 def _remove(path: Path) -> None:
@@ -400,7 +469,8 @@ def apply_staged(root: Path, run: Optional[Callable] = None) -> Optional[str]:
     shutil.rmtree(previous, ignore_errors=True)
     previous.mkdir()
     (previous / "manifest.json").write_text(
-        json.dumps({"version": current, "moved": moved, "added": added, "installed": version}), encoding="utf-8")
+        json.dumps({"version": current, "moved": moved, "added": added, "installed": version}), encoding="utf-8"
+    )
     try:
         for name in names:
             if name in moved:
@@ -412,8 +482,10 @@ def apply_staged(root: Path, run: Optional[Callable] = None) -> Optional[str]:
             _restore(root, previous, moved, added)
         except Exception:
             log.exception("could not put the old files back")
-            raise UpdateError(f"The update failed and the old files could not be fully restored ({exc}). "
-                              f"Unpack the release zip by hand; your settings are not affected.") from exc
+            raise UpdateError(
+                f"The update failed and the old files could not be fully restored ({exc}). "
+                f"Unpack the release zip by hand; your settings are not affected."
+            ) from exc
         raise UpdateError(f"The update could not be installed ({exc}). Sluice is as it was.") from exc
     discard_staged(root)
     log.info("updated %s -> %s", current, version)
@@ -472,8 +544,10 @@ def engine_rebuild_offer(root: Optional[Path], installed: str, shipped: str, old
     Nothing is offered without the Sluice folder, without an engine built before (the user chose the Python one) or without Rust."""
     if root is None or not installed or not older or not (root / "rust" / "sluice_dsp").is_dir() or which("cargo") is None:
         return ""
-    return (f"This update comes with a newer audio engine ({shipped}; yours is {installed}). Sluice works with yours, but the fixes "
-            "made since are only in the new one. Rebuilding it takes a minute or two; restart Sluice afterwards to use it.")
+    return (
+        f"This update comes with a newer audio engine ({shipped}; yours is {installed}). Sluice works with yours, but the fixes "
+        "made since are only in the new one. Rebuilding it takes a minute or two; restart Sluice afterwards to use it."
+    )
 
 
 def venv_for(python: str, root: Optional[Path] = None, prefix: Optional[str] = None, base: Optional[str] = None) -> Path:
@@ -491,6 +565,7 @@ def venv_for(python: str, root: Optional[Path] = None, prefix: Optional[str] = N
 def rebuild_state_path() -> Optional[Path]:
     try:
         from .logs import log_path
+
         return log_path().parent / "engine-rebuild.json"
     except Exception:  # no log folder: nothing remembered
         return None
@@ -499,6 +574,7 @@ def rebuild_state_path() -> Optional[Path]:
 def remember_rebuild(result: str, path: Optional[Path] = None, when: Optional[float] = None) -> None:
     """Keep the last rebuild attempt for the bug report: when, and "ok" or what went wrong."""
     import time
+
     path = path or rebuild_state_path()
     if path is None:
         return
@@ -518,8 +594,14 @@ def last_rebuild(path: Optional[Path] = None) -> Optional[dict]:
     return data if isinstance(data, dict) and "at" in data and "result" in data else None
 
 
-def rebuild_engine(root: Path, run: Callable = subprocess.run, python: str = sys.executable, prefix: Optional[str] = None,
-                   base: Optional[str] = None, remember: Optional[Callable] = None) -> str:
+def rebuild_engine(
+    root: Path,
+    run: Callable = subprocess.run,
+    python: str = sys.executable,
+    prefix: Optional[str] = None,
+    base: Optional[str] = None,
+    remember: Optional[Callable] = None,
+) -> str:
     """Build the Rust engine again, as ./install.sh does (maturin, into the environment Sluice runs in). Returns "" when it worked,
     else what went wrong, ending with the build's last lines (all of them are in the log)."""
     remember_rebuild_ = remember or remember_rebuild
@@ -542,8 +624,12 @@ def rebuild_engine(root: Path, run: Callable = subprocess.run, python: str = sys
             return problem
         if done.returncode != 0:
             lines = (done.stderr or done.stdout or "").strip().splitlines()
-            log.warning("rebuilding the Rust engine failed (%s, VIRTUAL_ENV=%s):\n%s", " ".join(command[-2:]), venv,
-                        "\n".join(lines[-12:]))
+            log.warning(
+                "rebuilding the Rust engine failed (%s, VIRTUAL_ENV=%s):\n%s",
+                " ".join(command[-2:]),
+                venv,
+                "\n".join(lines[-12:]),
+            )
             last = [line.strip() for line in lines if line.strip()][-2:]
             problem = "the build failed" + (f" ({' / '.join(last)})" if last else "") + "; the rest is in the log"
             remember_rebuild_(problem)
@@ -556,6 +642,7 @@ def rebuild_engine(root: Path, run: Callable = subprocess.run, python: str = sys
 # ----------------------------------------------------------------------------- moving out of the download folder (0.12.0)
 def _program_dir() -> Path:
     from .launcher import program_dir
+
     return program_dir()
 
 
@@ -573,6 +660,7 @@ def runs_from_download(root: Optional[Path]) -> bool:
 
 def move_log() -> Path:
     from . import logs
+
     return logs.state_dir() / "move.log"
 
 
@@ -582,18 +670,21 @@ def move_script(root: Path) -> list:
     ``--finish-move``, which deletes the old folder. If install.sh fails, the old folder is untouched and still works."""
     new = _program_dir() / ".venv" / "bin" / "sluice"
     log_file = move_log()
-    script = ('sleep 3; mkdir -p "$(dirname "$3")"; '
-              'command -v notify-send >/dev/null 2>&1 && notify-send -i sluice "Moving Sluice" '
-              '"This takes a minute or two. Sluice starts again when it is done."; '
-              'if bash "$1/install.sh" --no-system --yes > "$3" 2>&1; then exec "$2" --finish-move "$1"; fi; '
-              'command -v notify-send >/dev/null 2>&1 && notify-send -i sluice "Sluice could not be moved" '
-              '"It still works from where it was. Details: $3"; exec "$1/.venv/bin/sluice"')
+    script = (
+        'sleep 3; mkdir -p "$(dirname "$3")"; '
+        'command -v notify-send >/dev/null 2>&1 && notify-send -i sluice "Moving Sluice" '
+        '"This takes a minute or two. Sluice starts again when it is done."; '
+        'if bash "$1/install.sh" --no-system --yes > "$3" 2>&1; then exec "$2" --finish-move "$1"; fi; '
+        'command -v notify-send >/dev/null 2>&1 && notify-send -i sluice "Sluice could not be moved" '
+        '"It still works from where it was. Details: $3"; exec "$1/.venv/bin/sluice"'
+    )
     return ["sh", "-c", script, "sluice-move", str(root), str(new), str(log_file)]
 
 
 def finish_move(old: Path) -> str:
     """In the moved copy: delete the old download folder, if it plainly is one. Returns a sentence for the status bar."""
     from .uninstall import folder_problem
+
     old = Path(old)
     if not old.exists():
         return f"Sluice now runs from {_program_dir()}."

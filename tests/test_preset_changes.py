@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Keep, save as new, or undo a change made to one of your own presets."""
+
 import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -60,7 +61,9 @@ def test_update_asks_first_and_does_nothing_on_no(rig, monkeypatch):
     engine.set_effect_param(compressor(engine).id, "ratio", 3.5)
     dialog._update_presets_button()
     asked = []
-    monkeypatch.setattr(QMessageBox, "question", staticmethod(lambda *a, **k: asked.append(a[2]) or QMessageBox.StandardButton.No))
+    monkeypatch.setattr(
+        QMessageBox, "question", staticmethod(lambda *a, **k: asked.append(a[2]) or QMessageBox.StandardButton.No)
+    )
     dialog.mine_update_button.click()
     assert asked and "Mine" in asked[0] and "gone" in asked[0]
     assert saved_ratio(dialog) == old and not dialog.mine_changed_row.isHidden()
@@ -101,7 +104,9 @@ def test_built_in_choices_get_no_update_note(rig):
     win, engine = rig
     dialog = EffectsDialog(engine, engine.mixer.channel("mic"), win)
     dialog._choose("room", "Noisy")
-    engine.set_effect_param(next(e for e in engine.mixer.channel("mic").effects if e.type == "noise_reducer").id, "reduction_db", 3.0)
+    engine.set_effect_param(
+        next(e for e in engine.mixer.channel("mic").effects if e.type == "noise_reducer").id, "reduction_db", 3.0
+    )
     dialog._update_presets_button()
     assert dialog.mine_changed_row.isHidden()  # Room and Voice style have their own Reset, and are never overwritten
 

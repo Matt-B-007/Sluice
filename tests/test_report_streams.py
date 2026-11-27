@@ -1,8 +1,11 @@
 """0.12.4: the bug report lists each app's stream and its device, memory over time, and says plainly when the kernel log had
 no USB lines."""
+
 from sluice import efficiency, report
 
-SINKS = "52\tsluice_ch_game\tPipeWire\tfloat32le 2ch 48000Hz\tRUNNING\n60\tsluice_ch_chat\tPipeWire\tfloat32le 2ch 48000Hz\tIDLE\n"
+SINKS = (
+    "52\tsluice_ch_game\tPipeWire\tfloat32le 2ch 48000Hz\tRUNNING\n60\tsluice_ch_chat\tPipeWire\tfloat32le 2ch 48000Hz\tIDLE\n"
+)
 SOURCES = "188\tsluice_solo_mic_mic\tPipeWire\tfloat32le 1ch 48000Hz\tRUNNING\n201\tsluice_ch_game.monitor\tPipeWire\tfloat32le 2ch\tRUNNING\n"
 INPUTS = """Sink Input #201
 	Driver: PipeWire
@@ -64,14 +67,22 @@ def test_an_empty_kernel_log_means_no_usb_events(monkeypatch):
     def run(command, timeout=6.0):
         calls.append(command[0])
         return "-- No entries --" if command[0] == "journalctl" else "(dmesg: read kernel buffer failed: Operation not permitted)"
+
     monkeypatch.setattr(report, "_run", run)
     assert report.usb_events() == "No USB connect, disconnect or reset lines in the kernel log of the last hours."
     assert calls == ["journalctl"]  # it went on to dmesg and showed "Operation not permitted"
 
 
 def test_dmesg_is_still_tried_when_the_journal_cannot_be_read(monkeypatch):
-    monkeypatch.setattr(report, "_run", lambda command, timeout=6.0: "(journalctl not found)" if command[0] == "journalctl"
-                        else "2026-11-26T10:00:00 usb 1-4: USB disconnect, device number 7")
+    monkeypatch.setattr(
+        report,
+        "_run",
+        lambda command, timeout=6.0: (
+            "(journalctl not found)"
+            if command[0] == "journalctl"
+            else "2026-11-26T10:00:00 usb 1-4: USB disconnect, device number 7"
+        ),
+    )
     assert "USB disconnect" in report.usb_events()
 
 
@@ -98,8 +109,10 @@ def test_streams_without_an_app_name_get_their_other_names():
 
 
 def test_the_standard_placeholders():
-    text = report.anonymize("192.168.1.20 fe80::1c2b:3aff:fe4d:5e6f 00:1A:7D:DA:71:13 76561198012345678 steam:1240440 "
-                            "token=ghp_abcdefghijklmnopqrstuvwxyz0123 Z:\\home\\matt\\Games")
+    text = report.anonymize(
+        "192.168.1.20 fe80::1c2b:3aff:fe4d:5e6f 00:1A:7D:DA:71:13 76561198012345678 steam:1240440 "
+        "token=ghp_abcdefghijklmnopqrstuvwxyz0123 Z:\\home\\matt\\Games"
+    )
     assert text == "<ip> <ip> <mac> <steamid> steam:1240440 token=<secret> ~\\Games"
 
 

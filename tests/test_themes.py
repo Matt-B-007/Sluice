@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Themes: the colour sets, reading a theme file safely, the saved choice, and switching in the window."""
+
 import json
 import os
 
@@ -7,14 +8,17 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
 
-from sluice.skin_calm import CALM_DARK, CALM_LIGHT  # 0.12.2: the window is in Calm, which has its own Dark and Light
 from sluice import themes
 from sluice.model import Mixer
+
+# 0.13.1: Calm shows the House Standard's colours by default ("Skin's own colours" is off), so Dark and Light are the themes' own
+CALM_DARK, CALM_LIGHT = themes.DARK, themes.LIGHT
 
 
 def _sheet():
     """The shared sheet (menus, dialogs, tooltips): on the application since 0.11.7."""
     from PySide6.QtWidgets import QApplication
+
     return QApplication.instance().styleSheet()
 
 
@@ -47,9 +51,9 @@ def test_the_colours_with_a_fixed_meaning_are_the_same_everywhere():
 
 def test_the_default_theme_is_dark_and_dark_is_the_new_look():
     assert themes.DEFAULT == "dark"
-    assert themes.BUILT_IN["dark"].colors["bg"] == "#0e1116"
-    assert themes.BUILT_IN["dark"].colors["panel"] == "#151a22"
-    assert themes.BUILT_IN["dark"].colors["accent"] == "#3ddbc0"
+    assert themes.BUILT_IN["dark"].colors["bg"] == "#0c1016"  # 0.13.1: the House navy
+    assert themes.BUILT_IN["dark"].colors["panel"] == "#131922"
+    assert themes.BUILT_IN["dark"].colors["accent"] == "#60a5fa"  # 0.13.1: Sluice's blue
 
 
 def test_switching_back_to_a_theme_reuses_its_style_sheet():
@@ -72,28 +76,55 @@ def test_short_hex_values_and_capitals_are_accepted_and_normalised():
     assert theme.colors["accent"] == "#aabbcc" and theme.colors["bg"] == "#0a0b0c"
 
 
-@pytest.mark.parametrize("bad", [
-    "red", "#12345", "#gggggg", "rgb(1,2,3)", "", 7, None, ["#fff"],
-    "#fff; } QWidget { background: url(http://x/y) }",   # an attempt to add rules to the style sheet
-    "#ffffff\n} QPushButton{",
-    "url(file:///etc/passwd)",
-])
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "red",
+        "#12345",
+        "#gggggg",
+        "rgb(1,2,3)",
+        "",
+        7,
+        None,
+        ["#fff"],
+        "#fff; } QWidget { background: url(http://x/y) }",  # an attempt to add rules to the style sheet
+        "#ffffff\n} QPushButton{",
+        "url(file:///etc/passwd)",
+    ],
+)
 def test_anything_that_is_not_a_plain_hex_colour_is_refused(bad):
     with pytest.raises(themes.ThemeError):
         themes.parse({"name": "x", "colors": {"accent": bad}})
 
 
 def test_a_theme_cannot_carry_anything_but_colours():
-    theme, notes = themes.parse({"name": "x", "colors": {"accent": "#123456", "stylesheet": "QWidget{}", "evil": "#fff"},
-                                 "stylesheet": "QWidget { display: none }"})
+    theme, notes = themes.parse(
+        {
+            "name": "x",
+            "colors": {"accent": "#123456", "stylesheet": "QWidget{}", "evil": "#fff"},
+            "stylesheet": "QWidget { display: none }",
+        }
+    )
     assert "stylesheet" not in theme.colors and "evil" not in theme.colors
     assert len(notes) == 2 and all("ignored" in n for n in notes)
     sheet = themes.build_style(theme.colors)
     assert "display: none" not in sheet and "QWidget{}" not in sheet
 
 
-@pytest.mark.parametrize("data", [[], "text", 5, None, {"name": ""}, {"name": 5}, {"name": "x", "base": "blue"},
-                                  {"name": "x", "colors": []}, {"name": "x", "colors": "#fff"}])
+@pytest.mark.parametrize(
+    "data",
+    [
+        [],
+        "text",
+        5,
+        None,
+        {"name": ""},
+        {"name": 5},
+        {"name": "x", "base": "blue"},
+        {"name": "x", "colors": []},
+        {"name": "x", "colors": "#fff"},
+    ],
+)
 def test_a_file_that_is_not_a_theme_is_refused_with_a_message(data):
     with pytest.raises(themes.ThemeError) as raised:
         themes.parse(data)
@@ -171,7 +202,7 @@ def test_importing_the_same_name_again_replaces_it(tmp_path):
 
 
 def test_a_stored_theme_can_be_exported_and_imported_again_unchanged(tmp_path):
-    original = themes.BUILT_IN["purple"]
+    original = themes.BUILT_IN["synthwave"]
     path = tmp_path / "out.json"
     path.write_text(json.dumps(themes.export_dict(themes.Theme("custom:x", "Mine", "dark", original.colors))))
     again, notes = themes.load_file(path)
@@ -210,7 +241,7 @@ def test_the_folder_is_capped_so_a_crowded_one_cannot_slow_the_menu(tmp_path):
 def test_resolve_follows_the_system_and_falls_back_to_dark(tmp_path):
     assert themes.resolve("system", system_dark=True).id == "dark"
     assert themes.resolve("system", system_dark=False).id == "light"
-    assert themes.resolve("purple").id == "purple"
+    assert themes.resolve("synthwave").id == "synthwave"
     for unknown in ("nonsense", "", "custom:missing", None, 5):
         assert themes.resolve(unknown, True, tmp_path).id == "dark"
 
@@ -218,8 +249,8 @@ def test_resolve_follows_the_system_and_falls_back_to_dark(tmp_path):
 def test_the_theme_is_saved_with_the_settings_and_junk_is_ignored():
     mixer = Mixer.default()
     assert mixer.theme == "dark"
-    mixer.theme = "purple"
-    assert Mixer.from_dict(mixer.to_dict()).theme == "purple"
+    mixer.theme = "synthwave"
+    assert Mixer.from_dict(mixer.to_dict()).theme == "synthwave"
     for junk in (5, None, "", "x" * 200, ["dark"]):
         data = Mixer.default().to_dict()
         data["theme"] = junk
@@ -262,25 +293,42 @@ def _theme_menu(win):
 
 def test_the_theme_menu_lists_the_themes_and_ticks_the_one_in_use(win):
     menu = _theme_menu(win)
-    items = [(a.text().replace("&", ""), a.isChecked()) for a in menu.actions() if a.text() and a.isCheckable()
-             and "Nexus colours" not in a.text()]
-    assert items == [("Dark", True), ("Light", False), ("High contrast", False), ("Retro Purple", False),
-                     ("Midnight Blue", False), ("Amber Console", False), ("Paper", False), ("Match my system", False)]
+    items = [
+        (a.text().replace("&", ""), a.isChecked())
+        for a in menu.actions()
+        if a.text() and a.isCheckable() and "Nexus colours" not in a.text()
+    ]
+    assert items == [
+        ("Dark", True),
+        ("Light", False),
+        ("High contrast", False),
+        ("Colour-blind friendly", False),
+        ("OLED Black", False),
+        ("Paper", False),
+        ("Synthwave", False),
+        ("Match my system", False),
+    ]  # 0.13.1
     tail = [a.text().replace("&", "") for a in menu.actions() if a.text() and not a.isCheckable()]
-    assert tail == ["Your themes", "Manage", "Import theme…", "Export current theme…", "Get more themes"]  # headings, then the rest
+    assert tail == [
+        "Your themes",
+        "Manage",
+        "Import theme…",
+        "Export current theme…",
+        "Get more themes",
+    ]  # headings, then the rest
 
 
 def test_choosing_a_theme_changes_the_window_the_setting_and_the_tick(win):
     dark_sheet = _sheet()
     menu = _theme_menu(win)
-    next(a for a in menu.actions() if a.text() == "Retro Purple").trigger()
-    assert win.engine.mixer.theme == "purple" and _sheet() != dark_sheet
-    assert themes.BUILT_IN["purple"].colors["bg"] in _sheet()
-    assert "Retro Purple" in win.status_label.text()
+    next(a for a in menu.actions() if a.text() == "Synthwave").trigger()
+    assert win.engine.mixer.theme == "synthwave" and _sheet() != dark_sheet
+    assert themes.BUILT_IN["synthwave"].colors["bg"] in _sheet()
+    assert "Synthwave" in win.status_label.text()
     menu = _theme_menu(win)
-    assert [a.text() for a in menu.actions() if a.isChecked() and "Nexus colours" not in a.text()] == ["Retro Purple"]
+    assert [a.text() for a in menu.actions() if a.isChecked() and "Nexus colours" not in a.text()] == ["Synthwave"]
     assert win.autosave_timer.isActive()  # the choice is part of the settings that save themselves
-    assert json.loads(win._snapshot())["theme"] == "purple"
+    assert json.loads(win._snapshot())["theme"] == "synthwave"
 
 
 def test_the_palette_follows_the_theme_for_dialogs_and_tooltips(win):
@@ -313,7 +361,7 @@ def test_match_my_system_follows_the_desktop(win, monkeypatch):
     monkeypatch.setattr(win, "_system_is_dark", lambda: True)
     win._on_system_scheme_changed()  # the desktop switched while Sluice was running
     assert CALM_DARK["bg"] in _sheet()
-    win.apply_theme("purple")
+    win.apply_theme("synthwave")
     before = _sheet()
     monkeypatch.setattr(win, "_system_is_dark", lambda: False)
     win._on_system_scheme_changed()  # not following the system any more: nothing changes
@@ -352,7 +400,9 @@ def test_importing_a_theme_stores_it_applies_it_and_lists_it(win, tmp_path):
 def test_a_hard_to_read_theme_asks_first_and_is_not_kept_on_no(win, tmp_path, monkeypatch):
     source = _write(tmp_path / "faint.json", name="Faint", colors={"text": "#232830", "panel": "#232830", "bg": "#232830"})
     asked = []
-    monkeypatch.setattr(QMessageBox, "question", staticmethod(lambda *a, **k: asked.append(a[2]) or QMessageBox.StandardButton.No))
+    monkeypatch.setattr(
+        QMessageBox, "question", staticmethod(lambda *a, **k: asked.append(a[2]) or QMessageBox.StandardButton.No)
+    )
     with pytest.raises(themes.ThemeError):
         win.import_theme_from(source)
     assert asked and "may be hard to read" in asked[0] and "Faint" in asked[0]
@@ -383,13 +433,13 @@ def test_import_theme_shows_the_problem_in_a_message_box(win, tmp_path, monkeypa
 
 
 def test_export_writes_a_file_that_imports_back(win, tmp_path):
-    win.apply_theme("purple")
+    win.apply_theme("synthwave")
     target = tmp_path / "export.json"
     win.export_theme_to(target)
     data = json.loads(target.read_text())
-    assert data["name"] == "Retro Purple copy" and set(data["colors"]) == set(themes.TOKEN_NAMES)
+    assert data["name"] == "Synthwave copy" and set(data["colors"]) == set(themes.TOKEN_NAMES)
     stored = win.import_theme_from(target)
-    assert stored.colors == themes.BUILT_IN["purple"].colors
+    assert stored.colors == themes.BUILT_IN["synthwave"].colors
 
 
 def test_removing_the_theme_in_use_goes_back_to_dark(win, tmp_path):
@@ -447,12 +497,12 @@ def test_get_more_themes_opens_the_collection_on_the_project_page(win, monkeypat
 def test_an_imported_copy_of_a_built_in_theme_shows_the_built_in_one_ticked(win, tmp_path):
     folder = tmp_path / "themes"
     folder.mkdir()
-    (folder / "midnight-blue.json").write_text(json.dumps(themes.export_dict(themes.BUILT_IN["midnight"])))
-    win.engine.mixer.theme = "custom:midnight-blue"
+    (folder / "oled-black.json").write_text(json.dumps(themes.export_dict(themes.BUILT_IN["oled"])))
+    win.engine.mixer.theme = "custom:oled-black"
     menu = _theme_menu(win)
     items = [(a.text().replace("&", ""), a.isChecked()) for a in menu.actions() if a.text() and a.isCheckable()]
-    assert items.count(("Midnight Blue", True)) == 1 and sum(1 for n, _ in items if n == "Midnight Blue") == 1
-    assert win.current_theme().name == "Midnight Blue"
+    assert items.count(("OLED Black", True)) == 1 and sum(1 for n, _ in items if n == "OLED Black") == 1
+    assert win.current_theme().name == "OLED Black"
 
 
 def test_the_window_tick_sends_the_heartbeat(win, monkeypatch):
@@ -465,9 +515,9 @@ def test_the_window_tick_sends_the_heartbeat(win, monkeypatch):
 
 
 def test_a_retired_pack_theme_whose_file_is_gone_falls_back_to_the_closest_built_in(tmp_path):
-    assert themes.resolve("custom:ocean", folder=tmp_path).id == "midnight"
+    assert themes.resolve("custom:ocean", folder=tmp_path).id == "dark"  # 0.13.1: Midnight Blue retired
     assert themes.resolve("custom:cassette", folder=tmp_path).id == "paper"
-    assert themes.resolve("custom:halloween", folder=tmp_path).id == "amber"
+    assert themes.resolve("custom:halloween", folder=tmp_path).id == "dark"  # 0.13.1: Amber Console retired
     assert themes.resolve("custom:something-else", folder=tmp_path).id == themes.DEFAULT
 
 

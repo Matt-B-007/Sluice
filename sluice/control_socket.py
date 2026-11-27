@@ -10,6 +10,7 @@ Wire format: one JSON object per line in, one JSON object per line out::
 
     {"cmd": "level", "channel": "music", "mix": "listen", "step": -2}   ->   {"ok": true, ...}
 """
+
 from __future__ import annotations
 
 import json
@@ -25,7 +26,7 @@ from .model import MAX_DB, MIN_DB, clamp_db
 log = logging.getLogger("sluice.control_socket")
 
 MAX_REQUEST = 64 * 1024
-WATCH_MS = 100       # how often a watching program gets the meters
+WATCH_MS = 100  # how often a watching program gets the meters
 MAX_WATCHERS = 8
 STATES = ("on", "off", "toggle")
 
@@ -70,7 +71,9 @@ class ControlApi:
                 "show": lambda _request: {},  # the window itself is raised by whoever listens (see ui_controllers)
             }.get(cmd)
             if handler is None:
-                raise ControlError(f"unknown command {cmd!r}; try: status, level, mute, master, master-mute, assign, hear-broadcast, mic-mute, meters, watch, show")
+                raise ControlError(
+                    f"unknown command {cmd!r}; try: status, level, mute, master, master-mute, assign, hear-broadcast, mic-mute, meters, watch, show"
+                )
             result = handler(request)
             if cmd not in ("status", "meters"):
                 self.on_change(cmd)
@@ -85,7 +88,7 @@ class ControlApi:
     def _channel(self, request: dict):
         name = request.get("channel")
         if not isinstance(name, str) or not name.strip():
-            raise ControlError("which channel? (\"channel\" is missing)")
+            raise ControlError('which channel? ("channel" is missing)')
         wanted = name.strip().lower()
         for channel in self.engine.mixer.channels:
             if wanted in (channel.id, channel.label.lower()):
@@ -95,7 +98,7 @@ class ControlApi:
 
     def _mix(self, name: object):
         if not isinstance(name, str) or not name.strip():
-            raise ControlError("which mix? (\"mix\" is missing)")
+            raise ControlError('which mix? ("mix" is missing)')
         wanted = name.strip().lower()
         for mix in self.engine.mixer.mixes:
             if wanted in (mix.id, mix.label.lower()):
@@ -132,7 +135,7 @@ class ControlApi:
     def _target_db(self, request: dict, current: float) -> float:
         db, step = self._number(request, "db"), self._number(request, "step")
         if (db is None) == (step is None):
-            raise ControlError("give exactly one of \"db\" (set) or \"step\" (change by)")
+            raise ControlError('give exactly one of "db" (set) or "step" (change by)')
         return clamp_db(db if db is not None else current + step)
 
     # --------------------------------------------------------------------- commands
@@ -170,9 +173,12 @@ class ControlApi:
         mixes = self._mixes(request)
         # work out every new value first: a linked channel moves both faders on one call, so a step must not be applied twice
         targets = [(mix, self._target_db(request, channel.levels.get(mix.id, 0.0))) for mix in mixes]
-        for mix, new in (targets[:1] if channel.linked else targets):
+        for mix, new in targets[:1] if channel.linked else targets:
             self.engine.set_level(channel.id, mix.id, new)
-        return {"channel": channel.id, "levels": {m.label.lower(): round(channel.levels.get(m.id, 0.0), 1) for m in self.engine.mixer.mixes}}
+        return {
+            "channel": channel.id,
+            "levels": {m.label.lower(): round(channel.levels.get(m.id, 0.0), 1) for m in self.engine.mixer.mixes},
+        }
 
     def _mute(self, request: dict) -> dict:
         channel = self._channel(request)
@@ -202,7 +208,7 @@ class ControlApi:
     def _assign(self, request: dict) -> dict:
         app = request.get("app")
         if not isinstance(app, str) or not app.strip():
-            raise ControlError("which app? (\"app\" is missing)")
+            raise ControlError('which app? ("app" is missing)')
         target = request.get("channel")
         if target in (None, "", "none"):
             self.engine.assign_app(app.strip().lower(), None)
@@ -222,7 +228,7 @@ class ControlServer:
         self.api = api
         self.path = path
         self._buffers: dict = {}
-        self._watchers: list = []      # connections that asked to watch the meters: they get a line 10 times a second
+        self._watchers: list = []  # connections that asked to watch the meters: they get a line 10 times a second
         self._watch_timer = None
         self.server = QLocalServer()
         self.server.setSocketOptions(QLocalServer.SocketOption.UserAccessOption)
@@ -425,7 +431,9 @@ def build_parser():
 
     def amount(p):
         group = p.add_mutually_exclusive_group(required=True)
-        group.add_argument("--set", dest="db", type=float, metavar="DB", help="set to this level in dB (%d to +%d)" % (MIN_DB, MAX_DB))
+        group.add_argument(
+            "--set", dest="db", type=float, metavar="DB", help="set to this level in dB (%d to +%d)" % (MIN_DB, MAX_DB)
+        )
         group.add_argument("--step", type=float, metavar="DB", help="change by this many dB (negative: quieter), e.g. --step=-2")
 
     def state(p):
@@ -433,7 +441,9 @@ def build_parser():
 
     sub.add_parser("status", help="show every level and mute")
     sub.add_parser("meters", help="show the live levels (0 to 1) once")
-    sub.add_parser("watch", help="print the live levels 10 times a second until you press Ctrl+C (for widgets and other programs)")
+    sub.add_parser(
+        "watch", help="print the live levels 10 times a second until you press Ctrl+C (for widgets and other programs)"
+    )
     p = sub.add_parser("level", help="channel fader")
     p.add_argument("channel")
     p.add_argument("--mix", help="listen or broadcast (default: both)")

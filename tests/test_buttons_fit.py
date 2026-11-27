@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """No button may be bigger than the space made for it: a style sheet's border and minimum height once added 2 px to the microphone
 mute button of the Mic card, so its bottom edge was cut off."""
+
 import pytest
 
 from PySide6.QtCore import QPoint, QRect
@@ -38,13 +39,17 @@ def _problems(win):
             name = f"{strip.channel.id}/{button.objectName() or button.accessibleName() or button.text()}"
             fixed = button.minimumSize() == button.maximumSize() and button.minimumSize().height() > 0
             if fixed and button.size() != button.maximumSize():
-                found.append(f"{name} was made {button.maximumSize().width()}x{button.maximumSize().height()} but is "
-                             f"{button.width()}x{button.height()}")
+                found.append(
+                    f"{name} was made {button.maximumSize().width()}x{button.maximumSize().height()} but is "
+                    f"{button.width()}x{button.height()}"
+                )
             parent = button.parentWidget()
             while parent is not None and parent is not strip.parentWidget():
                 rect = QRect(button.mapTo(parent, QPoint(0, 0)), button.size())
                 if not parent.rect().contains(rect):
-                    found.append(f"{name} sticks out of {parent.objectName() or type(parent).__name__}: {rect.getRect()} in {parent.rect().getRect()}")
+                    found.append(
+                        f"{name} sticks out of {parent.objectName() or type(parent).__name__}: {rect.getRect()} in {parent.rect().getRect()}"
+                    )
                     break
                 parent = parent.parentWidget()
     return found

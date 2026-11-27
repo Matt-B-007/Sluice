@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """0.12.2: the one-line installer (get.sh), the Stable and Beta channels, and versions that sort as people mean them."""
+
 import hashlib
 import json
 import os
@@ -15,10 +16,18 @@ from sluice.update_check import is_newer, is_prerelease, pick_release, version_k
 ROOT = Path(__file__).resolve().parent.parent
 
 
-@pytest.mark.parametrize("older,newer", [
-    ("0.12.2", "0.13.0-beta.1"), ("0.13.0-beta.1", "0.13.0-beta.2"), ("0.13.0-beta.2", "0.13.0-rc.1"),
-    ("0.13.0-rc.1", "0.13.0"), ("0.13.0", "0.13.1"), ("v0.9.9", "v0.10.0"), ("0.13.0-alpha", "0.13.0-beta"),
-])
+@pytest.mark.parametrize(
+    "older,newer",
+    [
+        ("0.12.2", "0.13.0-beta.1"),
+        ("0.13.0-beta.1", "0.13.0-beta.2"),
+        ("0.13.0-beta.2", "0.13.0-rc.1"),
+        ("0.13.0-rc.1", "0.13.0"),
+        ("0.13.0", "0.13.1"),
+        ("v0.9.9", "v0.10.0"),
+        ("0.13.0-alpha", "0.13.0-beta"),
+    ],
+)
 def test_versions_sort_as_people_mean_them(older, newer):
     assert is_newer(newer, older) and not is_newer(older, newer)
 
@@ -30,8 +39,10 @@ def test_a_beta_is_not_the_same_as_its_final_release():
 
 
 RELEASES = [
-    {"tag_name": "v0.13.0-beta.2", "prerelease": True}, {"tag_name": "v0.13.0-beta.1", "prerelease": True},
-    {"tag_name": "v0.12.3", "prerelease": False, "draft": True}, {"tag_name": "v0.12.2", "prerelease": False},
+    {"tag_name": "v0.13.0-beta.2", "prerelease": True},
+    {"tag_name": "v0.13.0-beta.1", "prerelease": True},
+    {"tag_name": "v0.12.3", "prerelease": False, "draft": True},
+    {"tag_name": "v0.12.2", "prerelease": False},
     {"tag_name": "v0.12.1", "prerelease": False},
 ]
 
@@ -58,6 +69,7 @@ def test_check_follows_the_channel_and_can_go_back_to_stable():
 
 def test_the_channel_is_saved():
     from sluice.model import Mixer
+
     mixer = Mixer.demo()
     assert mixer.update_channel == "stable"
     mixer.update_channel = "beta"
@@ -74,6 +86,7 @@ def test_settings_offers_stable_and_beta(qapp, tmp_path, monkeypatch):
     from sluice.linker import NullLinker
     from sluice.model import Mixer
     from sluice.ui import MainWindow
+
     engine = Engine(Mixer.demo(), MockSystem(), NullIO(realtime=False), NullLinker())
     engine.start()
     win = MainWindow(engine, tmp_path / "config.json")
@@ -93,14 +106,23 @@ def release(tmp_path: Path, tag: str, version: str) -> dict:
     folder.mkdir(exist_ok=True)
     zip_path = folder / f"sluice-{tag}.zip"
     with zipfile.ZipFile(zip_path, "w") as z:
-        z.writestr("sluice/install.sh", '#!/usr/bin/env bash\necho "installing ' + version + ' with: $*"\n'
-                   'echo "from get: ${SLUICE_FROM_GET:-}"\npwd > "$HOME/install-ran-in"\n')
+        z.writestr(
+            "sluice/install.sh",
+            '#!/usr/bin/env bash\necho "installing ' + version + ' with: $*"\n'
+            'echo "from get: ${SLUICE_FROM_GET:-}"\npwd > "$HOME/install-ran-in"\n',
+        )
         z.writestr("sluice/sluice/__init__.py", f'__version__ = "{version}"\n')
     digest = hashlib.sha256(zip_path.read_bytes()).hexdigest()
     (folder / f"sluice-{tag}.zip.sha256").write_text(f"{digest}  sluice-{tag}.zip\n")
     url = zip_path.as_uri()
-    return {"tag_name": tag, "prerelease": "beta" in tag, "assets": [
-        {"name": zip_path.name, "browser_download_url": url}, {"name": zip_path.name + ".sha256", "browser_download_url": url + ".sha256"}]}
+    return {
+        "tag_name": tag,
+        "prerelease": "beta" in tag,
+        "assets": [
+            {"name": zip_path.name, "browser_download_url": url},
+            {"name": zip_path.name + ".sha256", "browser_download_url": url + ".sha256"},
+        ],
+    }
 
 
 def run_get(tmp_path: Path, releases: list, *args: str) -> subprocess.CompletedProcess:
@@ -123,8 +145,11 @@ def test_get_sh_installs_the_latest_stable_release_and_leaves_nothing(tmp_path):
 
 
 def test_get_sh_beta_and_a_particular_version(tmp_path):
-    releases = [release(tmp_path, "v0.13.0-beta.1", "0.13.0-beta.1"), release(tmp_path, "v0.12.2", "0.12.2"),
-                release(tmp_path, "v0.12.1", "0.12.1")]
+    releases = [
+        release(tmp_path, "v0.13.0-beta.1", "0.13.0-beta.1"),
+        release(tmp_path, "v0.12.2", "0.12.2"),
+        release(tmp_path, "v0.12.1", "0.12.1"),
+    ]
     assert "installing 0.13.0-beta.1" in run_get(tmp_path, releases, "--beta").stdout
     assert "installing 0.12.1" in run_get(tmp_path, releases, "--version", "0.12.1").stdout
 
@@ -151,6 +176,7 @@ def test_the_double_click_installer_and_the_release_tool_are_there():
 # ----------------------------------------------------------------------------- releasing: the tag can never disagree with the code
 def _load_checker():
     import importlib.util
+
     spec = importlib.util.spec_from_file_location("check_version", ROOT / "tools" / "check-version.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -172,8 +198,16 @@ def test_a_tag_that_does_not_match_the_code_is_explained(tmp_path):
 
 def test_release_sh_sets_a_new_version_everywhere(tmp_path):
     import shutil
-    for name in ("sluice/__init__.py", "pyproject.toml", "CHANGELOG.md", "sluice/data/CHANGELOG.md", "tools/release.sh",
-                 "tools/check-version.py", "README.md"):
+
+    for name in (
+        "sluice/__init__.py",
+        "pyproject.toml",
+        "CHANGELOG.md",
+        "sluice/data/CHANGELOG.md",
+        "tools/release.sh",
+        "tools/check-version.py",
+        "README.md",
+    ):
         (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(ROOT / name, tmp_path / name)
     out = subprocess.run(["bash", "tools/release.sh", "--set", "0.99.0-beta.1"], cwd=tmp_path, capture_output=True, text=True)
@@ -194,16 +228,19 @@ def test_the_release_workflow_makes_test_versions_pre_releases_and_nothing_else(
     assert "startsWith(github.ref_name, 'v0.')" not in workflow  # every 0.x used to be a pre-release, hiding it from Stable
 
 
-@pytest.mark.parametrize("version,tags,ok,says", [
-    ("0.1.1-beta.1", ["v0.1.0", "v0.1.1"], False, "0.1.2-beta.1"),  # the slip: a beta of a version that is already out
-    ("0.1.2-beta.1", ["v0.1.0", "v0.1.1"], True, ""),
-    ("0.1.2", ["v0.1.1", "v0.1.2-beta.3"], True, ""),               # the final version after its betas
-    ("0.1.2-beta.2", ["v0.1.1", "v0.1.2-beta.3"], False, "0.1.2-beta.3"),
-    ("0.1.1", ["v0.1.0", "v0.1.1"], False, "already been released"),
-    ("0.1.0", ["v0.1.1"], False, "not newer than 0.1.1"),
-    ("0.0.9", ["v0.1.1"], False, "not newer than 0.1.1"),
-    ("0.1.0", [], True, ""),                                        # the very first release
-])
+@pytest.mark.parametrize(
+    "version,tags,ok,says",
+    [
+        ("0.1.1-beta.1", ["v0.1.0", "v0.1.1"], False, "0.1.2-beta.1"),  # the slip: a beta of a version that is already out
+        ("0.1.2-beta.1", ["v0.1.0", "v0.1.1"], True, ""),
+        ("0.1.2", ["v0.1.1", "v0.1.2-beta.3"], True, ""),  # the final version after its betas
+        ("0.1.2-beta.2", ["v0.1.1", "v0.1.2-beta.3"], False, "0.1.2-beta.3"),
+        ("0.1.1", ["v0.1.0", "v0.1.1"], False, "already been released"),
+        ("0.1.0", ["v0.1.1"], False, "not newer than 0.1.1"),
+        ("0.0.9", ["v0.1.1"], False, "not newer than 0.1.1"),
+        ("0.1.0", [], True, ""),  # the very first release
+    ],
+)
 def test_a_release_must_be_newer_than_everything_already_out(version, tags, ok, says):
     """0.12.3: no one is ever offered a version that is not newer than what is out, so releasing one is refused."""
     found = _load_checker().not_newer(version, tags)
@@ -212,8 +249,16 @@ def test_a_release_must_be_newer_than_everything_already_out(version, tags, ok, 
 
 def test_check_version_new_reads_the_released_tags_from_git(tmp_path):
     import shutil
-    for name in ("sluice/__init__.py", "sluice/update_check.py", "pyproject.toml", "CHANGELOG.md", "sluice/data/CHANGELOG.md",
-                 "tools/check-version.py", "README.md"):
+
+    for name in (
+        "sluice/__init__.py",
+        "sluice/update_check.py",
+        "pyproject.toml",
+        "CHANGELOG.md",
+        "sluice/data/CHANGELOG.md",
+        "tools/check-version.py",
+        "README.md",
+    ):
         (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(ROOT / name, tmp_path / name)
     git = lambda *a: subprocess.run(["git", *a], cwd=tmp_path, capture_output=True, text=True, check=True)  # noqa: E731
@@ -235,10 +280,13 @@ def test_a_release_without_its_zip_is_never_offered():
     offered an update that cannot be installed."""
     zip_assets = lambda tag: [  # noqa: E731
         {"name": f"sluice-{tag}.zip", "browser_download_url": f"https://example.org/sluice-{tag}.zip"},
-        {"name": f"sluice-{tag}.zip.sha256", "browser_download_url": f"https://example.org/sluice-{tag}.zip.sha256"}]
-    releases = [{"tag_name": "v0.13.0", "assets": []},
-                {"tag_name": "v0.12.3", "assets": [zip_assets("v0.12.3")[0]]},  # the zip but no checksum
-                {"tag_name": "v0.12.2", "assets": zip_assets("v0.12.2"), "html_url": "https://example.org/r"}]
+        {"name": f"sluice-{tag}.zip.sha256", "browser_download_url": f"https://example.org/sluice-{tag}.zip.sha256"},
+    ]
+    releases = [
+        {"tag_name": "v0.13.0", "assets": []},
+        {"tag_name": "v0.12.3", "assets": [zip_assets("v0.12.3")[0]]},  # the zip but no checksum
+        {"tag_name": "v0.12.2", "assets": zip_assets("v0.12.2"), "html_url": "https://example.org/r"},
+    ]
     assert pick_release(releases, "stable")["tag_name"] == "v0.12.2"
     result = update_check.check("0.12.1", fetch=lambda url, timeout: releases)
     assert result.status == "available" and result.latest == "0.12.2" and result.zip_url.endswith("v0.12.2.zip")
@@ -247,13 +295,14 @@ def test_a_release_without_its_zip_is_never_offered():
 
 def test_the_release_is_published_only_once_its_files_are_attached():
     workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text()
-    assert "draft: true" in workflow and "--draft=false" in workflow and 'sluice-${TAG}.zip.sha256' in workflow
+    assert "draft: true" in workflow and "--draft=false" in workflow and "sluice-${TAG}.zip.sha256" in workflow
 
 
 # ----------------------------------------------------------------------------- 0.12.3: quicker voice meters
 def test_meters_update_60_times_a_second_and_fall_25_db_a_second(qapp):
     from sluice import ui_meters
     from sluice.ui_meters import LevelMeter
+
     assert ui_meters.METER_FPS == 60 and abs(ui_meters.FALL_PER_S * 60 - 25.0) < 1e-9
     ui_meters.FRAME_S = 1.0 / ui_meters.METER_FPS  # the rate while Sluice's window is the one in use
     meter = LevelMeter()
@@ -270,6 +319,7 @@ def test_a_microphone_meter_shows_the_sound_before_the_effects():
     from sluice.engine import Engine
     from sluice.linker import NullLinker
     from sluice.model import Mixer
+
     engine = Engine(Mixer.demo(), MockSystem(), NullIO(realtime=False), NullLinker())
     engine.start()
     try:

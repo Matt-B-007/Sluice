@@ -18,6 +18,7 @@ Device convention (the ``device`` / ``devices`` entries):
   * ``""``   - follow the system default device
   * ``"name"`` - a specific PulseAudio/PipeWire device name
 """
+
 from __future__ import annotations
 
 import json
@@ -50,7 +51,8 @@ PREFIX = "sluice_"
 # The working name was "pwmix"; devices it left behind (after a crash) can be removed with ``sluice --cleanup``.
 LEGACY_PREFIX = "pwmix_"
 
-CHANNEL_COLORS = ["#4da3ff", "#3ddc84", "#ff9f43", "#b78cff", "#ff6b9a", "#f5c542", "#35d0c0", "#8aa0b8"]
+# 0.13.1: no blue (Sluice's accent is blue now, and a blue card would look selected); channels made before keep their colour
+CHANNEL_COLORS = ["#2dd4bf", "#3ddc84", "#ff9f43", "#b78cff", "#ff6b9a", "#f5c542", "#e879f9", "#8aa0b8"]
 
 
 def db_to_linear(db: float) -> float:
@@ -120,8 +122,14 @@ def new_effect_id() -> str:
 # part of it: they stay wherever you put them.
 BUILTIN_ORDER = ("gain", "highpass", "echo_reducer", "noise_reducer", "noise_gate", "eq", "compressor", "limiter")
 BUILTIN_NAMES = {
-    "gain": "Gain", "highpass": "High-pass", "echo_reducer": "Echo Reducer", "noise_reducer": "Noise Reducer", "noise_gate": "Noise Gate", "eq": "3-Band EQ",
-    "compressor": "Compressor", "limiter": "Limiter",
+    "gain": "Gain",
+    "highpass": "High-pass",
+    "echo_reducer": "Echo Reducer",
+    "noise_reducer": "Noise Reducer",
+    "noise_gate": "Noise Gate",
+    "eq": "3-Band EQ",
+    "compressor": "Compressor",
+    "limiter": "Limiter",
 }
 VOICE_CHAIN = ("highpass", "echo_reducer", "noise_reducer", "noise_gate", "eq", "compressor", "limiter")
 
@@ -141,8 +149,9 @@ def canonical_order(effects: list) -> list:
 def voice_chain_effects(stable_ids: bool = False) -> list:
     """A fresh recommended voice chain; every setting starts at the effect's default.
     ``stable_ids`` gives the same ids every time (used for the factory layout, so two defaults compare equal)."""
-    return [Effect(f"voice-{key}" if stable_ids else new_effect_id(), "builtin", BUILTIN_NAMES[key], type=key)
-            for key in VOICE_CHAIN]
+    return [
+        Effect(f"voice-{key}" if stable_ids else new_effect_id(), "builtin", BUILTIN_NAMES[key], type=key) for key in VOICE_CHAIN
+    ]
 
 
 # ---------------------------------------------------------------------- channels
@@ -166,9 +175,10 @@ class Channel:
 
     @property
     def description(self) -> str:
-        """What apps (Discord, a browser, a game) show as an output device to play into: "Sluice (Game) output".
-        The plain "Sluice (Game)" is kept for the recording device (see ``solo_description``), so the two never share a name."""
-        return f"Sluice ({self.label}) output"
+        """What apps show as an output device to play into: "Play to Sluice (Game)". 0.13.1: it was "Sluice (Game) output",
+        which OBS listed right next to the recording feed: easy to pick by mistake, and it is taken before every fader. The
+        new name says what it is for and sorts away from the "for OBS" devices. "Sluice (Game)" stays the input device."""
+        return f"Play to Sluice ({self.label})"
 
     @property
     def solo_sink_name(self) -> str:
@@ -182,7 +192,8 @@ class Channel:
 
     @property
     def solo_sink_description(self) -> str:
-        return f"Sluice ({self.label}) recording feed"
+        """0.13.1 (was "Sluice (Game) recording feed"): what OBS's Audio Output Capture lists; after the Broadcast fader."""
+        return f"Sluice ({self.label}) for OBS"
 
 
 WIDGET_KINDS = ("mic", "dial", "strip", "channel", "mix")  # the desktop widgets (ui_widgets); channel and mix are new in 0.11.5
@@ -206,6 +217,7 @@ def clean_widget_spec(spec) -> dict | None:
     if spec["kind"] == "channel" and out["channel"] is None:
         return None  # a channel widget is for one channel
     from .desktop_place import clean_places
+
     places = clean_places(spec.get("places"))
     if places:  # where it was on each screen (0.11.5)
         out["places"] = places
@@ -230,7 +242,7 @@ class Mix:
 
     @property
     def description(self) -> str:
-        return f"Sluice ({self.label}) feed"
+        return f"Sluice ({self.label}) for OBS"  # 0.13.1 (was "Sluice (Broadcast) feed")
 
     @property
     def source_description(self) -> str:
@@ -261,17 +273,23 @@ class Mixer:
         self.devices_for_channels = True
         self.ask_devices_for_channels = False  # set on loading older settings where some app channels have none (asked once)
         self.auto_update = False  # download new releases in the background and install them when Sluice closes (off by default)
+        # 0.13.1 (House Standard): a daily look for a new version (on by default; it only shows the update pill), the last
+        # time one was made, and a version the person chose to skip
+        self.check_daily = True
+        self.last_update_check = 0.0
+        self.skipped_version = ""
         self.layout = "columns"  # how the channels are laid out: "columns" (a card each) or "rows" (a line each); a saved "free" (gone in 0.11.5) loads as columns
-        self.widget_skin = ""   # 0.11.6: the desktop widgets' own skin; "" is the same as the window
+        self.widget_skin = ""  # 0.11.6: the desktop widgets' own skin; "" is the same as the window
         self.widget_theme = ""  # ...and their own theme; "" is the same as the window
-        self.skin_colors = True  # Nexus and Tile show their own colours on Dark (Tile on Light too); off: every theme keeps its own
-        self.see_through = True  # 0.11.7: Glass on KDE makes the window itself see-through (KWin blurs the wallpaper behind it)
+        self.skin_colors = False  # 0.13.1: off by default (the House Standard's colours in every skin); on: Calm and Tile show their own colours on Dark and Light
         self.reduce_effects = False  # Nexus: no shimmer on the rings and no waveform on the faders (for slow or busy machines)
         self.desktop_widgets: list = []  # widgets left on the desktop: [{kind, mix, channel, x, y}], see ui_widgets
         self.hidden_widgets: list = []  # 0.11.7: the ones Ctrl+Shift+W put away, kept so the same key brings them back after a restart
         self.skin = "calm"  # the skin: the shapes and sizes of the window ("calm", "nexus", "tile" or "glass"), apart from the colour theme
         self.theme = "dark"  # a theme id: dark, light, contrast, purple, system, or custom:<name> (an imported file)
-        self.close_action = DEFAULT_CLOSE  # "quit", "minimize" (keep running in the taskbar) or "tray" (keep running in the system tray)
+        self.close_action = (
+            DEFAULT_CLOSE  # "quit", "minimize" (keep running in the taskbar) or "tray" (keep running in the system tray)
+        )
 
     # ------------------------------------------------------------------ the optional third mix
     @property
@@ -448,6 +466,9 @@ class Mixer:
             "buffer_frames": self.buffer_frames,
             "close_action": self.close_action,
             "auto_update": self.auto_update,
+            "check_daily": self.check_daily,
+            "last_update_check": self.last_update_check,
+            "skipped_version": self.skipped_version,
             "update_channel": self.update_channel,
             "level_units": self.level_units,
             "recording_devices_follow_broadcast": self.devices_follow_broadcast,
@@ -456,12 +477,12 @@ class Mixer:
             "skin": self.skin,
             "layout": self.layout,
             "skin_colors": self.skin_colors,
+            "house_colors": True,  # 0.13.1: settings written from now on; older ones move to the House colours once
             "widget_skin": self.widget_skin,
             # (0.12.3: the old "look", "look_colors" and "widget_look" are no longer written: "Go back" now goes to a 0.12
             # version, which reads "skin". Settings that still have them load as before.)
             "widget_theme": self.widget_theme,
             "reduce_effects": self.reduce_effects,
-            "see_through": self.see_through,
             "desktop_widgets": [dict(w) for w in self.desktop_widgets],
             "hidden_widgets": [dict(w) for w in self.hidden_widgets],
             "channels": [
@@ -494,8 +515,7 @@ class Mixer:
             ],
             "recording_mix": self.has_recording_mix,
             "mixes": [
-                {"id": m.id, "device": m.device, "gain_db": m.gain_db, "mute": m.mute, "limiter": m.limiter}
-                for m in self.mixes
+                {"id": m.id, "device": m.device, "gain_db": m.gain_db, "mute": m.mute, "limiter": m.limiter} for m in self.mixes
             ],
         }
 
@@ -511,6 +531,11 @@ class Mixer:
         if data.get("close_action") in CLOSE_CHOICES:
             mixer.close_action = data["close_action"]
         mixer.auto_update = data.get("auto_update") is True
+        mixer.check_daily = data.get("check_daily") is not False
+        if isinstance(data.get("last_update_check"), (int, float)) and not isinstance(data.get("last_update_check"), bool):
+            mixer.last_update_check = float(data["last_update_check"])
+        if isinstance(data.get("skipped_version"), str) and len(data["skipped_version"]) <= 40:
+            mixer.skipped_version = data["skipped_version"]
         if data.get("update_channel") in ("stable", "beta"):
             mixer.update_channel = data["update_channel"]
         if data.get("level_units") in LEVEL_UNITS:
@@ -529,23 +554,26 @@ class Mixer:
             skin = "calm"
         if isinstance(skin, str) and skin in ("calm", "nexus", "tile", "glass"):
             mixer.skin = skin
-        if data.get("layout") in ("columns", "rows"):
-            mixer.layout = data["layout"]  # the Free layout (before 0.11.5) and anything unknown stay Columns; Free's positions are dropped
+        if data.get("layout") in ("columns", "rows", "list"):
+            mixer.layout = data[
+                "layout"
+            ]  # the Free layout (before 0.11.5) and anything unknown stay Columns; Free's positions are dropped
         widget_skin = data.get("widget_skin", data.get("widget_look"))
-        if widget_skin in ("", "calm", "nexus", "tile", "glass"):
+        if widget_skin in ("", "calm", "tile"):
             mixer.widget_skin = widget_skin
+        elif widget_skin in ("nexus", "glass"):  # 0.13.1: retired
+            mixer.widget_skin = {"nexus": "tile", "glass": "calm"}[widget_skin]
         elif widget_skin == "original":
             mixer.widget_skin = "calm"
         widget_theme = data.get("widget_theme")
         if isinstance(widget_theme, str) and len(widget_theme) <= 80:
             mixer.widget_theme = widget_theme  # an id that no longer exists shows the window's theme
         skin_colors = data.get("skin_colors", data.get("look_colors"))
-        if isinstance(skin_colors, bool):
+        if isinstance(skin_colors, bool) and data.get("house_colors") is True:
             mixer.skin_colors = skin_colors
-        else:  # settings from before 0.11.5 had one switch for Nexus and one for Tile: off only if both were switched off
-            mixer.skin_colors = not (data.get("nexus_colors") is False and data.get("tile_colors") is False)
+        else:  # 0.13.1: settings from before start on the House Standard's colours (the skins' own were on by default)
+            mixer.skin_colors = False
         mixer.reduce_effects = data.get("reduce_effects") is True
-        mixer.see_through = data.get("see_through") is not False
         for key_name in ("desktop_widgets", "hidden_widgets"):
             widgets = data.get(key_name)
             if not isinstance(widgets, list):
@@ -600,11 +628,15 @@ class Mixer:
             channel = Channel(
                 id=cid,
                 label=label.strip()[:24] if isinstance(label, str) and label.strip() else cid,
-                color=item["color"] if isinstance(item.get("color"), str) and _COLOR_RE.match(item["color"]) else CHANNEL_COLORS[len(channels) % len(CHANNEL_COLORS)],
+                color=item["color"]
+                if isinstance(item.get("color"), str) and _COLOR_RE.match(item["color"])
+                else CHANNEL_COLORS[len(channels) % len(CHANNEL_COLORS)],
                 linked=item["linked"] if isinstance(item.get("linked"), bool) else True,
                 separate=item["separate_output"] if isinstance(item.get("separate_output"), bool) else False,
             )
-            channel.devices = [d for d in item.get("devices", []) if isinstance(d, str)] if isinstance(item.get("devices"), list) else []
+            channel.devices = (
+                [d for d in item.get("devices", []) if isinstance(d, str)] if isinstance(item.get("devices"), list) else []
+            )
             channel.apps = [a for a in item.get("apps", []) if isinstance(a, str)] if isinstance(item.get("apps"), list) else []
             levels = item.get("levels") if isinstance(item.get("levels"), dict) else {}
             mutes = item.get("mutes") if isinstance(item.get("mutes"), dict) else {}

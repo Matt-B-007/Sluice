@@ -11,11 +11,22 @@ before: the panel only shows the actions and triggers them.
 
 Columns and Rows are in the top bar (and Settings). What is set once and left alone (the skin, the theme, the buffer, startup, updates, your settings files) is in the Settings window.
 Up and Down move between the rows, Enter or Space uses one, Escape closes."""
+
 from __future__ import annotations
 
 from PySide6.QtCore import QPoint, QSize, Qt
 from PySide6.QtGui import QPainter
-from PySide6.QtWidgets import QAbstractButton, QCheckBox, QFrame, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QAbstractButton,
+    QCheckBox,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
 
 from . import themes, ui_icons as icons
 from .ui_base import plain
@@ -37,6 +48,7 @@ class Switch(QCheckBox):
 
     def paintEvent(self, _event) -> None:
         from PySide6.QtGui import QColor
+
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         on = self.isChecked()
@@ -51,6 +63,7 @@ class Switch(QCheckBox):
         p.drawEllipse(x, 3, 16, 16)
         if self.hasFocus():
             from PySide6.QtGui import QPen
+
             p.setBrush(Qt.BrushStyle.NoBrush)
             p.setPen(QPen(QColor(themes.color("accent")), 2))
             p.drawRoundedRect(self.rect().adjusted(1, 1, -2, -2), 10, 10)
@@ -199,8 +212,11 @@ class MenuPanel(QWidget):
         w = window
         tiles = QHBoxLayout()
         tiles.setSpacing(8)
-        for action, icon, short in ((w.mic_action, "mic", "Mute my mic"), (w.add_channel_action, "plus", "Add channel"),
-                                    (w.refresh_action, "refresh", "Refresh")):
+        for action, icon, short in (
+            (w.mic_action, "mic", "Mute my mic"),
+            (w.add_channel_action, "plus", "Add channel"),
+            (w.refresh_action, "refresh", "Refresh"),
+        ):
             tile = PanelTile(self, action, icon, short)
             self.tiles.append(tile)
             tiles.addWidget(tile)
@@ -211,8 +227,9 @@ class MenuPanel(QWidget):
         mutes = QHBoxLayout()
         mutes.setSpacing(8)
         self.mute_buttons = []
-        for action, icon in ([(a, {"monitor": "headphones", "stream": "broadcast"}.get(mix, "record")) for mix, a in w.mute_actions.items()]
-                             + [(w.hear_action, "speaker")]):
+        for action, icon in [
+            (a, {"monitor": "headphones", "stream": "broadcast"}.get(mix, "record")) for mix, a in w.mute_actions.items()
+        ] + [(w.hear_action, "speaker")]:
             button = QPushButton()
             button.setObjectName("panelchip")
             button.setCheckable(True)
@@ -223,7 +240,6 @@ class MenuPanel(QWidget):
             mutes.addWidget(button)
         column.addLayout(mutes)
         column.addSpacing(4)
-
 
         self._section(column, "Mixer and desktop")
         self._row(column, None, "widgets", submenu=w.widgets_menu, name="Desktop widgets")
@@ -302,7 +318,9 @@ class MenuPanel(QWidget):
             button.setText(short)
             button.setIcon(icons.icon(button.icon_name, themes.color("mute") if a.isChecked() else themes.color("text2"), 14))
             button.setAccessibleName(label)
-            button.setAccessibleDescription(("on" if a.isChecked() else "off") + (f", {a.shortcut().toString()}" if a.shortcut().toString() else ""))
+            button.setAccessibleDescription(
+                ("on" if a.isChecked() else "off") + (f", {a.shortcut().toString()}" if a.shortcut().toString() else "")
+            )
             button.setVisible(a.isVisible())
 
     def focusable(self) -> list:

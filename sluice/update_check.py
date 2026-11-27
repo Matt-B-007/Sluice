@@ -11,6 +11,7 @@ The address must answer with JSON in one of these shapes::
                                                             "latest" address skips those)
     {"version": "0.4.0",   "url": "https://..."}
 """
+
 from __future__ import annotations
 
 import json
@@ -27,14 +28,15 @@ MAX_NOTES = 4000
 
 @dataclass
 class UpdateResult:
-    status: str      # "not_configured", "up_to_date", "available" or "error"
+    status: str  # "not_configured", "up_to_date", "available" or "error"
     current: str
     latest: str = ""
-    page: str = ""   # where to download it
+    page: str = ""  # where to download it
     message: str = ""
     notes: str = ""  # what the newer version changes (the release's notes), if it published any
-    zip_url: str = ""       # the release zip and its .sha256 file, when the release has both (needed to update in place)
+    zip_url: str = ""  # the release zip and its .sha256 file, when the release has both (needed to update in place)
     checksum_url: str = ""
+    signature_url: str = ""  # 0.13.1: the checksum file's minisign signature (<checksum>.minisig), when the release has one
 
 
 def parse_version(text: str) -> tuple:
@@ -108,6 +110,19 @@ def find_assets(data: dict) -> tuple:
     return "", ""
 
 
+def find_signature(data: dict, checksum_url: str) -> str:
+    """0.13.1: the address of ``<checksum file>.minisig`` in the same release, or ''."""
+    if not checksum_url:
+        return ""
+    wanted = checksum_url.rsplit("/", 1)[-1] + ".minisig"
+    for asset in data.get("assets") or []:
+        if isinstance(asset, dict) and asset.get("name") == wanted:
+            link = str(asset.get("browser_download_url") or "")
+            if link.lower().startswith("https://"):
+                return link
+    return ""
+
+
 def _fetch(url: str, timeout: float):
     if not url.lower().startswith("https://"):
         raise ValueError("the update address must start with https://")
@@ -121,8 +136,14 @@ def _fetch(url: str, timeout: float):
     return data
 
 
-def check(current: str, url: Optional[str] = None, fetch: Optional[Callable[[str, float], dict]] = None,
-          timeout: float = 6.0, channel: str = "stable", allow_older: bool = False) -> UpdateResult:
+def check(
+    current: str,
+    url: Optional[str] = None,
+    fetch: Optional[Callable[[str, float], dict]] = None,
+    timeout: float = 6.0,
+    channel: str = "stable",
+    allow_older: bool = False,
+) -> UpdateResult:
     """``allow_older``: offer the channel's newest release even when it is older than this one (going from a beta back to
     the latest stable version)."""
     url = url if url is not None else (os.environ.get("SLUICE_UPDATE_URL") or RELEASE_URL)
@@ -133,7 +154,11 @@ def check(current: str, url: Optional[str] = None, fetch: Optional[Callable[[str
         if isinstance(data, list):  # GitHub's list of releases; the channel decides whether betas count (0.12.2)
             data = pick_release(data, channel)
             if data is None:
-                raise ValueError("no release with its download found on the Stable channel" if channel != "beta" else "no release with its download found")
+                raise ValueError(
+                    "no release with its download found on the Stable channel"
+                    if channel != "beta"
+                    else "no release with its download found"
+                )
         latest = str(data.get("tag_name") or data.get("version") or "").strip()
         page = str(data.get("html_url") or data.get("url") or "")
         notes = str(data.get("body") or "").strip()[:MAX_NOTES]
@@ -146,5 +171,21 @@ def check(current: str, url: Optional[str] = None, fetch: Optional[Callable[[str
     newer = is_newer(latest, current) or (allow_older and version_key(latest) != version_key(current))
     status = "available" if newer else "up_to_date"
     zip_url, checksum_url = find_assets(data) if status == "available" else ("", "")
-    return UpdateResult(status, current, latest.lstrip("vV"), page, notes=notes if status == "available" else "",
-                        zip_url=zip_url, checksum_url=checksum_url)
+    signature_url = find_signature(data, checksum_url)
+    from . import signing
+
+    if status == "available" and zip_url and not signature_url and signing.REQUIRE_SIGNATURE:
+        # 0.13.1 (House Standard): a release without its signature is "not available yet" (it may still be uploading)
+        return UpdateResult(
+            "up_to_date", current, message=f"Sluice {latest.lstrip('vV')} is not signed yet, so it is not offered."
+        )
+    return UpdateResult(
+        status,
+        current,
+        latest.lstrip("vV"),
+        page,
+        notes=notes if status == "available" else "",
+        zip_url=zip_url,
+        checksum_url=checksum_url,
+        signature_url=signature_url,
+    )

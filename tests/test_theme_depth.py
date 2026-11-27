@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Every look on every theme: depth colours worked out from the theme, readable small text, visible handles and channel colours,
 keys that stand out from their tray, and each theme keeping its own identity (0.11.5)."""
+
 import glob
 from pathlib import Path
 
@@ -21,8 +22,8 @@ def all_themes():
 THEMES = all_themes()
 
 
-def test_there_are_28_themes():
-    assert len(THEMES) == 28
+def test_there_are_25_themes():
+    assert len(THEMES) == 25  # 0.13.1: 7 built in (3 moved in from the pack) + 18 in the pack (28 before)
 
 
 @pytest.mark.parametrize("skin", list(themes.SKINS))
@@ -55,7 +56,7 @@ def test_small_text_handles_and_channel_colours_can_be_seen_in_every_theme(skin)
 def test_shading_keeps_the_hue_of_a_strongly_coloured_theme():
     import colorsys
 
-    synthwave = themes.load_file(PACK / "synthwave.json")[0]
+    synthwave = themes.BUILT_IN["synthwave"]  # 0.13.1: built in
     d = depth.depth_colors(synthwave.colors)
     hue = colorsys.rgb_to_hls(*depth._rgb(synthwave.colors["panel"]))[0]
     for name in ("key_top", "key_bottom", "key_skirt"):
@@ -64,7 +65,7 @@ def test_shading_keeps_the_hue_of_a_strongly_coloured_theme():
 
 
 def test_very_dark_themes_get_lit_edges_instead_of_shadows():
-    oled = themes.load_file(PACK / "oled-black.json")[0]
+    oled = themes.BUILT_IN["oled"]  # 0.13.1: built in
     d = depth.depth_colors(oled.colors)
     assert d["very_dark"] and d["edge_light"] and d["shadow_alpha"] < 0.3
     assert depth.luminance(d["tray_top"]) > depth.luminance(oled.colors["bg"])  # the tray is lighter than a black floor
@@ -98,11 +99,13 @@ def test_look_colours_replace_only_dark_and_light(skin):
         dark = themes.skin_colors(themes.BUILT_IN["dark"], skin)
         assert dark["bg"] != themes.finish(themes.BUILT_IN["dark"].colors)["bg"]
         seen = {}
-        others = ("purple", "midnight", "amber", "contrast") + (() if skin == "nexus" else ("paper",))  # (Nexus is dark only)
+        others = ("synthwave", "oled", "colourblind", "contrast") + (
+            () if skin == "nexus" else ("paper",)
+        )  # (Nexus is dark only)
         for theme_id in others:
             shown = themes.skin_colors(themes.BUILT_IN[theme_id], skin)
             assert shown["bg"] == themes.BUILT_IN[theme_id].colors["bg"], theme_id  # every other theme keeps its own colours
-            seen[shown["bg"]] = theme_id
+            seen[(shown["bg"], shown["accent"])] = theme_id  # (OLED Black and High contrast share a black background)
         assert len(seen) == len(others)  # and they all still look different from each other
         light = themes.skin_colors(themes.BUILT_IN["light"], skin)
         paper = themes.skin_colors(themes.BUILT_IN["paper"], skin)
@@ -110,19 +113,24 @@ def test_look_colours_replace_only_dark_and_light(skin):
         themes.set_skin_colors(False)
         assert themes.skin_colors(themes.BUILT_IN["dark"], skin)["bg"] == themes.BUILT_IN["dark"].colors["bg"]
     finally:
-        themes.set_skin_colors(True)
+        themes.set_skin_colors(False)  # 0.13.1: off is the default
 
 
 def test_the_look_colours_setting_is_one_switch_and_old_settings_carry_over():
-    assert Mixer.demo().skin_colors is True
+    """0.13.1: off by default (the House Standard's colours in every skin); settings from before move to it once, and a choice
+    made from now on is kept."""
+    assert Mixer.demo().skin_colors is False
     data = Mixer.demo().to_dict()
-    assert data["skin_colors"] is True and "look_colors" not in data and "nexus_colors" not in data and "tile_colors" not in data
-    for old, expected in (({"nexus_colors": False, "tile_colors": False}, False), ({"nexus_colors": False}, True),
-                          ({"tile_colors": False}, True), ({}, True), ({"look_colors": False, "nexus_colors": True}, False)):
+    assert data["skin_colors"] is False and data["house_colors"] is True and "look_colors" not in data
+    for old in ({"skin_colors": True}, {"nexus_colors": True, "tile_colors": True}, {"look_colors": True}, {}):
         data = Mixer.demo().to_dict()
         data.pop("skin_colors")
+        data.pop("house_colors")
         data.update(old)
-        assert Mixer.from_dict(data).skin_colors is expected, old
+        assert Mixer.from_dict(data).skin_colors is False, old  # older settings: the House colours
+    data = Mixer.demo().to_dict()
+    data["skin_colors"] = True
+    assert Mixer.from_dict(data).skin_colors is True  # chosen in 0.13.1 or later: kept
 
 
 def test_a_theme_file_with_depth_colours_loads_and_exports_them(tmp_path):

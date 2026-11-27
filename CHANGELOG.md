@@ -1,5 +1,90 @@
 # Changelog
 
+## 0.13.1-beta.1
+A test version of 0.13.1: the House Standard look and screens, the audio mixed in Rust without Python, signed updates, and
+names that say which device is for OBS. There is no 0.13.0: it was skipped, and the normal release will be 0.13.1. Beta
+versions are only offered on the Beta channel (*Settings › Updates › Which versions*).
+
+**Sound**
+- **The audio is mixed in Rust, without Python, whenever it can be.** While every effect on every channel is one of Sluice's
+  own (the built-in effects, the noise and echo reducers, the gate, compressor and limiter), each audio block is mixed by the
+  Rust engine and never waits for Python's lock while the window is busy, the cause of the slow blocks in recent bug reports.
+  The meters, sleeping through silence, the guard against a broken app's NaN, the "only" outputs, the fader ramps and the mix
+  limiter all run there. Python takes the blocks back, from exactly where Rust left them, while it is needed: a VST3 plugin,
+  the Effects window's live view, or Measure my room. The bug report says which one mixes and why
+  (`blocks mixed by: ...`). The Python graph stays as the reference: a test plays a whole session through both, with switches
+  between them, and the sound matches block for block. `SLUICE_NO_NATIVE_GRAPH=1` keeps every block in Python.
+- **The gate, compressor and ceiling limiter are in Rust too** (the same results as the Python ones, checked by a test), and
+  every Rust effect now shares its settings with the window, so a turned knob reaches the sound whichever side is mixing.
+- **The Rust engine is now 0.12.0.** Sluice offers to rebuild it after the update; until then it works as before, in Python.
+
+**OBS and devices**
+- **The names say which device is for OBS:** a channel's playback device is "Play to Sluice (Game)", its recording device
+  "Sluice (Game) for OBS", and the Broadcast's "Sluice (Broadcast) for OBS". Inputs keep their names. (OBS cannot be moved
+  between devices by another program, and hiding a device from OBS also hides it from apps that play to it, so the name is
+  what steers you.)
+
+**The look (House Standard)**
+- **New colours:** navy greys and Sluice blue (#60A5FA on dark, #1D4ED8 on light); filled buttons are dark ink on dark, white
+  on light. **The logo** is one blue "S"; the coral is retired. The launcher icon is the S on a dark rounded square.
+- **Seven built-in themes:** Dark, Light, High contrast, Colour-blind friendly, OLED Black, Paper and Synthwave. Midnight Blue,
+  Amber Console and Retro Purple are retired: settings that chose them show Dark. A test checks every text colour on every
+  surface of every built-in theme for contrast. The themes in the `themes/` folder stay, but are no longer kept up to date.
+- **Cards:** quieter borders, corner brackets on the focused card, a glow only on the main button or the focused control, and a
+  faint grid behind the window that *Reduce effects* turns off. Channel colours no longer use the accent blue.
+- **The tray icon** shows idle, talking (the ring lights blue), muted (the red badge) and disconnected (grey), with an amber dot
+  for a warning and a red dot for a problem (top right while muted). Each state shows for at least 0.4 seconds, so it does not
+  flicker. **Icons** are Lucide's (ISC licence, only the ones used are bundled).
+- **Glass and Nexus are retired.** Settings that chose them show Calm and Tile. Nexus's second-screen layout lives on as
+  *Compact list (for a second screen)*, Ctrl+3, in every skin.
+
+**Screens (House Standard)**
+- **Help menu:** Report a problem · What's new · Keyboard shortcuts · Show the tour · About, then Sluice's own items. A **Help
+  (?) button** and the **Settings gear** sit together at the top right, after the update button (shown only when there is an
+  update).
+- **Report a problem** is one window: what happened, whether to include your settings (off), a preview of exactly what the
+  report holds, and Save, Copy and Open log folder. Sending is your choice: a private Discord ticket (recommended), or a GitHub
+  issue, which is public, and Sluice says so before opening it.
+- **Updates:** the window says "Sluice X is available" (and Beta when it is one) with *Update now*, *Later* and *Skip this
+  version*. Sluice looks for a new version once a day (on by default, *Settings › Updates*); it only shows the update button
+  and downloads nothing until you choose to. A skipped version is not offered again; a newer one is.
+- **Uninstall** is one window: settings and logs are kept unless you tick *Also delete my settings and logs*, the list shows
+  exactly what goes, the red Uninstall button is never the default, and a notification says what was removed.
+- **Settings** in the standard order: General · Appearance · Updates · Privacy · Audio · Controllers · Setup check · Advanced ·
+  About & uninstall (the red box is last).
+- **Ctrl+K searches everything Sluice can do** (every menu item, each channel's effects and mutes, every Settings page), **?**
+  opens the keyboard shortcuts (not while you type), and hover hints show shortcuts.
+- **A short tour** starts by itself on a new install only (it replaces the first-run hint), and *Help › Show the tour* shows it
+  again.
+- **Fonts:** everything from 0.12.7 (Sluice's own fonts for the whole window).
+
+**Security**
+- **Signed updates.** Every release's checksum files (`SHA256SUMS` and the zip's `.sha256`) are signed with minisign, and
+  Sluice carries both of its public keys (the main one and a backup) and accepts either. A release whose signature is wrong is
+  refused before anything is downloaded. One without a signature is still accepted by this version, so you can update to it
+  from older ones; from the next release, an unsigned release counts as "not available yet".
+- The release workflow stops before anything is made when the signing key is missing, writes the key only to a private file it
+  deletes straight after, checks both signatures against both public keys, and only then publishes the draft. Build
+  provenance is attested on public repositories only.
+
+**Command line and installer**
+- `sluice --self-test` (and `--quick`), `sluice --update` and `sluice --uninstall`. The installer takes `--no-launch`,
+  `--from-source` and `--uninstall`, and starts Sluice at the end when a desktop is there. The install line in the README stays
+  `curl ... | bash` (the House Standard's one recorded exception).
+- **Updating from versions before 0.11.6 now needs a fresh install** (the old update code they ask for is gone).
+
+**For developers**
+- **The tests are sealed off from the computer** they run on: their own home and settings folders, audio tools that refuse to
+  run, no audio servers, the same user name everywhere, only Sluice's bundled fonts, and a pretend Sluice running the whole
+  time. A test that only passes with no Sluice open, or with someone's fonts, now fails everywhere. You can push while Sluice
+  is open.
+- **All Python is laid out by `ruff format`** (pinned in `scripts/tool-versions`; `scripts/check.sh` checks it). That commit
+  only changes layout: `.git-blame-ignore-revs` tells `git blame` to look past it.
+- **Tests changed, and why:** tests that named the old theme colours, theme ids, skins, menu order, device names, the Help menu
+  items, the top bar's left-hand gear, and Settings opening on Appearance were updated to the new design. Each says what it
+  checks now. None was loosened: the contrast, layout and "text cut off" checks are as strict as before or stricter. The
+  Nexus card tests went with Nexus.
+
 ## 0.12.7
 Text is the same width on every computer: Sluice uses its own fonts, whatever fonts are installed.
 - **The Tile look's "Broadcast" was cut off on some computers.** GitHub's test machine has few fonts (mostly DejaVu), and there

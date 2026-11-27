@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Three mixes, the mic mute on its strip, presets, the menus, reset, links, the voice check."""
+
 import json
 import os
 
@@ -85,7 +86,9 @@ def test_every_column_label_fits_its_column_and_says_in_full_what_it_is_on_hover
     win.show()
     QTest.qWait(50)
     mic = strip_for(win, "mic")
-    for label in (l for l in mic.findChildren(QLabel) if l.objectName() == "tag" and l.text() in ("LISTEN", "BROADCAST", "RECORDING")):
+    for label in (
+        l for l in mic.findChildren(QLabel) if l.objectName() == "tag" and l.text() in ("LISTEN", "BROADCAST", "RECORDING")
+    ):
         needed = QFontMetrics(label.font()).horizontalAdvance(label.text())  # the font carries the style sheet's size and spacing
         assert label.width() >= needed, (label.text(), label.width(), needed)
         assert label.toolTip()
@@ -337,8 +340,9 @@ def test_the_measure_my_room_tip_is_shown_once_and_measuring_picks_the_room(two)
 # ------------------------------------------------------------------- the Compressor hint
 def feed(io, engine, amplitude, blocks=40):
     tone = (amplitude * np.sin(2 * np.pi * 300 * np.arange(SR) / SR)).astype(np.float32)
-    io.fixed_inputs = {c.id: np.stack((tone, tone)) if c.id == "mic" else np.zeros((2, 1), dtype=np.float32)
-                       for c in engine.mixer.channels}
+    io.fixed_inputs = {
+        c.id: np.stack((tone, tone)) if c.id == "mic" else np.zeros((2, 1), dtype=np.float32) for c in engine.mixer.channels
+    }
     for _ in range(blocks):
         io.process_once(512)
 
@@ -464,8 +468,18 @@ def test_the_voice_button_is_on_the_gate_and_the_compressor_pages_of_a_microphon
 def test_the_menus_hold_the_agreed_items(two):
     win, _, _ = two
     assert [m.title().replace("&", "") for m in win.action_groups] == ["File", "Mixer", "Window", "Settings", "Help"]
-    assert texts(menu_of(win, "Help"))[-7:] == ["Report a problem", "Community", "Join the Discord", "Project page on GitHub",
-                                                "About", "About Sluice", "Uninstall Sluice\u2026"]
+    # 0.13.1: the House Standard's Help order, then Sluice's own items; Uninstall is in Settings > About & uninstall
+    assert texts(menu_of(win, "Help")) == [
+        "Report a problem\u2026",
+        "What's new",
+        "Keyboard shortcuts",
+        "Show the tour",
+        "About Sluice",
+        "Sluice",
+        "I heard a glitch",
+        "Join the Discord",
+        "Project page on GitHub",
+    ]
 
 
 def test_every_shortcut_survived_the_move(two):
@@ -479,7 +493,11 @@ def test_every_shortcut_survived_the_move(two):
     assert keys["Mute my microphone"] == "Ctrl+M" and keys["Hear Broadcast"] == "Ctrl+H"  # 0.11.6: away from Ctrl+Shift+B
     assert keys["Mute Listen"] == "Ctrl+Shift+L" and keys["Mute Broadcast"] == "Ctrl+Shift+B"
     assert keys["Full screen"] == "F11" and keys["Keyboard shortcuts"] == "F1" and keys["Save settings"] == "Ctrl+S"
-    assert keys["Quit"] == "Ctrl+Q" and keys["Columns (a card for each channel)"] == "Ctrl+1" and keys["Rows (a line for each channel)"] == "Ctrl+2"
+    assert (
+        keys["Quit"] == "Ctrl+Q"
+        and keys["Columns (a card for each channel)"] == "Ctrl+1"
+        and keys["Rows (a line for each channel)"] == "Ctrl+2"
+    )
     assert keys["Reset window size"] == "Ctrl+0" and keys["Show or hide my widgets"] == "Ctrl+Shift+W"
 
 
@@ -500,7 +518,9 @@ def test_the_settings_menu_ticks_follow_the_real_state(two, tmp_path, monkeypatc
 def test_the_minimized_start_option_says_where_it_goes(two):
     win, engine, _ = two
     win._refresh_background_menu()
-    assert win.autostart_actions["minimized"].text() == "Start minimized to the taskbar"  # no tray chosen (or none on this desktop)
+    assert (
+        win.autostart_actions["minimized"].text() == "Start minimized to the taskbar"
+    )  # no tray chosen (or none on this desktop)
 
 
 def test_the_controllers_item_lives_in_settings_under_its_own_heading(two):
@@ -564,7 +584,9 @@ def test_reset_in_demo_mode_has_nothing_to_reset(qapp):
 def test_reset_mentions_what_is_kept(two, monkeypatch):
     win, _, _ = two
     asked = []
-    monkeypatch.setattr(QMessageBox, "question", staticmethod(lambda *a, **k: asked.append(a[2]) or QMessageBox.StandardButton.No))
+    monkeypatch.setattr(
+        QMessageBox, "question", staticmethod(lambda *a, **k: asked.append(a[2]) or QMessageBox.StandardButton.No)
+    )
     win.reset_settings()
     assert "presets" in asked[0] and "config.before-reset.json" in asked[0]
 
@@ -575,9 +597,9 @@ def test_the_help_links_open_the_right_pages(two, monkeypatch):
     opened = []
     monkeypatch.setattr(QDesktopServices, "openUrl", staticmethod(lambda url: opened.append(url.toString()) or True))
     help_menu = menu_of(win, "Help")
-    for label in ("Report a problem", "Join the Discord", "Project page on GitHub"):
+    for label in ("Join the Discord", "Project page on GitHub"):  # 0.13.1: Report a problem opens the Report dialog now
         next(a for a in help_menu.actions() if a.text().replace("&", "") == label).trigger()
-    assert opened == [ui_module.ISSUES_URL, ui_module.DISCORD_URL, ui_module.PROJECT_URL]
+    assert opened == [ui_module.DISCORD_URL, ui_module.PROJECT_URL]
     assert ui_module.DISCORD_URL == "https://discord.gg/awDvJ5Vj2S" and ui_module.ISSUES_URL.endswith("/Sluice/issues")
 
 
@@ -615,7 +637,8 @@ def test_the_dropout_label_reads_well_and_explains_itself(two):
     win, engine, io = two
     engine._quiet_until = 0.0
     from sluice import events
-    events.clear()    # starting the engine just now changed links: that is not what this test is about
+
+    events.clear()  # starting the engine just now changed links: that is not what this test is about
     io.xruns, io.xruns_ours = 1, 0
     win._tick_engine()
     assert win.perf_label.text().endswith("1 dropout")

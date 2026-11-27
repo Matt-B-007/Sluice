@@ -5,6 +5,7 @@ When PipeWire restarts, every program connected to it loses the connection, Slui
 gone and the JACK client is dead. Reconnecting in place would mean rebuilding every connection, so Sluice does the safe
 thing: it waits until the server answers again, saves its settings, and starts itself afresh with the same arguments.
 """
+
 from __future__ import annotations
 
 import logging
@@ -49,7 +50,7 @@ def restart_command(show_window: bool = False) -> list:
         command = [part for part in command if part != "--minimized"]
     if "--finish-move" in command:  # done once already (0.12.0)
         at = command.index("--finish-move")
-        del command[at:at + 2]
+        del command[at : at + 2]
     return command
 
 

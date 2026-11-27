@@ -9,6 +9,7 @@ is not broken after three words, and the main button in the accent colour. Its l
 ``information``, ``warning``, ``critical`` and ``question`` take the same arguments as QMessageBox's functions of the same names and
 return the same buttons. While a test has put its own function in QMessageBox's place, they call that instead, so a test can answer
 them."""
+
 from __future__ import annotations
 
 from html import escape
@@ -71,8 +72,11 @@ class Message(QMessageBox):
         self.setIconPixmap(badge(self.kind, self.devicePixelRatioF()))
 
     def setIcon(self, icon) -> None:  # noqa: N802  (Qt's name) the desktop's icons become Sluice's drawn ones
-        self.kind = {QMessageBox.Icon.Warning: "warning", QMessageBox.Icon.Critical: "critical",
-                     QMessageBox.Icon.Information: "information"}.get(icon, "question")
+        self.kind = {
+            QMessageBox.Icon.Warning: "warning",
+            QMessageBox.Icon.Critical: "critical",
+            QMessageBox.Icon.Information: "information",
+        }.get(icon, "question")
         self._dress()
 
     def setWindowTitle(self, title: str) -> None:  # noqa: N802
@@ -91,7 +95,9 @@ class Message(QMessageBox):
             return
         heading = getattr(self, "_heading", "")
         html = body if _rich(body) else escape(body, quote=False).replace("\n", "<br>")
-        top = f"<p style='font-size:17px; font-weight:600; margin:0 0 6px 0'>{escape(heading, quote=False)}</p>" if heading else ""
+        top = (
+            f"<p style='font-size:17px; font-weight:600; margin:0 0 6px 0'>{escape(heading, quote=False)}</p>" if heading else ""
+        )
         super().setText(f"<div style='min-width:{MIN_TEXT_WIDTH}px'>{top}{html}</div>")
 
     def text(self) -> str:
@@ -137,7 +143,6 @@ def critical(parent, title: str, text: str, buttons=Button.Ok, default=Button.No
 
 def question(parent, title: str, text: str, buttons=Button.Yes | Button.No, default=Button.NoButton):
     return _ask("question", parent, title, text, buttons, default)
-
 
 
 def card_panel(dialog, title: str, anchor: Optional[QWidget] = None) -> None:

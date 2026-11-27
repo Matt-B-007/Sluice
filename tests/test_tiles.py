@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The Tile look's channel tiles (chosen direction, 2026-11-19): folded and folded-out tiles, the combined fader and meter track,
 muted, clipping, linked and focused states, moving a tile, and the mini tiles of the compact list."""
+
 import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -47,6 +48,7 @@ def tile(win, channel_id):
 
 def test_a_folded_tile_is_264_by_192_with_its_header_lanes_and_footer(qapp, tmp_path):
     from sluice.ui_tile import SHADOW, TILE_H, TILE_W, TileLane, TileStrip
+
     win, engine = make(qapp, tmp_path)
     try:
         left, top, right, bottom = SHADOW
@@ -140,6 +142,7 @@ def test_a_tile_with_the_focus_has_a_ring_in_its_channel_colour(qapp, tmp_path):
 
 def test_folding_out_adds_scale_chips_and_apps_and_never_repeats_a_control(qapp, tmp_path):
     from sluice.ui_tile import OPEN_W, SHADOW
+
     win, engine = make(qapp, tmp_path)
     try:
         mic = tile(win, "mic")
@@ -149,6 +152,7 @@ def test_folding_out_adds_scale_chips_and_apps_and_never_repeats_a_control(qapp,
         assert all(lane.big for lane in mic.faders.values())
         assert not mic.fx_button.isVisible()  # the chips take its place
         from PySide6.QtWidgets import QPushButton
+
         chips = [b for b in mic.details.findChildren(QPushButton) if b.objectName() == "fxchip"]
         assert [c.text() for c in chips] == [e.name for e in mic.channel.effects]
         first = mic.channel.effects[0]
@@ -170,6 +174,7 @@ def test_folding_out_adds_scale_chips_and_apps_and_never_repeats_a_control(qapp,
 
 def test_move_puts_an_app_on_another_channel(qapp, tmp_path):
     from PySide6.QtWidgets import QMenu
+
     win, engine = make(qapp, tmp_path)
     try:
         music = tile(win, "music")
@@ -247,6 +252,7 @@ def test_the_menu_moves_a_tile_earlier_or_later_from_the_keyboard(qapp, tmp_path
 
 def test_a_third_mix_adds_a_lane_and_makes_the_tile_taller(qapp, tmp_path):
     from sluice.ui_tile import LANE_EXTRA_H, SHADOW, TILE_H
+
     win, engine = make(qapp, tmp_path, recording=True)
     try:
         strip = win.strips[0]
@@ -258,6 +264,7 @@ def test_a_third_mix_adds_a_lane_and_makes_the_tile_taller(qapp, tmp_path):
 
 def test_the_compact_list_shows_mini_tiles_with_one_lane_and_the_global_switch(qapp, tmp_path):
     from sluice.ui_tile import MiniTile
+
     win, engine = make(qapp, tmp_path, size=(700, 900))
     try:
         assert win.layout_mode == "mini" and win.mini.tile
@@ -286,12 +293,13 @@ def test_tiles_paint_in_every_state_and_theme(qapp, tmp_path):
             settle(qapp)
             image = win.grab().toImage()
             assert not image.isNull()
-            if theme == "dark":
-                assert themes.color("panel") == skin_tile.TILE_DARK["panel"]
+            if theme == "dark":  # 0.13.1: the House colours by default, not the Tile's own graphite
+                assert themes.color("panel") == themes.BUILT_IN["dark"].colors["panel"]
         finally:
             win.shutdown()
 
 
 def test_the_compare_looks_picture_of_tile_is_raised_keys():
     from sluice import ui_skins
+
     assert "raised keys" in ui_skins.BLURBS["tile"].lower()

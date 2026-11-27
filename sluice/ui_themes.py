@@ -2,6 +2,7 @@
 """Choosing, applying, importing and exporting themes for the main window.
 
 Part of the main window, split out of ``ui.py``: ``MainWindow`` inherits this class, so every method here is still a method of the window."""
+
 from __future__ import annotations
 
 import logging
@@ -29,11 +30,22 @@ def _palette_for(colors: dict) -> QPalette:
     def c(name: str) -> QColor:
         return QColor(colors[name])
 
-    for which, name in ((role.Window, "bg"), (role.WindowText, "text"), (role.Base, "input"), (role.AlternateBase, "panel"),
-                        (role.Text, "list_text"), (role.Button, "button"), (role.ButtonText, "button_text"),
-                        (role.ToolTipBase, "popup"), (role.ToolTipText, "text"), (role.Highlight, "select"),
-                        (role.HighlightedText, "select_text"), (role.Link, "link"), (role.PlaceholderText, "text_dim"),
-                        (role.BrightText, "strong")):
+    for which, name in (
+        (role.Window, "bg"),
+        (role.WindowText, "text"),
+        (role.Base, "input"),
+        (role.AlternateBase, "panel"),
+        (role.Text, "list_text"),
+        (role.Button, "button"),
+        (role.ButtonText, "button_text"),
+        (role.ToolTipBase, "popup"),
+        (role.ToolTipText, "text"),
+        (role.Highlight, "select"),
+        (role.HighlightedText, "select_text"),
+        (role.Link, "link"),
+        (role.PlaceholderText, "text_dim"),
+        (role.BrightText, "strong"),
+    ):
         palette.setColor(which, c(name))
     for which in (role.WindowText, role.Text, role.ButtonText):
         palette.setColor(QPalette.ColorGroup.Disabled, which, c("text_off"))
@@ -121,22 +133,7 @@ class ThemesMixin:
         self.apply_theme()
         if hasattr(self, "_restructure_for_skin"):
             self._restructure_for_skin()
-        from . import ui_glass
-        later = skin_id == "glass" and ui_glass.wants_see_through(self.engine.mixer) and not themes.see_through()
-        self.say(f"Skin: {themes.SKINS[skin_id]}." + (" The window becomes see-through the next time Sluice starts." if later else ""))
-        if skin_id == "glass" and hasattr(self, "hint_missing_part"):
-            self.hint_missing_part("kwindowsystem")  # once: on Plasma without KDE's blur, Glass shows no blur behind
-
-    def set_see_through(self, on: bool) -> None:
-        """Settings > Themes and skins > See-through window (Glass on KDE). The window's see-through-ness is fixed when it first
-        appears, so this takes effect at the next start."""
-        self.engine.mixer.see_through = bool(on)
-        from . import ui_glass
-        now = themes.see_through()
-        if ui_glass.wants_see_through(self.engine.mixer) != now:
-            self.say("See-through window: " + ("on" if on else "off") + " the next time Sluice starts.")
-        else:
-            self.say("See-through window: " + ("on." if on else "off."))
+        self.say(f"Skin: {themes.SKINS[skin_id]}.")
 
     def set_skin_colors(self, on: bool) -> None:
         """Nexus's and Tile's own colours on Dark (and Tile's white keys on Light), or every theme's own colours everywhere."""
@@ -181,6 +178,7 @@ class ThemesMixin:
             action.triggered.connect(lambda _c=False, theme_id=theme_id: self.choose_theme(theme_id))
 
         from .ui_menus import heading
+
         heading(menu, "Your themes")
         for theme in themes.BUILT_IN.values():
             add(theme.id, theme.name, theme=theme)
@@ -218,8 +216,15 @@ class ThemesMixin:
         if desktop is not None:
             desktop.restyle()
         skin = themes.SKINS.get(mixer.widget_skin, "the window's skin")
-        self.say(f"Desktop widgets: {skin}" + (f", {themes.resolve(mixer.widget_theme, self._system_is_dark(), self._themes_folder()).name}"
-                                               if mixer.widget_theme else ", the window's theme") + ".")
+        self.say(
+            f"Desktop widgets: {skin}"
+            + (
+                f", {themes.resolve(mixer.widget_theme, self._system_is_dark(), self._themes_folder()).name}"
+                if mixer.widget_theme
+                else ", the window's theme"
+            )
+            + "."
+        )
 
     def dress_skin(self) -> None:
         """Put the skin's sheet on the mixer: the window's content and its status bar (again once they exist, at start-up)."""
@@ -230,7 +235,11 @@ class ThemesMixin:
 
     def choose_theme(self, theme_id: str) -> None:
         theme = self.apply_theme(theme_id)
-        dark_only = " " + themes.NEXUS_DARK_ONLY if themes.valid_skin(self.engine.mixer.skin) == "nexus" and themes.is_light_theme(theme) else ""
+        dark_only = (
+            " " + themes.NEXUS_DARK_ONLY
+            if themes.valid_skin(self.engine.mixer.skin) == "nexus" and themes.is_light_theme(theme)
+            else ""
+        )
         if theme_id == themes.SYSTEM:
             self.say(f"Theme: following your system (right now {theme.name}).{dark_only}")
         else:
@@ -245,9 +254,12 @@ class ThemesMixin:
         problems = themes.contrast_problems(theme.colors)
         if problems:
             ask = ui_dialog.question(
-                self, "Hard to read",
-                f"The theme \u201c{theme.name}\u201d may be hard to read:\n\n" + "\n".join("\u2022 " + p for p in problems[:4])
-                + "\n\nUse it anyway? You can switch back in View > Theme.")
+                self,
+                "Hard to read",
+                f"The theme \u201c{theme.name}\u201d may be hard to read:\n\n"
+                + "\n".join("\u2022 " + p for p in problems[:4])
+                + "\n\nUse it anyway? You can switch back in View > Theme.",
+            )
             if ask != QMessageBox.StandardButton.Yes:
                 raise themes.ThemeError("The theme was not imported.")
         stored = themes.save_custom(theme, folder)
@@ -272,8 +284,9 @@ class ThemesMixin:
         self.say(f"Theme saved to {logs.short_path(path)}. Edit the colours, then use View > Theme > Import theme.")
 
     def export_theme(self) -> None:
-        path, _ = QFileDialog.getSaveFileName(self, "Export current theme", str(Path.home() / "sluice-theme.json"),
-                                              "Themes (*.json)")
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export current theme", str(Path.home() / "sluice-theme.json"), "Themes (*.json)"
+        )
         if path:
             try:
                 self.export_theme_to(path)

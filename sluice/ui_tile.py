@@ -17,6 +17,7 @@ will land. The compact list uses mini tiles: one lane each, with the Listen/Broa
 
 Everything here paints with the theme's colours (``skin_tile.paint_colors``) and caches what it can: a tile's surface, shadow and
 focus halo are one pixmap, redrawn only when its size, focus or theme changes."""
+
 from __future__ import annotations
 
 import time
@@ -30,16 +31,40 @@ from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QMenu, 
 from . import skin_tile, themes, ui_icons as icons
 from .flow import FlowLayout
 from .model import MIN_DB
-from .ui_base import db_to_fader_position, ElidedLabel, EMPTY_HINTS, LEVEL_HELP, level_fraction, mute_tip, ReadoutEdit
+from .ui_base import (
+    db_to_fader_position,
+    ElidedButton,
+    ElidedLabel,
+    EMPTY_HINTS,
+    LEVEL_HELP,
+    level_fraction,
+    mute_tip,
+    ReadoutEdit,
+)
 from .ui_channel import ChannelStrip
 from .ui_meters import Fader, SourcePicture
 from .ui_tile_paint import (
-    _HANDLES, CLIP_HOLD, CLIP_NOTE, face_gradient, frame_of, IconWell, LANE_EXTRA_H, OPEN_W, PAD, paint_groove, paint_handle, paint_leds,
-    SCALE_MARKS, SHADOW, SKIRT, stripe_brush, TileFrame,
+    _HANDLES,
+    CLIP_HOLD,
+    CLIP_NOTE,
+    face_gradient,
+    frame_of,
+    IconWell,
+    LANE_EXTRA_H,
+    OPEN_W,
+    PAD,
+    paint_groove,
+    paint_handle,
+    paint_leds,
+    SCALE_MARKS,
+    SHADOW,
+    SKIRT,
+    stripe_brush,
+    TileFrame,
 )
 
 
-TILE_W, TILE_H = 264, 192      # a folded tile (0.11.7: 40 px shorter, no empty band above the footer)
+TILE_W, TILE_H = 264, 192  # a folded tile (0.11.7: 40 px shorter, no empty band above the footer)
 
 
 # ----------------------------------------------------------------------------- the track: fader and meter in one
@@ -65,8 +90,10 @@ class TileLane(Fader):
         self._painted = None
         self.setMinimumWidth(72)
         self.setFixedHeight(28)
-        self.setToolTip("Drag, scroll or use the arrow keys to set the level. Double-click for 0 dB.\n"
-                        "Soft fill: the fader. Bright fill: the live signal. Tick: the recent peak.")
+        self.setToolTip(
+            "Drag, scroll or use the arrow keys to set the level. Double-click for 0 dB.\n"
+            "Soft fill: the fader. Bright fill: the live signal. Tick: the recent peak."
+        )
 
     # -- state
     def set_big(self, on: bool) -> None:
@@ -100,6 +127,7 @@ class TileLane(Fader):
                 self.on_clip()
         frac = level_fraction(linear)
         from .ui_meters import fall
+
         fall(self, frac)
         if self._shown() != self._painted:  # a silent, settled track costs nothing
             self.update()
@@ -133,19 +161,26 @@ class TileLane(Fader):
         groove (or its stripes) and the dB scale; the overlay is the groove's shading, drawn over the fills so they sit in it."""
         frame = getattr(self, "_frame", None)
         face = frame.face_rect() if frame is not None else None
-        offsets = ((self.mapFrom(frame, QPoint(0, round(face.top()))).y(), self.mapFrom(frame, QPoint(0, round(face.bottom()))).y())
-                   if frame is not None else None)
+        offsets = (
+            (self.mapFrom(frame, QPoint(0, round(face.top()))).y(), self.mapFrom(frame, QPoint(0, round(face.bottom()))).y())
+            if frame is not None
+            else None
+        )
         ratio = self.devicePixelRatioF()
         key = (self.size(), ratio, themes.generation(), self.muted, self.big, offsets)
         if getattr(self, "_base_key", None) != key:
+
             def canvas() -> QPixmap:
                 pixmap = QPixmap(max(1, int(self.width() * ratio)), max(1, int(self.height() * ratio)))
                 pixmap.setDevicePixelRatio(ratio)
                 pixmap.fill(Qt.GlobalColor.transparent)
                 return pixmap
+
             base, overlay = canvas(), canvas()
             q = QPainter(base)
-            q.setRenderHints(QPainter.RenderHint.Antialiasing | QPainter.RenderHint.SmoothPixmapTransform)  # 0.12.2: smooth edges everywhere
+            q.setRenderHints(
+                QPainter.RenderHint.Antialiasing | QPainter.RenderHint.SmoothPixmapTransform
+            )  # 0.12.2: smooth edges everywhere
             background = face_gradient(self, frame)
             if background is not None:
                 q.fillRect(QRectF(0, 0, self.width(), self.height()), background)
@@ -188,7 +223,9 @@ class TileLane(Fader):
 
     def paintEvent(self, _event) -> None:
         p = QPainter(self)
-        p.setRenderHints(QPainter.RenderHint.Antialiasing | QPainter.RenderHint.SmoothPixmapTransform)  # 0.12.2: smooth edges everywhere
+        p.setRenderHints(
+            QPainter.RenderHint.Antialiasing | QPainter.RenderHint.SmoothPixmapTransform
+        )  # 0.12.2: smooth edges everywhere
         pc = skin_tile.paint_colors()
         track = self._track_rect()
         radius = track.height() / 2.0
@@ -290,8 +327,15 @@ class TileLanes(QWidget):
             return
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        p.setPen(QPen(QColor(skin_tile.paint_colors()["text2"]), 2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.FlatCap,
-                      Qt.PenJoinStyle.RoundJoin))
+        p.setPen(
+            QPen(
+                QColor(skin_tile.paint_colors()["text2"]),
+                2,
+                Qt.PenStyle.SolidLine,
+                Qt.PenCapStyle.FlatCap,
+                Qt.PenJoinStyle.RoundJoin,
+            )
+        )
         for upper, lower in zip(self.lanes, self.lanes[1:]):
             a = upper.mapTo(self, QPoint(round(upper._centre()), upper.height()))
             b = lower.mapTo(self, QPoint(round(lower._centre()), 0))
@@ -316,6 +360,7 @@ class AppMeter(QWidget):
 
     def push(self, linear: float) -> None:
         from .ui_meters import FALL_PER_S, elapsed
+
         frac = level_fraction(linear)
         self._level = max(frac, self._level - FALL_PER_S * elapsed(self))
         shown = int(self._level * self.width())
@@ -395,7 +440,11 @@ class TileGrip(QWidget):
     def mouseDoubleClickEvent(self, event) -> None:
         rename = getattr(self.owner, "rename", None)
         title = getattr(self.owner, "title", None)
-        if rename is not None and title is not None and title.geometry().contains(title.parentWidget().mapFrom(self, event.position().toPoint())):
+        if (
+            rename is not None
+            and title is not None
+            and title.geometry().contains(title.parentWidget().mapFrom(self, event.position().toPoint()))
+        ):
             rename()
         event.accept()
 
@@ -610,7 +659,7 @@ class TileStrip(ChannelStrip):
         mute.toggled.connect(partial(self._on_mute, mix.id))
         mute.toggled.connect(lambda _on, m=mix: self._show_mute(m))
         self.faders[mix.id] = lane
-        self.meters[mix.id] = lane   # the window's meter timer pushes the level into the same track
+        self.meters[mix.id] = lane  # the window's meter timer pushes the level into the same track
         self.readouts[mix.id], self.mutes[mix.id] = readout, mute
         return lane, lane
 
@@ -656,7 +705,7 @@ class TileStrip(ChannelStrip):
             self.faders[mix_id].set_big(big)
             row.setFixedHeight(46 if big else 30)
         self.lanes_box.box.setSpacing(6 if big else 14)
-        self.fx_button.setVisible(not big and not self._empty)   # the chips take its place: folding out never repeats a control
+        self.fx_button.setVisible(not big and not self._empty)  # the chips take its place: folding out never repeats a control
         self.chevron.setIcon(icons.icon("chevron_up" if big else "chevron_down", themes.color("text2"), 16))
         self.chevron.setToolTip("Fold in" if big else "Fold out: bigger lanes, the effects and the apps")
         self.chevron.setAccessibleName("Fold in" if big else "Fold out")
@@ -674,8 +723,11 @@ class TileStrip(ChannelStrip):
         width = (OPEN_W if self.expanded else TILE_W) + left + right
         if self.expanded and not self._empty:
             self.layout_root.activate()
-            height = self.layout_root.totalHeightForWidth(width) if self.layout_root.hasHeightForWidth() \
+            height = (
+                self.layout_root.totalHeightForWidth(width)
+                if self.layout_root.hasHeightForWidth()
                 else self.layout_root.totalSizeHint().height()
+            )
             height = max(height, TILE_H + top + bottom)
         else:  # 0.11.7: as tall as the header, the lanes and the footer need (TILE_H kept 40 px of empty band above the footer)
             self.layout_root.invalidate()
@@ -709,8 +761,10 @@ class TileStrip(ChannelStrip):
             chip.setChecked(not effect.bypass)
             chip.setFixedHeight(24)
             chip.setCursor(Qt.CursorShape.PointingHandCursor)
-            chip.setToolTip(f"{effect.name}: {'on' if not effect.bypass else 'off'}. Click to switch it "
-                            f"{'off' if not effect.bypass else 'on'}.")
+            chip.setToolTip(
+                f"{effect.name}: {'on' if not effect.bypass else 'off'}. Click to switch it "
+                f"{'off' if not effect.bypass else 'on'}."
+            )
             chip.setAccessibleName(f"{effect.name} effect")
             chip.toggled.connect(partial(self._toggle_effect, effect.id))
             flow.addWidget(chip)
@@ -730,8 +784,11 @@ class TileStrip(ChannelStrip):
             box.addWidget(self._app_row("device", device, text, tip, SourcePicture(text, device=True, size=18)))
         for app in channel.apps:
             label = self.engine.app_label(app)
-            box.addWidget(self._app_row("app", app, label, f"{label}\nApp: {app}",
-                                        SourcePicture(label, self.engine.app_icon(app), app, size=18)))
+            box.addWidget(
+                self._app_row(
+                    "app", app, label, f"{label}\nApp: {app}", SourcePicture(label, self.engine.app_icon(app), app, size=18)
+                )
+            )
         if not channel.devices and not channel.apps:
             nothing = QLabel("Nothing here yet")
             nothing.setObjectName("tilenote")
@@ -755,8 +812,11 @@ class TileStrip(ChannelStrip):
         name.setObjectName("tileappname")
         name.setToolTip(tip)
         meter = AppMeter(self.tint)
-        meter.setToolTip("Level while it plays (this channel's level: Sluice measures channels, not single apps)" if kind == "app"
-                         else "This device's level")
+        meter.setToolTip(
+            "Level while it plays (this channel's level: Sluice measures channels, not single apps)"
+            if kind == "app"
+            else "This device's level"
+        )
         move = QPushButton("Move")
         move.setObjectName("tilemove")
         move.setFixedHeight(24)
@@ -796,7 +856,9 @@ class TileStrip(ChannelStrip):
                 self.engine.add_device(target, key)
         self.window.refresh_sources()
         if target is None:
-            self.window.say(f"{text} is no longer in the mixer." if kind == "app" else f"{text} removed from {self.channel.label}.")
+            self.window.say(
+                f"{text} is no longer in the mixer." if kind == "app" else f"{text} removed from {self.channel.label}."
+            )
         else:
             self.window.say(f"{text} moved to {self.engine.mixer.channel(target).label}.")
 
@@ -945,7 +1007,9 @@ class TileStrip(ChannelStrip):
         else:
             text = f"{active} of {count} on"
         self.fx_button.setText(text)
-        self.fx_button.setToolTip("Add effects to this channel" if count == 0 else f"Open this channel's effects: {active} of {count} are on")
+        self.fx_button.setToolTip(
+            "Add effects to this channel" if count == 0 else f"Open this channel's effects: {active} of {count} are on"
+        )
         if bool(self.fx_button.property("none")) != (count == 0):
             self.fx_button.setProperty("none", count == 0)
             self.fx_button.style().unpolish(self.fx_button)
@@ -964,8 +1028,9 @@ class TileStrip(ChannelStrip):
     def set_slot(self, on: bool) -> None:
         """While the tile is being dragged it stays in place as the dashed "Drop here" slot."""
         if on:
-            self._slot_hidden = [w for w in self.frame.findChildren(QWidget, options=Qt.FindChildOption.FindDirectChildrenOnly)
-                                 if w.isVisible()]
+            self._slot_hidden = [
+                w for w in self.frame.findChildren(QWidget, options=Qt.FindChildOption.FindDirectChildrenOnly) if w.isVisible()
+            ]
             for widget in self._slot_hidden:
                 widget.hide()
         else:
@@ -1036,9 +1101,9 @@ class MiniTile(QWidget):
 
 
 # ----------------------------------------------------------------------------- Listen and Broadcast as keys (0.11.5)
-MIX_KEY_W = 300                # the face of a Listen or Broadcast key; it stacks beside the channel tiles
+MIX_KEY_W = 300  # the face of a Listen or Broadcast key; it stacks beside the channel tiles
 MIX_KEY_MARGINS = (22, 8, 22, 36)  # room round the face for its skirt and shadows
-MIX_KEY_GAP = 28               # 0.11.6: between two keys' faces (skirt included), stacked or side by side
+MIX_KEY_GAP = 28  # 0.11.6: between two keys' faces (skirt included), stacked or side by side
 MIX_KEY_OVERLAP = MIX_KEY_MARGINS[1] + MIX_KEY_MARGINS[3] - MIX_KEY_GAP  # how far their clear room overlaps (16, either way)
 assert MIX_KEY_MARGINS[0] + MIX_KEY_MARGINS[2] - MIX_KEY_GAP == MIX_KEY_OVERLAP
 
@@ -1096,7 +1161,9 @@ def build_mix_key(strip, mix, on_remove=None, on_add_recording=None) -> None:
     strip.limiter.setCursor(Qt.CursorShape.PointingHandCursor)
     strip.limiter.setToolTip("Limiter: stops peaks from clipping")
     head.addWidget(strip.limiter, 0, Qt.AlignmentFlag.AlignVCenter)
-    strip.fold = _small_button("chevron_down", "Open the full mix settings: device and more", "tileplain", checkable=True, size=28)
+    strip.fold = _small_button(
+        "chevron_down", "Open the full mix settings: device and more", "tileplain", checkable=True, size=28
+    )
     head.addWidget(strip.fold, 0, Qt.AlignmentFlag.AlignVCenter)
     root.addLayout(head)
 
@@ -1111,7 +1178,7 @@ def build_mix_key(strip, mix, on_remove=None, on_add_recording=None) -> None:
     strip.mute.setAccessibleName(f"Mute {mix.label}")
     lane = TileLane(color)
     lane.setAccessibleName(f"{mix.label} level and meter")
-    strip.fader = strip.meter = lane   # the window's meter timer pushes the level into the same groove
+    strip.fader = strip.meter = lane  # the window's meter timer pushes the level into the same groove
     strip.readout = ReadoutEdit(None)
     strip.readout.setObjectName("tilevalue")
     strip.readout.setFixedSize(58, 28)
@@ -1138,11 +1205,13 @@ def build_mix_key(strip, mix, on_remove=None, on_add_recording=None) -> None:
         strip.combo.activated.connect(strip._on_device)
         details.addWidget(strip.combo)
     else:
-        strip.device_button = QPushButton(f"Pick “{mix.source_description}” in OBS: copy the name")
+        # 0.13.1: ends in an ellipsis on a narrow card (the whole name is still what is copied)
+        strip.device_button = ElidedButton(f"Pick “{mix.source_description}” in OBS: copy the name")
         strip.device_button.setObjectName("tilemove")
         strip.device_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        strip.device_button.setToolTip(f"The device your streaming or recording app should pick: “{mix.source_description}”. "
-                                       "Click to copy the name.")
+        strip.device_button.setToolTip(
+            f"The device your streaming or recording app should pick: “{mix.source_description}”. Click to copy the name."
+        )
         strip.device_button.clicked.connect(strip._copy_device_name)
         details.addWidget(strip.device_button)
     strip.hear = None
@@ -1152,16 +1221,19 @@ def build_mix_key(strip, mix, on_remove=None, on_add_recording=None) -> None:
         strip.hear.setObjectName("tilemove")
         strip.hear.setCheckable(True)
         strip.hear.setCursor(Qt.CursorShape.PointingHandCursor)
-        strip.hear.setToolTip("Check what your audience hears: your output plays the Broadcast mix instead of the Listen mix. "
-                              "Turn it off to go back. It always starts off.")
+        strip.hear.setToolTip(
+            "Check what your audience hears: your output plays the Broadcast mix instead of the Listen mix. "
+            "Turn it off to go back. It always starts off."
+        )
         strip.hear.toggled.connect(strip._on_hear)
         details.addWidget(strip.hear, 0, Qt.AlignmentFlag.AlignLeft)
     elif mix.id == "stream" and on_add_recording is not None:
         strip.add_button = QPushButton("Add a recording mix")
         strip.add_button.setObjectName("tileadd")
         strip.add_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        strip.add_button.setToolTip("Add a third mix, “Recording”: a second virtual microphone with its own faders and mutes. "
-                                    "Sluice restarts to add it.")
+        strip.add_button.setToolTip(
+            "Add a third mix, “Recording”: a second virtual microphone with its own faders and mutes. Sluice restarts to add it."
+        )
         strip.add_button.clicked.connect(on_add_recording)
         details.addWidget(strip.add_button, 0, Qt.AlignmentFlag.AlignLeft)
     strip.menu_button = None
@@ -1188,4 +1260,3 @@ def build_mix_key(strip, mix, on_remove=None, on_add_recording=None) -> None:
     strip.mute.toggled.connect(lambda _on: strip._show_toggles())
     strip.limiter.toggled.connect(lambda on: strip.engine.set_limiter(strip.mix.id, on))
     strip.limiter.toggled.connect(lambda _on: strip._show_toggles())
-

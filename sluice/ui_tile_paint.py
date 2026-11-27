@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """How the Tile look paints: raised keys (face, skirt, rim, highlight and shadows), grooves, handles, the tray, the tile frame and
 the icon well. Everything paints with the depth colours of the theme in use (``skin_tile.paint_colors``) and caches what it can."""
+
 from __future__ import annotations
 
 from typing import Optional
@@ -13,14 +14,16 @@ from . import skin_tile, themes, ui_icons as icons
 from .model import MIN_DB
 
 
-OPEN_W = 360                   # a folded-out tile (its height follows what it holds)
-LANE_EXTRA_H = 44              # each lane past the second (the Recording mix) makes a folded tile this much taller (a 30 px lane and 14 px gap)
-SHADOW = (22, 10, 22, 40)      # left, top, right, bottom: the room around a tile for its shadows and halo (0.11.5: none is cut off)
-PAD = 14                       # inside the tile's edge
-SKIRT = 8                      # the key's thick lower edge, inside the tile's footprint
+OPEN_W = 360  # a folded-out tile (its height follows what it holds)
+LANE_EXTRA_H = (
+    44  # each lane past the second (the Recording mix) makes a folded tile this much taller (a 30 px lane and 14 px gap)
+)
+SHADOW = (22, 10, 22, 40)  # left, top, right, bottom: the room around a tile for its shadows and halo (0.11.5: none is cut off)
+PAD = 14  # inside the tile's edge
+SKIRT = 8  # the key's thick lower edge, inside the tile's footprint
 RADIUS = 12.0
-CLIP_HOLD = 2.0                # seconds the track stays outlined in red after a clip
-CLIP_NOTE = 60.0               # seconds the source line says when it clipped
+CLIP_HOLD = 2.0  # seconds the track stays outlined in red after a clip
+CLIP_NOTE = 60.0  # seconds the source line says when it clipped
 SCALE_MARKS = ((MIN_DB, "-∞"), (-40.0, "-40"), (-20.0, "-20"), (-10.0, "-10"), (0.0, "0"), (6.0, "+6"), (12.0, "+12"))
 
 
@@ -28,11 +31,20 @@ SCALE_MARKS = ((MIN_DB, "-∞"), (-40.0, "-40"), (-20.0, "-20"), (-10.0, "-10"),
 def soft_shape(width: float, height: float, blur: int, alpha: float, color: str, ratio: float, radius: float = RADIUS) -> tuple:
     """The one way Sluice makes a shadow or a halo (0.12.0: it lives in ui_paint); here with Tile's corner radius by default."""
     from .ui_paint import soft_shape as make
+
     return make(width, height, blur, alpha, color, ratio, radius)
 
 
-def paint_surface(p: QPainter, rect: QRectF, ratio: float, focus: Optional[str] = None, lifted: bool = False,
-                  shadow: bool = True, radius: float = RADIUS, skirt: int = SKIRT) -> None:
+def paint_surface(
+    p: QPainter,
+    rect: QRectF,
+    ratio: float,
+    focus: Optional[str] = None,
+    lifted: bool = False,
+    shadow: bool = True,
+    radius: float = RADIUS,
+    skirt: int = SKIRT,
+) -> None:
     """One key, in ``rect`` (its whole footprint), as in the 0.11.5 design: a wide soft shadow and a tight contact shadow under it (in
     a deep shade of the theme's own background, never plain black), its skirt (the thick lower edge) with a dark rim, the face lit
     from above with a lit top edge and a shaded bottom edge, and the halo and ring when it has the focus. On a very dark floor the
@@ -50,8 +62,8 @@ def paint_surface(p: QPainter, rect: QRectF, ratio: float, focus: Optional[str] 
         p.drawPixmap(QPointF(face.x() + 4 - pad, face.y() - pad + drop[0]), pixmap)
         pixmap, pad = soft_shape(face.width() - 2, face.height(), 4, contact_alpha * 1.8, pc["shadow_color"], ratio, radius)
         p.drawPixmap(QPointF(face.x() + 1 - pad, face.y() - pad + drop[1]), pixmap)
-    if focus:
-        pixmap, pad = soft_shape(face.width(), face.height() + skirt, 6, 0.55, focus, ratio, radius)
+    if focus:  # 0.13.1 (House Standard v1.3): the glow is the accent at about 35%, only on the focused card
+        pixmap, pad = soft_shape(face.width(), face.height() + skirt, 6, 0.35, themes.color("accent"), ratio, radius)
         p.drawPixmap(QPointF(face.x() - pad, face.y() - pad), pixmap)
     p.setPen(Qt.PenStyle.NoPen)
     if flat:  # High contrast: a plain face, a solid border, and a thick lower edge in the text colour
@@ -72,7 +84,7 @@ def paint_surface(p: QPainter, rect: QRectF, ratio: float, focus: Optional[str] 
         gradient.setColorAt(0.0, QColor(pc["face_top"]))
         gradient.setColorAt(1.0, QColor(pc["face_bottom"]))
         p.setBrush(gradient)
-        edge = QColor(0, 0, 0, 18 if pc["light"] else 70)
+        edge = QColor(themes.color("card_edge"))  # 0.13.1: the card's edge in the accent at about 18%, like the logo's edge
         p.setPen(QPen(edge, 1))
         p.drawRoundedRect(face.adjusted(0.5, 0.5, -0.5, -0.5), radius, radius)
         shade = QColor(0, 0, 0, 30 if pc["light"] else 46)  # the inner bottom edge, turning away from the light
@@ -86,9 +98,27 @@ def paint_surface(p: QPainter, rect: QRectF, ratio: float, focus: Optional[str] 
             p.setPen(QPen(QColor(255, 255, 255, 34), 1))
             p.drawRoundedRect(face.adjusted(0.5, 0.5, -0.5, -0.5), radius, radius)
     if focus:
-        p.setBrush(Qt.BrushStyle.NoBrush)
-        p.setPen(QPen(QColor(focus), 1.5))
-        p.drawRoundedRect(face.adjusted(0.75, 0.75, -0.75, -0.75), radius - 0.5, radius - 0.5)
+        paint_brackets(p, face, themes.color("accent"))
+
+
+def paint_brackets(p: QPainter, rect: QRectF, color: str, length: float = 14.0, width: float = 2.0) -> None:
+    """0.13.1 (House Standard v1.3, the family detail): small corner brackets in the accent around the focused card."""
+    p.save()
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    pen = QPen(QColor(color), width)
+    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+    p.setPen(pen)
+    r = rect.adjusted(width / 2 + 1, width / 2 + 1, -width / 2 - 1, -width / 2 - 1)
+    for x, y, dx, dy in (
+        (r.left(), r.top(), 1, 1),
+        (r.right(), r.top(), -1, 1),
+        (r.left(), r.bottom(), 1, -1),
+        (r.right(), r.bottom(), -1, -1),
+    ):
+        p.drawLine(QPointF(x, y + dy * length), QPointF(x, y))
+        p.drawLine(QPointF(x, y), QPointF(x + dx * length, y))
+    p.restore()
 
 
 def face_gradient(widget: QWidget, frame) -> Optional[QLinearGradient]:
@@ -140,11 +170,15 @@ def paint_groove(p: QPainter, shape: QPainterPath, track: QRectF, pc: dict) -> N
     """A groove pressed into the face: dark at its top edge (in shadow), a faint light line at its bottom edge. (``shape`` is
     the groove's outline as the caller made it; ui_paint.groove makes the same one.)"""
     from . import ui_paint
-    ui_paint.groove(p, track, None, round(255 * pc["groove_shadow"] * 0.55), 5.0,
-                    light_line=QColor(255, 255, 255, 230 if pc["light"] else 14))
+
+    ui_paint.groove(
+        p, track, None, round(255 * pc["groove_shadow"] * 0.55), 5.0, light_line=QColor(255, 255, 255, 230 if pc["light"] else 14)
+    )
 
 
-def paint_handle(p: QPainter, thumb: QRectF, pc: dict, muted: bool, focus: Optional[QColor] = None, line: Optional[str] = None) -> None:
+def paint_handle(
+    p: QPainter, thumb: QRectF, pc: dict, muted: bool, focus: Optional[QColor] = None, line: Optional[str] = None
+) -> None:
     """0.12.2: a metal fader cap, like a hardware desk's: brushed metal lit from above with a crease across its middle, on a soft
     shadow, and a lit line in the channel's colour (``line``) down its centre. Muted: the cap is dull and has no line."""
     radius = min(3.0, thumb.width() / 3.0)
@@ -219,7 +253,9 @@ def paint_slot(p: QPainter, rect: QRectF) -> None:
     font = QFont(p.font())
     font.setPixelSize(12)
     p.setFont(font)
-    band = QRectF(rect.left(), rect.bottom() - 40, rect.width(), 30)  # the lifted tile hangs over the middle: the label is below it
+    band = QRectF(
+        rect.left(), rect.bottom() - 40, rect.width(), 30
+    )  # the lifted tile hangs over the middle: the label is below it
     p.drawText(band, Qt.AlignmentFlag.AlignCenter, "Drop here")
 
 
@@ -279,7 +315,9 @@ class TileFrame(QFrame):
             pixmap.fill(Qt.GlobalColor.transparent)
             q = QPainter(pixmap)
             q.setRenderHint(QPainter.RenderHint.Antialiasing)
-            paint_surface(q, self.tile_rect(), ratio, self.focus_color, lifted=self.lifted, shadow=self.shadow, radius=self.radius)
+            paint_surface(
+                q, self.tile_rect(), ratio, self.focus_color, lifted=self.lifted, shadow=self.shadow, radius=self.radius
+            )
             q.end()
             self._cache, self._cache_key = pixmap, key
         p.drawPixmap(0, 0, self._cache)
@@ -384,8 +422,9 @@ class TrayPainter:
             plate = QRectF(0, 0, size.width(), size.height()).adjusted(1, 1, -1, -1 - self.LIP)
             q.setPen(Qt.PenStyle.NoPen)
             if not pc["flat"]:
-                pixmap_shadow, pad = soft_shape(plate.width() - 24, plate.height(), 16, pc["shadow_alpha"] * 0.9, pc["shadow_color"],
-                                                ratio, r)
+                pixmap_shadow, pad = soft_shape(
+                    plate.width() - 24, plate.height(), 16, pc["shadow_alpha"] * 0.9, pc["shadow_color"], ratio, r
+                )
                 q.drawPixmap(QPointF(plate.x() + 12 - pad, plate.y() - pad + self.LIP + 10), pixmap_shadow)
             q.setBrush(QColor(pc["tray_lip"]))
             q.drawRoundedRect(plate.translated(0, self.LIP), r, r)
@@ -429,6 +468,7 @@ class TileTray(QWidget):
         """0.12.0: the tray ends with the tiles: the area round the tiles (and the Add channel button) with the layout's margins,
         not the whole of the scroll area. Empty, or before layout: all of it."""
         from PySide6.QtCore import QRect, QSize
+
         layout = self.layout()
         shown = [w.geometry() for w in self.findChildren(QWidget) if w.parentWidget() is self and w.isVisible()]
         if layout is None or not shown:
@@ -443,12 +483,18 @@ class TileTray(QWidget):
 
     def event(self, event) -> bool:
         from PySide6.QtCore import QEvent
-        if event.type() in (QEvent.Type.LayoutRequest, QEvent.Type.ChildRemoved):  # a tile came, went or moved: the tray's end too
+
+        if event.type() in (
+            QEvent.Type.LayoutRequest,
+            QEvent.Type.ChildRemoved,
+        ):  # a tile came, went or moved: the tray's end too
             self.update()
         return super().event(event)
 
     def paintEvent(self, _event) -> None:
         p = QPainter(self)
-        p.setRenderHints(QPainter.RenderHint.Antialiasing | QPainter.RenderHint.SmoothPixmapTransform)  # 0.12.2: smooth edges everywhere
+        p.setRenderHints(
+            QPainter.RenderHint.Antialiasing | QPainter.RenderHint.SmoothPixmapTransform
+        )  # 0.12.2: smooth edges everywhere
         self.tray.draw(self, p, self.content_size())
         p.end()

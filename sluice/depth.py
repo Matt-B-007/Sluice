@@ -16,6 +16,7 @@ The rules, so that every one of the 28 themes looks right:
 - On light themes there is no glow (neon on white looks washed out), and channel colours are darkened until they stand out against
   the grooves they sit in.
 """
+
 from __future__ import annotations
 
 import colorsys
@@ -23,16 +24,28 @@ from functools import lru_cache
 
 # Colours a theme file may give by hand. Anything else is worked out (see ``depth_colors``).
 DEPTH_TOKENS = (
-    "key_top", "key_bottom", "key_skirt", "key_rim", "key_edge", "tray_top", "tray_bottom", "tray_lip", "groove", "shadow",
-    "knob_top", "knob_bottom", "knob_ring", "outline",
+    "key_top",
+    "key_bottom",
+    "key_skirt",
+    "key_rim",
+    "key_edge",
+    "tray_top",
+    "tray_bottom",
+    "tray_lip",
+    "groove",
+    "shadow",
+    "knob_top",
+    "knob_bottom",
+    "knob_ring",
+    "outline",
 )
-VERY_DARK = 0.006    # a background darker than this (relative luminance) cannot show a shadow
-LIGHT_PANEL = 0.4    # a card lighter than this is a light theme (the same line ``themes.complete`` draws)
-GRAPHIC_CONTRAST = 3.0   # the usual bar for drawn things (a coloured signal in a groove, a handle on its track)
+VERY_DARK = 0.006  # a background darker than this (relative luminance) cannot show a shadow
+LIGHT_PANEL = 0.4  # a card lighter than this is a light theme (the same line ``themes.complete`` draws)
+GRAPHIC_CONTRAST = 3.0  # the usual bar for drawn things (a coloured signal in a groove, a handle on its track)
 
 
 def _rgb(value: str) -> tuple:
-    return tuple(int(value[i:i + 2], 16) / 255.0 for i in (1, 3, 5))
+    return tuple(int(value[i : i + 2], 16) / 255.0 for i in (1, 3, 5))
 
 
 def _hex(rgb) -> str:
@@ -111,41 +124,80 @@ def _depth(items: tuple, flat: bool) -> tuple:
     very_dark = luminance(bg) < VERY_DARK and not light
     if light:
         d = {
-            "key_top": shade(panel, 0.75), "key_bottom": shade(panel, -0.05),
-            "key_skirt": shade(panel, -0.20), "key_rim": shade(panel, -0.30), "key_edge": shade(panel, -0.15),
-            "button_top": shade(raised, 0.8), "button_bottom": shade(raised, -0.05),
-            "tray_top": shade(bg, 0.35), "tray_bottom": shade(bg, -0.08), "tray_lip": shade(bg, -0.24),
+            "key_top": shade(panel, 0.75),
+            "key_bottom": shade(panel, -0.05),
+            "key_skirt": shade(panel, -0.20),
+            "key_rim": shade(panel, -0.30),
+            "key_edge": shade(panel, -0.15),
+            "button_top": shade(raised, 0.8),
+            "button_bottom": shade(raised, -0.05),
+            "tray_top": shade(bg, 0.35),
+            "tray_bottom": shade(bg, -0.08),
+            "tray_lip": shade(bg, -0.24),
             "groove": shade(panel, -0.14),
-            "shadow": with_lightness(bg, 0.16, 0.5), "shadow_alpha": 0.24, "contact_alpha": 0.22,
-            "highlight_alpha": 1.0, "edge_light": False,
-            "knob_top": "#ffffff", "knob_bottom": shade(panel, -0.08), "knob_ring": text,
-            "outline": mix(panel, accent, 0.36), "glow": False,
+            "shadow": with_lightness(bg, 0.16, 0.5),
+            "shadow_alpha": 0.24,
+            "contact_alpha": 0.22,
+            "highlight_alpha": 1.0,
+            "edge_light": False,
+            "knob_top": "#ffffff",
+            "knob_bottom": shade(panel, -0.08),
+            "knob_ring": text,
+            "outline": mix(panel, accent, 0.36),
+            "glow": False,
         }
     else:
         d = {
-            "key_top": shade(panel, 0.16 if very_dark else 0.12), "key_bottom": shade(panel, -0.22),
-            "key_skirt": shade(panel, -0.45), "key_rim": shade(panel, -0.68), "key_edge": shade(panel, -0.3),
-            "button_top": shade(raised, 0.12), "button_bottom": shade(raised, -0.12),
+            "key_top": shade(panel, 0.16 if very_dark else 0.12),
+            "key_bottom": shade(panel, -0.22),
+            "key_skirt": shade(panel, -0.45),
+            "key_rim": shade(panel, -0.68),
+            "key_edge": shade(panel, -0.3),
+            "button_top": shade(raised, 0.12),
+            "button_bottom": shade(raised, -0.12),
             "tray_top": shade(bg, 0.10) if very_dark else shade(bg, -0.25),
             "tray_bottom": bg if very_dark else shade(bg, -0.5),
             "tray_lip": shade(bg, 0.16) if very_dark else shade(bg, -0.7),
             "groove": shade(panel, -0.5),
-            "shadow": with_lightness(bg, 0.02, 0.6), "shadow_alpha": 0.25 if very_dark else 0.55,
-            "contact_alpha": 0.3 if very_dark else 0.5, "highlight_alpha": 0.24 if very_dark else 0.14,
+            "shadow": with_lightness(bg, 0.02, 0.6),
+            "shadow_alpha": 0.25 if very_dark else 0.55,
+            "contact_alpha": 0.3 if very_dark else 0.5,
+            "highlight_alpha": 0.24 if very_dark else 0.14,
             "edge_light": very_dark,
-            "knob_top": "#ffffff", "knob_bottom": shade(c.get("handle", "#e8ecf0"), -0.16), "knob_ring": accent,
-            "outline": mix(panel, accent, 0.5 if very_dark else 0.34), "glow": True,
+            "knob_top": "#ffffff",
+            "knob_bottom": shade(c.get("handle", "#e8ecf0"), -0.16),
+            "knob_ring": accent,
+            "outline": mix(panel, accent, 0.5 if very_dark else 0.34),
+            "glow": True,
         }
     if flat:  # High contrast: plain fills, solid borders, depth only from a thicker lower edge
-        d.update({"key_top": panel, "key_bottom": panel, "button_top": raised, "button_bottom": raised,
-                  "key_edge": c["border"], "key_skirt": text, "key_rim": text, "tray_top": bg, "tray_bottom": bg,
-                  "tray_lip": c["border"], "shadow_alpha": 0.0, "contact_alpha": 0.0, "highlight_alpha": 0.0, "glow": False,
-                  "outline": c["border"], "groove": mix(panel, text, 0.22)})
+        d.update(
+            {
+                "key_top": panel,
+                "key_bottom": panel,
+                "button_top": raised,
+                "button_bottom": raised,
+                "key_edge": c["border"],
+                "key_skirt": text,
+                "key_rim": text,
+                "tray_top": bg,
+                "tray_bottom": bg,
+                "tray_lip": c["border"],
+                "shadow_alpha": 0.0,
+                "contact_alpha": 0.0,
+                "highlight_alpha": 0.0,
+                "glow": False,
+                "outline": c["border"],
+                "groove": mix(panel, text, 0.22),
+            }
+        )
     d["light"], d["very_dark"], d["flat"] = light, very_dark, flat
     for name in DEPTH_TOKENS:  # a theme that set one by hand keeps it
         if name in c:
             d[name] = c[name]
-    if contrast(d["groove"], d["key_bottom"]) < 1.15:  # a groove must show on the key: darker if it can be, lighter on a black key
+    if (
+        contrast(d["groove"], d["key_bottom"]) < 1.15
+    ):  # a groove must show on the key: darker if it can be, lighter on a black key
         darker = shade(d["key_bottom"], -0.45 if not light else -0.2)
         d["groove"] = darker if contrast(darker, d["key_bottom"]) >= 1.15 else mix(d["key_bottom"], text, 0.16)
     return tuple(sorted(d.items()))

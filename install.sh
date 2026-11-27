@@ -12,21 +12,26 @@
 #   ./install.sh --dry-run        show what would be done and change nothing
 #   ./install.sh --no-desktop     leave the applications menu alone
 #   ./install.sh --in-place       install in this folder instead (for working on Sluice's code)
+#   ./install.sh --no-launch      do not start Sluice at the end
+#   ./install.sh --uninstall      remove Sluice instead (the same as uninstall.sh)
 set -u
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$here" || exit 1
 
-assume_yes=0; system=1; dry=0; desktop=1; in_place=0
+assume_yes=0; system=1; dry=0; desktop=1; in_place=0; launch=1
 for arg in "$@"; do
     case "$arg" in
+        --no-launch) launch=0 ;;
+        --uninstall) shift_args=(); for a in "$@"; do [ "$a" = "--uninstall" ] || shift_args+=("$a"); done
+                     exec bash "$here/uninstall.sh" "${shift_args[@]}" ;;
         --yes|-y) assume_yes=1 ;;
         --no-system) system=0 ;;
         --dry-run) dry=1 ;;
         --desktop) desktop=1 ;;   # (the default since 0.12.0)
         --no-desktop) desktop=0 ;;
         --in-place) in_place=1 ;;
-        -h|--help) sed -n '3,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '3,16p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "Unknown option: $arg (try --help)" >&2; exit 2 ;;
     esac
 done
@@ -226,6 +231,18 @@ say "Sluice is installed in $here."
 [ "$desktop" = 1 ] || say "Start it:                     $command"
 say "Try the interface only:       $command --demo"
 say "Something wrong?              $command --report"
+
+# 0.13.1 (House Standard): start Sluice at the end, unless asked not to, or there is no desktop to show it on, or it already runs
+if [ "$launch" = 1 ] && [ "$dry" = 0 ] && { [ -n "${WAYLAND_DISPLAY:-}" ] || [ -n "${DISPLAY:-}" ]; } \
+        && ! pgrep -u "$(id -u)" -f -- "-m sluice" >/dev/null 2>&1; then
+    say ""
+    say "Starting Sluice... (next time, from the applications menu or with: $command)"
+    if command -v setsid >/dev/null 2>&1; then
+        setsid "$command" >/dev/null 2>&1 < /dev/null &
+    else
+        nohup "$command" >/dev/null 2>&1 < /dev/null &
+    fi
+fi
 
 # 0.12.0: the download is no longer needed. Offer to delete it, only when it is plainly a Sluice download: not a git
 # clone (it may hold your own changes), not the installed copy, not your home folder.

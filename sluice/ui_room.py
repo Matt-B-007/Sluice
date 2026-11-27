@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The "Measure my room" window: listen to the microphone for a few quiet seconds and set the noise gate from it."""
+
 from __future__ import annotations
 
 import time
@@ -10,7 +11,7 @@ from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QProgressBar, QPushB
 
 from . import room
 
-NO_AUDIO_SECONDS = 2.0   # if nothing has been recorded after this long, audio is not running
+NO_AUDIO_SECONDS = 2.0  # if nothing has been recorded after this long, audio is not running
 
 
 class MeasureRoomDialog(QDialog):
@@ -19,13 +20,22 @@ class MeasureRoomDialog(QDialog):
     TITLE = "Measure my room — {channel}"
     SECONDS = room.LISTEN_SECONDS
 
-    def __init__(self, engine, channel, gate_effect_id: str, old_threshold: float, on_use: Callable[[float], None],
-                 parent: Optional[QWidget] = None) -> None:
+    def __init__(
+        self,
+        engine,
+        channel,
+        gate_effect_id: str,
+        old_threshold: float,
+        on_use: Callable[[float], None],
+        parent: Optional[QWidget] = None,
+    ) -> None:
         super().__init__(parent)
         self.engine, self.channel, self.gate_effect_id = engine, channel, gate_effect_id
         self.old_threshold, self._on_use = old_threshold, on_use
         self.result: Optional[room.RoomResult] = None
-        self.on_applied: Optional[Callable] = None  # called with the result after it was used (Measure my room picks a Room choice)
+        self.on_applied: Optional[Callable] = (
+            None  # called with the result after it was used (Measure my room picks a Room choice)
+        )
         self.listening = False
         self._started = 0.0
         self.setWindowTitle(self.TITLE.format(channel=channel.label))
@@ -110,15 +120,20 @@ class MeasureRoomDialog(QDialog):
             self.engine.measure_room_cancel(self.channel.id)
             self.listening = False
             self.timer.stop()
-            self._show_message("Nothing is being recorded, so audio does not seem to be running. "
-                               "Check that Sluice has started its audio (see the status bar).", retry=True)
+            self._show_message(
+                "Nothing is being recorded, so audio does not seem to be running. "
+                "Check that Sluice has started its audio (see the status bar).",
+                retry=True,
+            )
 
     # The pieces that differ between measuring the noise and measuring the echo.
     def _intro_text(self) -> str:
-        return ("Leave your usual background noise on (the fan, the air conditioner, the TV) and stay quiet, with no "
-                f"talking, while Sluice listens to this microphone for {room.LISTEN_SECONDS:.0f} seconds.\n\n"
-                "It then sets the Noise Gate threshold just above that noise, so the room is quieted between your words. "
-                "The Noise Reducer also starts from this noise, if it is on this channel.")
+        return (
+            "Leave your usual background noise on (the fan, the air conditioner, the TV) and stay quiet, with no "
+            f"talking, while Sluice listens to this microphone for {room.LISTEN_SECONDS:.0f} seconds.\n\n"
+            "It then sets the Noise Gate threshold just above that noise, so the room is quieted between your words. "
+            "The Noise Reducer also starts from this noise, if it is on this channel."
+        )
 
     def _listening_text(self) -> str:
         return "Listening... please stay quiet."
@@ -200,15 +215,18 @@ class MeasureEchoDialog(MeasureRoomDialog):
     TITLE = "Measure my room's echo — {channel}"
     SECONDS = room.ECHO_SECONDS
 
-    def __init__(self, engine, channel, old_time: float, on_use: Callable[[float], None],
-                 parent: Optional[QWidget] = None) -> None:
+    def __init__(
+        self, engine, channel, old_time: float, on_use: Callable[[float], None], parent: Optional[QWidget] = None
+    ) -> None:
         super().__init__(engine, channel, "", old_time, on_use, parent)
 
     def _intro_text(self) -> str:
-        return ("Press Start, wait a moment, then clap your hands once, sharply, close to the microphone, and stay quiet "
-                f"until the bar is full ({room.ECHO_SECONDS:.0f} seconds). Sluice measures how long the echo takes to die away.\n\n"
-                "Turn the fan or air conditioner off if you can: the quieter the room, the better the measurement. In a "
-                "loud room it will tell you if the clap was not clear enough.")
+        return (
+            "Press Start, wait a moment, then clap your hands once, sharply, close to the microphone, and stay quiet "
+            f"until the bar is full ({room.ECHO_SECONDS:.0f} seconds). Sluice measures how long the echo takes to die away.\n\n"
+            "Turn the fan or air conditioner off if you can: the quieter the room, the better the measurement. In a "
+            "loud room it will tell you if the clap was not clear enough."
+        )
 
     def _listening_text(self) -> str:
         return "Listening... clap once, then stay quiet."
@@ -236,10 +254,12 @@ class MeasureVoiceDialog(MeasureRoomDialog):
         super().__init__(engine, channel, "", 0.0, on_use, parent)
 
     def _intro_text(self) -> str:
-        return (f"Press Start, then talk in your normal voice, as if you were on a call, for {room.VOICE_SECONDS:.0f} seconds. "
-                "Read something out loud if you like.\n\nSluice measures how loud your voice is at the microphone, before any "
-                "effect, and tells you how much to raise or lower the level. Too quiet a voice leaves the Compressor and "
-                "Limiter with nothing to do, and the noise is relatively louder.")
+        return (
+            f"Press Start, then talk in your normal voice, as if you were on a call, for {room.VOICE_SECONDS:.0f} seconds. "
+            "Read something out loud if you like.\n\nSluice measures how loud your voice is at the microphone, before any "
+            "effect, and tells you how much to raise or lower the level. Too quiet a voice leaves the Compressor and "
+            "Limiter with nothing to do, and the noise is relatively louder."
+        )
 
     def _listening_text(self) -> str:
         return "Listening... please keep talking."

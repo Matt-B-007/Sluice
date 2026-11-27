@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Dated bug reports, a visible error when saving fails, an 'already running' message that names the copy,
 and a connection check before PulseAudio calls."""
+
 import os
 import re
 import time
@@ -121,8 +122,9 @@ def test_a_dead_pulse_connection_raises_instead_of_calling_libpulse(monkeypatch)
     from sluice.backend import _LiveCheck
 
     calls = []
-    pulse = SimpleNamespace(_ctx=object(), connected=True, source_list=lambda: calls.append("list") or ["s"],
-                            close=lambda: calls.append("close"))
+    pulse = SimpleNamespace(
+        _ctx=object(), connected=True, source_list=lambda: calls.append("list") or ["s"], close=lambda: calls.append("close")
+    )
     state = {"v": lib.PA_CONTEXT_READY}
     monkeypatch.setattr(lib.pa, "context_get_state", lambda ctx: state["v"], raising=False)
     guarded = _LiveCheck(pulse)
@@ -148,6 +150,7 @@ def test_a_test_double_without_a_context_is_passed_through():
 # ---------------------------------------------------------------- summary lines at the top (0.11.7)
 def test_the_report_says_which_engine_and_how_the_last_rebuild_went():
     from sluice import report
+
     line = report.engine_summary("0.9.6", "0.10.1", True, "", {"at": 0.0, "result": "the build failed (pip not found)"})
     assert line.startswith("Audio engine: Rust 0.9.6 (this Sluice comes with 0.10.1")
     assert "Last rebuild:" in line and "the build failed (pip not found)" in line
@@ -158,10 +161,15 @@ def test_the_report_says_which_engine_and_how_the_last_rebuild_went():
 
 def test_the_report_names_the_last_update_from_the_log():
     from sluice import report
-    log = ("2026-11-12 18:00:01,000 INFO    sluice.selfupdate: updated 0.11.4 -> 0.11.5\n"
-           "2026-11-20 19:40:40,533 INFO    sluice.selfupdate: updated 0.11.5 -> 0.11.6\n"
-           "2026-11-20 19:40:40,533 INFO    sluice.reconnect: restarting\n")
+
+    log = (
+        "2026-11-12 18:00:01,000 INFO    sluice.selfupdate: updated 0.11.4 -> 0.11.5\n"
+        "2026-11-20 19:40:40,533 INFO    sluice.selfupdate: updated 0.11.5 -> 0.11.6\n"
+        "2026-11-20 19:40:40,533 INFO    sluice.reconnect: restarting\n"
+    )
     assert report.update_history(log) == "Last update: 0.11.5 -> 0.11.6 on 2026-11-20 19:40 (2 updates in the log).\n"
-    assert report.update_history("2026-12-01 10:00:00,1 INFO    sluice.update_install: updated 0.11.6 -> 0.11.7\n") == \
-        "Last update: 0.11.6 -> 0.11.7 on 2026-12-01 10:00.\n"
+    assert (
+        report.update_history("2026-12-01 10:00:00,1 INFO    sluice.update_install: updated 0.11.6 -> 0.11.7\n")
+        == "Last update: 0.11.6 -> 0.11.7 on 2026-12-01 10:00.\n"
+    )
     assert report.update_history("nothing here") == ""

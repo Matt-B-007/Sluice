@@ -85,7 +85,7 @@ def test_talking_during_the_measurement_offers_another_try_not_a_bad_threshold(r
     used = []
     dialog, _ = make_dialog(engine, used)
     audio = room_noise(seconds=5.0)
-    audio[:, SR * 2:SR * 3] += (0.3 * np.sin(2 * np.pi * 200 * np.arange(SR) / SR)).astype(np.float32)
+    audio[:, SR * 2 : SR * 3] += (0.3 * np.sin(2 * np.pi * 200 * np.arange(SR) / SR)).astype(np.float32)
     io.streamed_inputs = {"mic": audio}
     dialog.primary.click()
     listen(io, 5.5)

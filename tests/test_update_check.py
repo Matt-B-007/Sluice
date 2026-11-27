@@ -61,7 +61,9 @@ def test_a_list_of_releases_uses_the_newest_that_is_not_a_draft():
 def test_the_shipped_update_address_is_https_and_points_at_the_release_list():
     from sluice import update_check
 
-    assert update_check.RELEASE_URL.startswith("https://api.github.com/repos/") and update_check.RELEASE_URL.endswith("/releases?per_page=20")
+    assert update_check.RELEASE_URL.startswith("https://api.github.com/repos/") and update_check.RELEASE_URL.endswith(
+        "/releases?per_page=20"
+    )
 
 
 def test_the_notes_of_a_newer_release_come_with_the_answer_and_only_then():

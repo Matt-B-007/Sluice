@@ -43,16 +43,22 @@ def _card(name, active, profiles):
 def test_a_card_stuck_on_an_output_only_profile_is_found():
     from sluice.diagnose import inputs_left_unused
 
-    elgato = _card("alsa_card.elgato", "output:multichannel-output", [
-        ("output:multichannel-output+input:multichannel-input", 1, 1, 101),
-        ("output:multichannel-output", 1, 0, 100),
-        ("input:multichannel-input", 0, 1, 1),
-        ("off", 0, 0, 0)])
+    elgato = _card(
+        "alsa_card.elgato",
+        "output:multichannel-output",
+        [
+            ("output:multichannel-output+input:multichannel-input", 1, 1, 101),
+            ("output:multichannel-output", 1, 0, 100),
+            ("input:multichannel-input", 0, 1, 1),
+            ("off", 0, 0, 0),
+        ],
+    )
     fine = _card("alsa_card.motherboard", "duplex", [("duplex", 1, 1), ("off", 0, 0, 0)])
     switched_off = _card("alsa_card.unused", "off", [("off", 0, 0, 0), ("duplex", 1, 1)])
     unplugged = _card("alsa_card.hdmi", "output", [("output", 1, 0), ("duplex", 1, 1, 1, 0)])
     assert inputs_left_unused([elgato, fine, switched_off, unplugged]) == [
-        ("alsa_card.elgato", "output:multichannel-output", "output:multichannel-output+input:multichannel-input")]
+        ("alsa_card.elgato", "output:multichannel-output", "output:multichannel-output+input:multichannel-input")
+    ]
 
 
 def test_the_card_check_is_part_of_the_report():

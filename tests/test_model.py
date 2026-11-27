@@ -103,7 +103,15 @@ def test_route_and_master_gain():
 def test_demo_layout_is_filled_in():
     mixer = Mixer.demo()
     assert mixer.channel_for_app("spotify").id == "music"
-    assert [e.type for e in mixer.channel("mic").effects] == ["highpass", "echo_reducer", "noise_reducer", "noise_gate", "eq", "compressor", "limiter"]
+    assert [e.type for e in mixer.channel("mic").effects] == [
+        "highpass",
+        "echo_reducer",
+        "noise_reducer",
+        "noise_gate",
+        "eq",
+        "compressor",
+        "limiter",
+    ]
 
 
 def test_roundtrip(tmp_path):
@@ -124,6 +132,7 @@ def test_roundtrip(tmp_path):
     mixer.add_channel("Browser")
     path = tmp_path / "sub" / "config.json"
     mixer.save(path)
+
     def without_effect_ids(data):  # effect ids are made up again on every load
         for channel in data["channels"]:
             for effect in channel["effects"]:
@@ -150,10 +159,16 @@ def test_from_dict_ignores_garbage():
         "junk",
         None,
         {"id": "../evil", "label": "x"},  # unsafe id: dropped
-        {"id": "ok", "label": "  Good  ", "color": "red; background:url(x)", "devices": ["a", 5, None],
-         "apps": "nope", "levels": {MONITOR: 999, STREAM: "x"}, "mutes": {MONITOR: "yes"},
-         "effects": [{"kind": "builtin", "type": "gain", "params": {"gain_db": "x", "other": 2}},
-                     {"kind": "weird"}, "x"]},
+        {
+            "id": "ok",
+            "label": "  Good  ",
+            "color": "red; background:url(x)",
+            "devices": ["a", 5, None],
+            "apps": "nope",
+            "levels": {MONITOR: 999, STREAM: "x"},
+            "mutes": {MONITOR: "yes"},
+            "effects": [{"kind": "builtin", "type": "gain", "params": {"gain_db": "x", "other": 2}}, {"kind": "weird"}, "x"],
+        },
         {"id": "ok", "label": "duplicate id"},
     ]
     data["mixes"] = [{"id": MONITOR, "gain_db": -999, "device": 42, "mute": "x"}, {"id": "nope"}, 3]
@@ -226,6 +241,7 @@ def test_backups_keep_the_last_five_versions_and_not_more(tmp_path):
         made = make_backup(config, f"version {version + 1}", now=clock)
         assert made is not None
         import os
+
         os.utime(made, (clock, clock))  # as if made at that moment
         clock += BACKUP_EVERY_SECONDS + 5
     backups = list_backups(config)

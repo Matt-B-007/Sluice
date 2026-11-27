@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The Tile look as raised keys (light and dark, Tile colours), lighter painting, the bundled fonts, spacing in every look, the
 command line's lock and the bug report."""
+
 import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -22,9 +23,12 @@ from sluice.ui import ElidedLabel, MainWindow
 from layout_checks import problems
 
 
-def make(qapp, tmp_path, skin="tile", layout="columns", size=(1456, 860), theme="dark", recording=False, setup=None):
+def make(
+    qapp, tmp_path, skin="tile", layout="columns", size=(1456, 860), theme="dark", recording=False, setup=None, skin_colors=True
+):
     mixer = Mixer.demo()
     mixer.skin, mixer.layout, mixer.theme = skin, layout, theme
+    mixer.skin_colors = skin_colors  # (these tests look at the Tile's own colours; 0.13.1 turned them off by default)
     mixer.hints_seen.append("firstrun")
     if recording:
         mixer.set_recording_mix(True)
@@ -68,7 +72,7 @@ def test_release_lock_closes_a_file_and_ignores_the_others(tmp_path):
     handle = open(tmp_path / "lock", "a+")
     entry._release_lock(handle)
     assert handle.closed
-    entry._release_lock(True)   # no fcntl: nothing to close
+    entry._release_lock(True)  # no fcntl: nothing to close
     entry._release_lock(None)
 
 
@@ -83,7 +87,8 @@ def test_the_look_colours_are_saved_and_switched(qapp, tmp_path):
         assert engine.mixer.skin_colors is False and themes.color("panel") == themes.BUILT_IN["dark"].colors["panel"]
         assert Mixer.from_dict(engine.mixer.to_dict()).skin_colors is False
         win.skin_colors_action.trigger()
-        win.choose_skin("calm"); settle(qapp)
+        win.choose_skin("calm")
+        settle(qapp)
         win._refresh_view_menu()
         assert not win.skin_colors_action.isVisible()
     finally:
@@ -128,13 +133,16 @@ def test_the_tiles_take_the_new_colours_when_the_theme_changes(qapp, tmp_path):
 
 def test_everything_in_the_tile_look_is_a_key_or_sits_in_a_tray(qapp, tmp_path):
     from sluice.ui_tile_paint import TileTray
+
     win, engine = make(qapp, tmp_path)
     try:
         assert isinstance(win.channels_widget, TileTray)
-        assert all(strip.key is not None for strip in win.mix_strips)   # Listen and Broadcast are keys too
+        assert all(strip.key is not None for strip in win.mix_strips)  # Listen and Broadcast are keys too
         from sluice.ui_tile import MIX_KEY_MARGINS, MIX_KEY_W
+
         assert win.mix_strips[0].width() == MIX_KEY_W + MIX_KEY_MARGINS[0] + MIX_KEY_MARGINS[2]  # a short key (0.11.5)
-        win.set_layout("rows"); settle(qapp)
+        win.set_layout("rows")
+        settle(qapp)
         assert all(strip.frame.key is not None for strip in win.strips)
         win.grab()
     finally:
@@ -158,16 +166,20 @@ def test_a_track_paints_the_face_behind_itself_so_a_meter_frame_repaints_only_th
 
 def test_the_desktop_widgets_follow_the_look(qapp, tmp_path):
     from sluice.ui_tile import MiniTile
+
     win, engine = make(qapp, tmp_path)
     try:
-        win.desktop.open("mic"); win.desktop.open("dial", MONITOR); win.desktop.open("strip")
+        win.desktop.open("mic")
+        win.desktop.open("dial", MONITOR)
+        win.desktop.open("strip")
         settle(qapp)
         strip = win.desktop.open_widgets[("strip", None, None)]
         assert strip.strip.tile and all(isinstance(row, MiniTile) for row in strip.strip.rows.values())
         for widget in win.desktop.open_widgets.values():
             widget.tick()
             widget.grab()
-        win.choose_skin("calm"); settle(qapp)
+        win.choose_skin("calm")
+        settle(qapp)
         assert not strip.strip.tile
         win.desktop.open_widgets[("mic", None, None)].grab()
     finally:
@@ -244,7 +256,7 @@ def test_rows_with_three_mixes_get_a_window_wide_enough_or_the_compact_list():
     assert sizing.plan_for(narrow, 900, "rows", "calm", mixes=3).mode == "mini"
     assert sizing.plan_for(narrow, 900, "rows", "calm", mixes=2).mode == "rows"
     wide = sizing.plan_for(1920, 860, "rows", "calm", mixes=3)
-    assert wide.mode == "rows" and wide.dock == "bottom"         # three mix cards need more height to stand at the side
+    assert wide.mode == "rows" and wide.dock == "bottom"  # three mix cards need more height to stand at the side
     assert sizing.plan_for(1920, 1080, "rows", "calm", mixes=3).dock == "right"
 
 
@@ -268,6 +280,7 @@ def test_rows_with_three_mixes_never_overlap(qapp, tmp_path, skin, size):
 
 def test_the_report_says_whether_the_look_colours_are_on(qapp, tmp_path):
     from sluice import report
+
     win, engine = make(qapp, tmp_path)
     try:
         assert win._report_info()["skin_colors"] is True
@@ -279,6 +292,7 @@ def test_the_report_says_whether_the_look_colours_are_on(qapp, tmp_path):
 def test_a_yellow_lane_stays_yellow_on_a_dark_groove():
     """0.11.6: the fill up to the handle was the channel's colour see-through over the groove, which made yellow olive brown."""
     from sluice import depth
+
     groove = skin_tile.paint_colors()["track"] if not skin_tile.paint_colors()["light"] else "#16191d"
     yellow = skin_tile.CHANNEL_TINTS["system"]
     fill = depth.position_fill(yellow, groove, 0.28)
@@ -294,6 +308,7 @@ def test_a_yellow_lane_stays_yellow_on_a_dark_groove():
 def test_a_channel_widget_has_no_empty_band_at_the_bottom(qapp, tmp_path, skin):
     """0.11.6: the lane widgets were a fixed 16 px (10 in Tile) taller than their lanes needed."""
     from sluice.ui_widgets import LANE_H
+
     win, engine = make(qapp, tmp_path, skin=skin)
     try:
         win.desktop.open("channel", channel="system")

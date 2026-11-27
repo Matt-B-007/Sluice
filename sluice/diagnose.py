@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """``sluice --diagnose``: check every moving part and say what is missing."""
+
 from __future__ import annotations
 
 import os
@@ -19,9 +20,11 @@ def _pulse() -> tuple:
     except Exception as exc:
         from .distro import install_hint
 
-        return False, (f"{type(exc).__name__}: {exc}. Is pipewire-pulse running? "
-                       f"(systemctl --user enable --now pipewire pipewire-pulse wireplumber; "
-                       f"to install: {install_hint(['pipewire', 'pulse', 'session', 'libpulse'])})")
+        return False, (
+            f"{type(exc).__name__}: {exc}. Is pipewire-pulse running? "
+            f"(systemctl --user enable --now pipewire pipewire-pulse wireplumber; "
+            f"to install: {install_hint(['pipewire', 'pulse', 'session', 'libpulse'])})"
+        )
 
 
 def inputs_left_unused(cards) -> list:
@@ -32,8 +35,11 @@ def inputs_left_unused(cards) -> list:
         active = getattr(card, "profile_active", None)
         if active is None or active.name == "off" or active.n_sources > 0:
             continue
-        better = [p for p in card.profile_list
-                  if p.n_sources > 0 and p.n_sinks >= active.n_sinks and getattr(p, "available", 1) != 0 and p.name != "off"]
+        better = [
+            p
+            for p in card.profile_list
+            if p.n_sources > 0 and p.n_sinks >= active.n_sinks and getattr(p, "available", 1) != 0 and p.name != "off"
+        ]
         if better:
             best = max(better, key=lambda p: (p.n_sinks, p.priority))
             found.append((card.name, active.name, best.name))
@@ -53,9 +59,11 @@ def _cards() -> tuple:
         return False, f"{type(exc).__name__}: {exc}"
     if not found:
         return True, "no sound card has an unused input"
-    lines = [f"{name} is set to '{active}', which has no microphone input, but '{best}' is available. "
-             f"To turn the input on: pactl set-card-profile {name} {best}   (undo: pactl set-card-profile {name} {active})"
-             for name, active, best in found]
+    lines = [
+        f"{name} is set to '{active}', which has no microphone input, but '{best}' is available. "
+        f"To turn the input on: pactl set-card-profile {name} {best}   (undo: pactl set-card-profile {name} {active})"
+        for name, active, best in found
+    ]
     return True, "\n     ".join(lines)
 
 
@@ -72,10 +80,15 @@ def _jack() -> tuple:
         from .distro import install_hint
         from .jackfix import pipewire_jack_dirs
 
-        extra = ("" if not pipewire_jack_dirs() else " PipeWire's JACK library is installed; Sluice retries with it "
-                 "automatically when it starts (or run it as: pw-jack sluice).")
-        return False, (f"{type(exc).__name__}: {exc}. Install pipewire-jack ({install_hint(['jack'])}) and "
-                       f"'pip install JACK-Client'.{extra}")
+        extra = (
+            ""
+            if not pipewire_jack_dirs()
+            else " PipeWire's JACK library is installed; Sluice retries with it "
+            "automatically when it starts (or run it as: pw-jack sluice)."
+        )
+        return False, (
+            f"{type(exc).__name__}: {exc}. Install pipewire-jack ({install_hint(['jack'])}) and 'pip install JACK-Client'.{extra}"
+        )
 
 
 def _vst3() -> tuple:
@@ -158,6 +171,7 @@ def report(engine_line: bool = True) -> tuple:
     """(text, all ok). The bug report says the engine once, in its own summary line, so it leaves out the setup check's Rust line
     (``engine_line=False``)."""
     results = [r for r in run_checks() if engine_line or r[0] != "Rust (the faster audio engine)"]
+
     def mark(ok, detail):
         if not ok:
             return "FAIL"

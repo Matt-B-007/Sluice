@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sluice"
-version = "0.12.7"
+version = "0.13.1-beta.1"
 description = "An open-source virtual audio mixer for PipeWire on Linux: channels, per-output mixes and VST3 effects"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -26,6 +26,7 @@ dependencies = [
     "numpy>=1.24",
     "pedalboard>=0.9",
     "JACK-Client>=0.5",
+    "cryptography>=3.1",  # 0.13.1: checks the minisign signature on updates (Ed25519)
 ]
 
 [project.urls]
@@ -42,10 +43,20 @@ sluice = "sluice.__main__:run"
 packages = ["sluice", "sluice.data", "sluice.data.png", "sluice.data.fonts"]
 
 [tool.setuptools.package-data]
-sluice = ["data/*.svg", "data/png/*.png", "data/*.md", "data/fonts/*.ttf", "data/fonts/*.txt"]
+sluice = ["data/*.svg", "data/png/*.png", "data/*.md", "data/fonts/*.ttf", "data/fonts/*.txt", "data/icons/*.svg", "data/icons/LICENSE", "data/icons/README.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # 0.12.4: the tests always use the Sluice in this folder, also when it is not installed (StowLock runs pytest without the
 # "pip install -e" step) and when another copy is installed for the same Python.
 pythonpath = ["."]
+
+# 0.13.1: the Python formatter. "ruff format" lays every file out the same way; scripts/check.sh fails on a file it would change.
+# The version is pinned in scripts/tool-versions. The line length matches how the code was already written.
+[tool.ruff]
+line-length = 130
+target-version = "py310"
+extend-exclude = ["themes", "rust"]
+
+[tool.ruff.format]
+quote-style = "double"

@@ -27,8 +27,13 @@ def test_exec_lines_become_binary_names():
 
 
 def test_desktop_files(tmp_path):
-    chrome = desktop(tmp_path / "google-chrome.desktop", Name="Google Chrome", Exec="/usr/bin/google-chrome-stable %U",
-                     StartupWMClass="Google-chrome", Categories="Network;WebBrowser;")
+    chrome = desktop(
+        tmp_path / "google-chrome.desktop",
+        Name="Google Chrome",
+        Exec="/usr/bin/google-chrome-stable %U",
+        StartupWMClass="Google-chrome",
+        Categories="Network;WebBrowser;",
+    )
     entry = parse_desktop_file(chrome)
     assert entry.name == "Google Chrome" and entry.key == "google-chrome-stable" and entry.kind == "app"
     assert {"google chrome", "google-chrome", "google-chrome-stable"} <= entry.aliases
@@ -49,12 +54,18 @@ def make_steam(root):
     apps.mkdir(parents=True)
     other = root.parent / "second-library"
     (other / "steamapps").mkdir(parents=True)
-    (apps / "libraryfolders.vdf").write_text(f'"libraryfolders"\n{{\n "0"\n {{\n  "path"  "{root}"\n }}\n "1"\n {{\n  "path"  "{other}"\n }}\n}}\n')
-    manifests = {apps: [(220, "Half-Life 2"), (1493710, "Proton Experimental"), (1628350, "Steam Linux Runtime 3.0 (sniper)")],
-                 other / "steamapps": [(730, "Counter-Strike 2")]}
+    (apps / "libraryfolders.vdf").write_text(
+        f'"libraryfolders"\n{{\n "0"\n {{\n  "path"  "{root}"\n }}\n "1"\n {{\n  "path"  "{other}"\n }}\n}}\n'
+    )
+    manifests = {
+        apps: [(220, "Half-Life 2"), (1493710, "Proton Experimental"), (1628350, "Steam Linux Runtime 3.0 (sniper)")],
+        other / "steamapps": [(730, "Counter-Strike 2")],
+    }
     for folder, items in manifests.items():
         for app_id, name in items:
-            (folder / f"appmanifest_{app_id}.acf").write_text(f'"AppState"\n{{\n\t"appid"\t\t"{app_id}"\n\t"name"\t\t"{name}"\n}}\n')
+            (folder / f"appmanifest_{app_id}.acf").write_text(
+                f'"AppState"\n{{\n\t"appid"\t\t"{app_id}"\n\t"name"\t\t"{name}"\n}}\n'
+            )
     return root
 
 
@@ -83,11 +94,13 @@ def test_a_stream_matches_by_any_of_its_names():
     chrome = Stream(1, "chrome", "Google Chrome", "sink", frozenset({"google chrome"}))
     mixer = Mixer.default()
     mixer.assign_app("google-chrome-stable", "music")
-    assert mixer.channel_for_stream(chrome) is None                       # binary names differ, no catalog yet
-    catalog = Catalog([AppEntry("Google Chrome", "google-chrome-stable", "app", frozenset({"google-chrome-stable", "google chrome"}))])
+    assert mixer.channel_for_stream(chrome) is None  # binary names differ, no catalog yet
+    catalog = Catalog(
+        [AppEntry("Google Chrome", "google-chrome-stable", "app", frozenset({"google-chrome-stable", "google chrome"}))]
+    )
     assert mixer.channel_for_stream(chrome, catalog.expand).id == "music"  # same program by its app name
     mixer.assign_app("chrome", "game")
-    assert mixer.channel_for_stream(chrome).id == "game"                   # a direct match needs no catalog
+    assert mixer.channel_for_stream(chrome).id == "game"  # a direct match needs no catalog
 
 
 def test_steam_games_are_matched_by_game_id_and_assigned_by_it():
@@ -103,15 +116,16 @@ def test_steam_games_are_matched_by_game_id_and_assigned_by_it():
 
 def test_steam_id_is_read_from_the_programs_environment():
     code = "import sys, time; print('up', flush=True); time.sleep(30)"
-    child = subprocess.Popen([sys.executable, "-c", code], stdout=subprocess.PIPE,
-                             env={**os.environ, "SteamGameId": "220", "SteamAppId": "0"})
+    child = subprocess.Popen(
+        [sys.executable, "-c", code], stdout=subprocess.PIPE, env={**os.environ, "SteamGameId": "220", "SteamAppId": "0"}
+    )
     other = subprocess.Popen([sys.executable, "-c", code], stdout=subprocess.PIPE, env={"PATH": os.environ["PATH"]})
     try:
         child.stdout.readline()  # wait until both are really running: /proc/<pid>/environ is not the new program's before that
         other.stdout.readline()
         assert steam_id_of_process(child.pid) == "steam:220"
         assert steam_id_of_process(other.pid) is None
-        assert steam_id_of_process(2 ** 22 + 12345) is None
+        assert steam_id_of_process(2**22 + 12345) is None
         assert steam_id_of_process("junk") is None
     finally:
         child.kill()

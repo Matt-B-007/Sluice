@@ -4,6 +4,7 @@ look costs more than twice what Calm cost in 0.11.4 (0.83 ms). Idle, with no sou
 
 Timings depend on the machine, so they are scaled by a small fixed drawing job measured first (about 21 ms on the machine the
 budget was set on): a slower machine gets proportionally more time, never less."""
+
 import os
 import time
 
@@ -59,8 +60,9 @@ def _cost(qapp, win, engine, moving: bool) -> float:
     mixer = engine.mixer
     keys = [f"ch:{c.id}:{m.id}" for c in mixer.channels for m in mixer.mixes] + [f"mix:{m.id}" for m in mixer.mixes]
     frame = [0]
-    engine.sample_levels = lambda *_a, **_k: {k: (0.2 + 0.6 * ((frame[0] + i) % 7) / 7) if moving else 0.0
-                                              for i, k in enumerate(keys)}
+    engine.sample_levels = lambda *_a, **_k: {
+        k: (0.2 + 0.6 * ((frame[0] + i) % 7) / 7) if moving else 0.0 for i, k in enumerate(keys)
+    }
     best = 1e9
     for _ in range(3):
         start = time.perf_counter()
@@ -88,6 +90,7 @@ def test_a_meter_update_stays_within_the_budget_in_every_look(qapp, skin):
 
 def test_nothing_is_drawn_while_it_is_silent(qapp):
     from sluice import ui_meters
+
     win, engine = _window(qapp, "nexus")
     try:
         _cost(qapp, win, engine, False)
@@ -109,8 +112,14 @@ def test_switching_looks_themes_and_sizes_with_sound_playing_never_shows_a_blank
         mixer = engine.mixer
         keys = [f"ch:{c.id}:{m.id}" for c in mixer.channels for m in mixer.mixes] + [f"mix:{m.id}" for m in mixer.mixes]
         engine.sample_levels = lambda *_a, **_k: {k: 0.6 for k in keys}
-        for skin, theme, size in (("nexus", "dark", (1456, 900)), ("tile", "light", (1100, 860)), ("glass", "paper", (1300, 800)),
-                                  ("calm", "contrast", (900, 760)), ("nexus", "light", (1600, 900)), ("tile", "dark", (1456, 900))):
+        for skin, theme, size in (
+            ("nexus", "dark", (1456, 900)),
+            ("tile", "light", (1100, 860)),
+            ("glass", "paper", (1300, 800)),
+            ("calm", "contrast", (900, 760)),
+            ("nexus", "light", (1600, 900)),
+            ("tile", "dark", (1456, 900)),
+        ):
             win.choose_skin(skin)
             win.choose_theme(theme)
             win.resize(*size)

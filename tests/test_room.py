@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Measure my room: the analysis rules, the capture on the audio thread, and the whole flow through the engine."""
+
 import numpy as np
 import pytest
 
@@ -40,14 +41,14 @@ def test_the_measured_threshold_really_quiets_that_room():
     result = room.analyse(audio, SR)
     gate = pedalboard.Pedalboard([pedalboard.NoiseGate(threshold_db=result.threshold_db, ratio=4, attack_ms=3, release_ms=100)])
     out = gate(audio, SR)[:, SR:]
-    cut = 20 * np.log10(np.sqrt(np.mean(out ** 2)) / np.sqrt(np.mean(audio[:, SR:] ** 2)))
+    cut = 20 * np.log10(np.sqrt(np.mean(out**2)) / np.sqrt(np.mean(audio[:, SR:] ** 2)))
     assert cut < -12
 
 
 def test_a_voice_or_sudden_noise_during_the_measurement_is_noticed_and_not_trusted():
     audio = noise(-45)
     t = np.arange(SR) / SR
-    audio[:, SR * 2:SR * 3] += (0.2 * np.sin(2 * np.pi * 180 * t)).astype(np.float32)  # someone talks for a second
+    audio[:, SR * 2 : SR * 3] += (0.2 * np.sin(2 * np.pi * 180 * t)).astype(np.float32)  # someone talks for a second
     result = room.analyse(audio, SR)
     assert result.status == "disturbed" and not result.usable
     assert "try again" in result.message.lower()
@@ -93,7 +94,9 @@ def test_the_effects_ahead_of_the_gate_are_part_of_what_is_measured():
     rumble = np.stack([rumble, rumble])
     raw = room.analyse(rumble, SR)
     filtered = room.analyse(rumble, SR, ahead)
-    assert filtered.noise_db < raw.noise_db - 10  # a 40 Hz rumble is mostly removed before the gate, so the gate need not rise for it
+    assert (
+        filtered.noise_db < raw.noise_db - 10
+    )  # a 40 Hz rumble is mostly removed before the gate, so the gate need not rise for it
 
 
 def test_bypassed_and_vst3_effects_are_not_run_for_the_measurement():

@@ -14,7 +14,7 @@ SR = 48000
 
 def run(instance: EffectInstance, audio: np.ndarray) -> np.ndarray:
     board = Chain(toolbox(pedalboard), instance.items)
-    chunks = [board(np.ascontiguousarray(audio[:, i:i + 512]), SR, reset=False) for i in range(0, audio.shape[1], 512)]
+    chunks = [board(np.ascontiguousarray(audio[:, i : i + 512]), SR, reset=False) for i in range(0, audio.shape[1], 512)]
     return np.concatenate(chunks, axis=1)
 
 
@@ -177,7 +177,7 @@ def test_added_plugin_folders_are_saved_and_junk_is_ignored(tmp_path):
 
 
 def _level_db(audio: np.ndarray) -> float:
-    return 20 * np.log10(float(np.sqrt(np.mean(audio[:, SR // 4:] ** 2))) + 1e-12)
+    return 20 * np.log10(float(np.sqrt(np.mean(audio[:, SR // 4 :] ** 2))) + 1e-12)
 
 
 def test_the_high_pass_falls_twelve_db_per_octave_and_one_slider_moves_it():
@@ -200,7 +200,13 @@ def test_the_defaults_suit_a_noisy_echoing_room():
     values = {key: {p.key: p.default for p in d.params} for key, d in BUILTINS.items()}
     assert values["highpass"]["cutoff_frequency_hz"] == 100
     gate = values["noise_gate"]
-    assert (gate["threshold_db"], gate["depth_db"], gate["attack_ms"], gate["hold_ms"], gate["release_ms"]) == (-40, 24, 2, 120, 150)
+    assert (gate["threshold_db"], gate["depth_db"], gate["attack_ms"], gate["hold_ms"], gate["release_ms"]) == (
+        -40,
+        24,
+        2,
+        120,
+        150,
+    )
     assert values["eq"]["mid_hz"] == 250 and values["eq"]["mid_db"] == -4 and values["eq"]["low_db"] == -2
     assert values["compressor"]["makeup_db"] == 2  # unchanged: more makeup or squash did not help in the tests
 

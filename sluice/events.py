@@ -5,6 +5,7 @@ Plugging in a USB device, an app starting to play, or Sluice rebuilding its link
 can cause one brief dropout. Seeing the two together in the log tells a person (and a bug report) that nothing is wrong,
 instead of suggesting a bigger buffer.
 """
+
 from __future__ import annotations
 
 import threading
@@ -13,10 +14,10 @@ from collections import deque
 from typing import Optional
 
 MAX_EVENTS = 200
-WINDOW_SECONDS = 10.0       # how far back a dropout looks
-CAUSE_SECONDS = 3.0         # a change this close before a dropout is called its likely cause
+WINDOW_SECONDS = 10.0  # how far back a dropout looks
+CAUSE_SECONDS = 3.0  # a change this close before a dropout is called its likely cause
 
-_events: deque = deque(maxlen=MAX_EVENTS)    # (monotonic time, text)
+_events: deque = deque(maxlen=MAX_EVENTS)  # (monotonic time, text)
 _lock = threading.Lock()
 
 

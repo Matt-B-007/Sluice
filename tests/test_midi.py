@@ -2,21 +2,20 @@
 import os
 
 
-from sluice.midi import (Binding, MidiEvent, MidiHub, encoder_delta, fader_to_db, load_bindings, parse,
-                        request_for, save_bindings)
+from sluice.midi import Binding, MidiEvent, MidiHub, encoder_delta, fader_to_db, load_bindings, parse, request_for, save_bindings
 from sluice.model import MIN_DB
 
 
 def test_parse_control_change_and_notes():
     assert parse(bytes([0xB0, 7, 100])) == [MidiEvent("cc", 1, 7, 100)]
     assert parse(bytes([0x93, 36, 90])) == [MidiEvent("on", 4, 36, 90)]
-    assert parse(bytes([0x93, 36, 0]))[0].kind == "off"   # note-on with velocity 0 is a release
+    assert parse(bytes([0x93, 36, 0]))[0].kind == "off"  # note-on with velocity 0 is a release
     assert parse(bytes([0x83, 36, 10]))[0].kind == "off"
 
 
 def test_running_status_and_split_packets():
     p = __import__("sluice.midi", fromlist=["Parser"]).Parser()
-    assert p.feed(bytes([0xB0, 7])) == []                 # incomplete
+    assert p.feed(bytes([0xB0, 7])) == []  # incomplete
     assert p.feed(bytes([64, 7, 65])) == [MidiEvent("cc", 1, 7, 64), MidiEvent("cc", 1, 7, 65)]
 
 
@@ -59,11 +58,16 @@ def test_requests_for_each_control_kind():
 
 def test_bindings_round_trip_and_bad_entries_are_skipped(tmp_path):
     path = tmp_path / "sub" / "controls.json"
-    good = [Binding("cc:1:7", "fader", "level", channel="music"), Binding("note:1:36", "button", "mute", channel="mic", mix="listen")]
+    good = [
+        Binding("cc:1:7", "fader", "level", channel="music"),
+        Binding("note:1:36", "button", "mute", channel="mic", mix="listen"),
+    ]
     save_bindings(path, good)
     assert load_bindings(path) == good
-    path.write_text('{"bindings": [{"source": "x"}, 5, {"source": "cc:1:7", "control": "fader", "action": "level", "step_db": 1e9}, '
-                    '{"source": "cc:1:9", "control": "fader", "action": "master", "mix": "listen"}]}')
+    path.write_text(
+        '{"bindings": [{"source": "x"}, 5, {"source": "cc:1:7", "control": "fader", "action": "level", "step_db": 1e9}, '
+        '{"source": "cc:1:9", "control": "fader", "action": "master", "mix": "listen"}]}'
+    )
     assert [b.source for b in load_bindings(path)] == ["cc:1:9"]
     path.write_text("not json")
     assert load_bindings(path) == []
@@ -88,8 +92,12 @@ class Rig:
         (self.dir / name).unlink()
 
     def hub(self, bindings):
-        return MidiHub(lambda r: self.applied.append(r) or {"ok": True}, bindings,
-                       pattern=str(self.dir / "midiC*D*"), opener=lambda path: self.pipes[path][0])
+        return MidiHub(
+            lambda r: self.applied.append(r) or {"ok": True},
+            bindings,
+            pattern=str(self.dir / "midiC*D*"),
+            opener=lambda path: self.pipes[path][0],
+        )
 
     def send(self, name, data):
         os.write(self.pipes[str(self.dir / name)][1], data)

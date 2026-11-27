@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The PulseAudio connection guard survives a reconnect, and the calls leading up to a crash are remembered."""
+
 from types import SimpleNamespace
 
 import pytest
@@ -15,10 +16,15 @@ from sluice import backend  # noqa: E402
 
 def _fake_pulse(state):
     calls = []
-    return SimpleNamespace(_ctx=object(), connected=True, closed=False, calls=calls,
-                           source_list=lambda: calls.append("source_list") or [],
-                           sink_input_list=lambda: calls.append("sink_input_list") or [],
-                           close=lambda: calls.append("close"))
+    return SimpleNamespace(
+        _ctx=object(),
+        connected=True,
+        closed=False,
+        calls=calls,
+        source_list=lambda: calls.append("source_list") or [],
+        sink_input_list=lambda: calls.append("sink_input_list") or [],
+        close=lambda: calls.append("close"),
+    )
 
 
 def test_the_connection_made_by_a_reconnect_is_guarded_too(monkeypatch):
@@ -121,10 +127,18 @@ def test_the_cpu_split_adds_up_and_never_goes_negative():
 def test_the_report_section_shows_threads_the_split_and_the_last_audio_calls():
     from sluice import efficiency
 
-    data = {"seconds": 120.0, "process_seconds": 130.0, "by_state": {"open": {"seconds": 120.0, "cpu_seconds": 6.0, "meter_updates": 100}},
-            "cpu_seconds": 6.0, "cpu_split": {"window": 4.0, "audio": 2.0, "other_threads": 0.5, "ended_threads": 0.0, "helpers": 0.2},
-            "thread_groups": [{"name": "OpenBLAS", "count": 8, "cpu_seconds": 0.5}], "thread_groups_more": 3,
-            "pulse_recent": [["sink_input_list", 0.4, "ok"]], "rss_mb": 100.0, "threads": 43}
+    data = {
+        "seconds": 120.0,
+        "process_seconds": 130.0,
+        "by_state": {"open": {"seconds": 120.0, "cpu_seconds": 6.0, "meter_updates": 100}},
+        "cpu_seconds": 6.0,
+        "cpu_split": {"window": 4.0, "audio": 2.0, "other_threads": 0.5, "ended_threads": 0.0, "helpers": 0.2},
+        "thread_groups": [{"name": "OpenBLAS", "count": 8, "cpu_seconds": 0.5}],
+        "thread_groups_more": 3,
+        "pulse_recent": [["sink_input_list", 0.4, "ok"]],
+        "rss_mb": 100.0,
+        "threads": 43,
+    }
     text = efficiency.format_section(data)
     assert "Where the CPU went" in text and "audio callback" in text and "helper programs" in text
     assert "Threads by name" in text and "8 x OpenBLAS" in text and "3 more groups" in text
@@ -186,8 +200,12 @@ def test_the_update_items_sit_together_in_settings(window):
     settings = next(m for m in window.action_groups if m.title().replace("&", "") == "Settings")
     items = [a.text().replace("&", "") for a in settings.actions() if a.text()]
     start = items.index("Updates")
-    assert items[start + 1:start + 4] == ["Update automatically when a new version is found", "Check for updates…",
-                                          "Go back to the previous version…"]
+    assert items[start + 1 : start + 5] == [
+        "Update automatically when a new version is found",
+        "Look for a new version once a day",  # 0.13.1 (House Standard)
+        "Check for updates…",
+        "Go back to the previous version…",
+    ]
     help_menu = next(m for m in window.action_groups if m.title().replace("&", "") == "Help")
     assert not [a for a in help_menu.actions() if "update" in a.text().lower() and "new in" not in a.text().lower()]
 
@@ -224,30 +242,47 @@ def _count(pixmap, test):
 
 
 def test_the_tray_states_look_different_and_say_what_they_mean(qapp):
+    """0.13.1: Sluice's tray is the House Standard's reference: plain, talking (lit in Sluice's blue), muted (red badge),
+    disconnected (grey), and a status dot (amber warning, red problem) that moves to the top-right while muted."""
     from sluice.ui_icons import tray_pixmap
 
-    idle, talking, muted = (tray_pixmap(s, 32) for s in ("idle", "talking", "muted"))
-    assert idle.toImage() != talking.toImage() and idle.toImage() != muted.toImage() and talking.toImage() != muted.toImage()
-    light_ring = lambda c: c.alpha() > 200 and abs(c.red() - 0x4f) < 25 and abs(c.green() - 0xb5) < 25 and abs(c.blue() - 0xaa) < 25  # noqa: E731
-    red = lambda c: c.alpha() > 200 and c.red() > 200 and c.green() < 82 and c.blue() < 82  # noqa: E731  (the coral S is not this red)
-    assert _count(talking, light_ring) > 3 * max(1, _count(idle, light_ring))  # the closed, lighter ring
+    idle, talking, muted, gone = (tray_pixmap(s, 32) for s in ("idle", "talking", "muted", "disconnected"))
+    images = [p.toImage() for p in (idle, talking, muted, gone)]
+    assert len({bytes(i.constBits()) for i in images}) == 4  # all four look different
+    lit = lambda c: c.alpha() > 200 and abs(c.red() - 0x60) < 25 and abs(c.green() - 0xA5) < 25 and abs(c.blue() - 0xFA) < 25  # noqa: E731  (the talking blue)
+    red = lambda c: c.alpha() > 200 and c.red() > 200 and c.green() < 82 and c.blue() < 82  # noqa: E731
+    assert _count(talking, lit) > 2 * max(1, _count(idle, lit))  # the closed, lit ring
     assert _count(muted, red) > 20 and _count(idle, red) == 0 and _count(talking, red) == 0
-    assert idle.toImage().pixelColor(0, 0).alpha() == 0 and muted.toImage().pixelColor(0, 0).alpha() == 0  # no tile behind the logo
-    solid = lambda c: c.alpha() > 200  # noqa: E731
-    assert _count(muted, solid) < _count(idle, solid) + 150  # the logo itself is faded; only the badge is solid
+    grey = lambda c: c.alpha() > 40 and abs(c.red() - c.blue()) < 30 and abs(c.green() - c.blue()) < 30  # noqa: E731
+    assert _count(gone, lit) == 0 and _count(gone, grey) > 20  # disconnected: grey, never lit
+    assert idle.toImage().pixelColor(0, 0).alpha() == 0  # no tile behind the logo
+    amber = lambda c: c.alpha() > 200 and c.red() > 220 and 150 < c.green() < 210 and c.blue() < 80  # noqa: E731
+    warn = tray_pixmap("idle", 32, "warning").toImage()
+    muted_warn = tray_pixmap("muted", 32, "warning").toImage()
+    bottom_right = lambda image: [image.pixelColor(x, y) for x in range(24, 32) for y in range(24, 32)]  # noqa: E731
+    top_right = lambda image: [image.pixelColor(x, y) for x in range(24, 32) for y in range(0, 8)]  # noqa: E731
+    assert any(amber(c) for c in bottom_right(warn)) and not any(amber(c) for c in top_right(warn))
+    assert any(amber(c) for c in top_right(muted_warn))  # the mute badge keeps the bottom-right
+    problem = tray_pixmap("idle", 32, "problem").toImage()
+    assert any(red(c) or (c.red() > 220 and c.green() < 140) for c in bottom_right(problem))
 
 
-def test_the_logo_is_transparent_with_the_teal_ring_and_coral_s(qapp):
+def test_the_logo_is_one_blue_symbol_and_the_launcher_icon_is_the_house_square(qapp):
     from pathlib import Path
 
     from PySide6.QtGui import QImage
 
     data = Path(__import__("sluice").__file__).parent / "data"
-    svg = (data / "sluice.svg").read_text()
-    assert "<rect" not in svg and "#0d9488" in svg and "#f0603f" in svg
+    logo = (data / "sluice.svg").read_text()
+    assert "<rect" not in logo and "#3b82f6" in logo and "#0d9488" not in logo and "#f0603f" not in logo  # no teal, no coral
+    launcher = (data / "sluice-launcher.svg").read_text()
+    assert (
+        'fill="#0c1016"' in launcher and 'rx="28"' in launcher and 'stroke-opacity="0.35"' in launcher and "#60a5fa" in launcher
+    )
     for size in (16, 128, 512):
         image = QImage(str(data / "png" / f"sluice-{size}.png"))
-        assert image.pixelColor(0, 0).alpha() == 0  # transparent corner
+        assert image.pixelColor(0, 0).alpha() == 0  # the rounded corner
+        assert image.pixelColor(size // 2, max(1, size // 10)).name() == "#0c1016"  # the House dark square
 
 
 def test_every_logo_size_exists_and_matches_the_svg(qapp):
@@ -256,8 +291,8 @@ def test_every_logo_size_exists_and_matches_the_svg(qapp):
     from PySide6.QtGui import QImage
 
     data = Path(__import__("sluice").__file__).parent / "data"
-    svg = (data / "sluice.svg").read_text()
-    assert "<title>Sluice</title>" in svg and "#0d9488" in svg and "Inter Bold" in svg
+    svg = (data / "sluice-launcher.svg").read_text()  # 0.13.1: the PNGs are the launcher icon
+    assert "<title>Sluice</title>" in svg and "#60a5fa" in svg and "Inter Bold" in svg
     for size in (16, 24, 32, 48, 64, 128, 256, 512):
         image = QImage(str(data / "png" / f"sluice-{size}.png"))
         assert (image.width(), image.height()) == (size, size)
@@ -283,10 +318,12 @@ def test_every_catch_all_block_logs_or_says_why_it_stays_quiet():
             caught = ast.unparse(node.type) if node.type is not None else "BaseException"
             if "Exception" not in caught and caught != "BaseException":
                 continue
-            body_is_silent = all(isinstance(s, (ast.Pass, ast.Continue)) or
-                                 (isinstance(s, ast.Return) and (s.value is None or isinstance(s.value, ast.Constant))) or
-                                 (isinstance(s, ast.Assign) and isinstance(s.value, ast.Constant))
-                                 for s in node.body)
+            body_is_silent = all(
+                isinstance(s, (ast.Pass, ast.Continue))
+                or (isinstance(s, ast.Return) and (s.value is None or isinstance(s.value, ast.Constant)))
+                or (isinstance(s, ast.Assign) and isinstance(s.value, ast.Constant))
+                for s in node.body
+            )
             if not body_is_silent:
                 continue
             end = max(getattr(s, "end_lineno", s.lineno) for s in node.body)
@@ -333,8 +370,11 @@ def test_the_hidden_window_flag_does_not_blame_the_audio_work():
     from sluice import efficiency
 
     def data(audio):
-        return {"seconds": 960.0, "cpu_seconds": 23.0, "by_state": {"tray": {"seconds": 960.0, "cpu_seconds": 23.0, "meter_updates": 4800,
-                                                                          "audio_cpu_seconds": audio}}}
+        return {
+            "seconds": 960.0,
+            "cpu_seconds": 23.0,
+            "by_state": {"tray": {"seconds": 960.0, "cpu_seconds": 23.0, "meter_updates": 4800, "audio_cpu_seconds": audio}},
+        }
 
     assert not [n for n in efficiency.flags(data(17.5)) if "hidden" in n]  # 2.4% of a core, 1.8% of it audio
     flagged = [n for n in efficiency.flags(data(2.0)) if "hidden" in n]  # the rest alone is over the limit
@@ -370,11 +410,16 @@ def test_every_menu_item_has_its_own_alt_key_letter(qapp, tmp_path):
             found = re.search(r"&(.)", action.text())
             name = action.text().replace("&", "")
             if not found:
-                if not path.endswith(("Running in the background", "Audio buffer", "Which versions", "Show levels as")):  # lists of choices: reached by arrow keys
+                if not path.endswith(
+                    ("Running in the background", "Audio buffer", "Which versions", "Show levels as")
+                ):  # lists of choices: reached by arrow keys
                     problems.append(f"{path} > {name}: no Alt-key letter")
             else:
                 letters.setdefault(found.group(1).lower(), []).append(name)
-            if action.menu() is not None and name not in ("Theme", "Restore earlier settings"):  # those two are filled in when opened
+            if action.menu() is not None and name not in (
+                "Theme",
+                "Restore earlier settings",
+            ):  # those two are filled in when opened
                 check(action.menu(), f"{path} > {name}")
         problems.extend(f"{path}: {key.upper()} is used by {names}" for key, names in letters.items() if len(names) > 1)
 
@@ -405,13 +450,13 @@ def _crash_file(tmp_path, monkeypatch, sessions, trace_in=()):
 
 def test_old_crash_traces_move_to_the_archive_with_their_version(tmp_path, monkeypatch):
     logs = _crash_file(tmp_path, monkeypatch, 15, trace_in=(1, 3, 14))
-    assert logs.rotate_crash_log(10) == 2   # the traces of sessions 1 and 3 are older than the last 10
+    assert logs.rotate_crash_log(10) == 2  # the traces of sessions 1 and 3 are older than the last 10
     kept = logs.crash_path().read_text()
     assert kept.count("--- sluice session started") == 10 and "Thread 0x000e" in kept and "Thread 0x0001" not in kept
     archive = logs.crash_archive_path().read_text()
     assert "Thread 0x0001" in archive and "Thread 0x0003" in archive
     assert "(Sluice 0.10.1)" in archive and "(Sluice 0.10.0)" in archive and "started 2026-11-02" in archive
-    assert logs.rotate_crash_log(10) == 0   # nothing more to move the second time
+    assert logs.rotate_crash_log(10) == 0  # nothing more to move the second time
 
 
 def test_the_report_shows_one_calm_line_when_only_old_traces_remain(tmp_path, monkeypatch):
@@ -422,7 +467,7 @@ def test_the_report_shows_one_calm_line_when_only_old_traces_remain(tmp_path, mo
     text = report.crash_summary(logs.crash_path().read_text(), None, logs.crash_archive_path().read_text())
     assert "No native crash in the last 10 session(s)." in text
     assert "started 2026-11-04" in text and "Sluice 0.10.0" in text and "crash-archive.log" in text
-    assert "Fatal Python error" not in text   # the old trace itself is not in the report
+    assert "Fatal Python error" not in text  # the old trace itself is not in the report
 
 
 def test_a_new_crash_still_shows_in_full(tmp_path, monkeypatch):
@@ -432,7 +477,7 @@ def test_a_new_crash_still_shows_in_full(tmp_path, monkeypatch):
     logs.rotate_crash_log(10)
     text = report.crash_summary(logs.crash_path().read_text(), None, logs.crash_archive_path().read_text())
     assert "Fatal Python error: Aborted" in text and "Thread 0x000e" in text and "No native crash" not in text
-    assert "crash-archive.log" in text   # and the archive is still mentioned
+    assert "crash-archive.log" in text  # and the archive is still mentioned
 
 
 def test_the_crash_file_is_shortened_in_place_so_a_running_writer_keeps_working(tmp_path, monkeypatch):
@@ -445,8 +490,10 @@ def test_the_crash_file_is_shortened_in_place_so_a_running_writer_keeps_working(
 def test_loaded_maths_libraries_are_named_in_the_report():
     from sluice import efficiency
 
-    maps = ("7f00 r-xp 0 00:00 0 /usr/lib/libopenblas.so.0\n7f01 r-xp 0 00:00 0 /usr/lib/libgomp.so.1\n"
-            "7f02 r--p 0 00:00 0 /usr/lib/libc.so.6\n7f03 r--p 0 00:00 0\n")
+    maps = (
+        "7f00 r-xp 0 00:00 0 /usr/lib/libopenblas.so.0\n7f01 r-xp 0 00:00 0 /usr/lib/libgomp.so.1\n"
+        "7f02 r--p 0 00:00 0 /usr/lib/libc.so.6\n7f03 r--p 0 00:00 0\n"
+    )
     found = efficiency.math_libraries(maps)
     assert any("OpenBLAS" in f and "libopenblas.so.0" in f for f in found) and any("OpenMP" in f for f in found)
     assert len(found) == 2 and efficiency.math_libraries("") == []
@@ -465,7 +512,7 @@ def test_cpu_used_before_a_restart_is_not_counted_whichever_thread_the_program_r
     result = {}
 
     def work():
-        end = _t.process_time() + 0.4   # note: process time, so this counts whichever thread burns it
+        end = _t.process_time() + 0.4  # note: process time, so this counts whichever thread burns it
         t0 = _t.thread_time()
         while _t.thread_time() - t0 < 0.4 and _t.process_time() < end + 5:
             pass
@@ -484,8 +531,16 @@ def _wheel(widget, delta, modifiers=None):
     from PySide6.QtWidgets import QApplication
 
     mods = modifiers or Qt.KeyboardModifier.NoModifier
-    event = QWheelEvent(QPointF(5, 5), widget.mapToGlobal(QPointF(5, 5)), QPoint(0, 0), QPoint(0, delta), Qt.MouseButton.NoButton,
-                        mods, Qt.ScrollPhase.NoScrollPhase, False)
+    event = QWheelEvent(
+        QPointF(5, 5),
+        widget.mapToGlobal(QPointF(5, 5)),
+        QPoint(0, 0),
+        QPoint(0, delta),
+        Qt.MouseButton.NoButton,
+        mods,
+        Qt.ScrollPhase.NoScrollPhase,
+        False,
+    )
     QApplication.sendEvent(widget, event)
     return event
 
@@ -503,7 +558,9 @@ def test_wheel_over_a_channel_level_number_moves_that_level(window):
     from sluice.ui import format_db
 
     assert readout.toolTip().startswith(format_db((start - 10) / 10))  # the number shows the new level
-    assert window.engine.mixer.channel(strip.channel.id).levels[mix_id] == pytest.approx((start - 10) / 10, abs=0.11)  # and the audio follows
+    assert window.engine.mixer.channel(strip.channel.id).levels[mix_id] == pytest.approx(
+        (start - 10) / 10, abs=0.11
+    )  # and the audio follows
 
 
 def test_shift_wheel_makes_fine_steps_and_the_ends_hold(window):

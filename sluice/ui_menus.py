@@ -6,6 +6,7 @@ window (``ui_settings``), which is bound to the same actions, so each setting is
 any more (it was the Original skin's); the groups are kept only to hold the actions and their shortcuts.
 
 Part of the main window, split out of ``ui.py``: ``MainWindow`` inherits this class, so every method here is still a method of the window."""
+
 from __future__ import annotations
 
 import logging
@@ -13,12 +14,12 @@ from functools import partial
 
 from PySide6.QtCore import QUrl
 from PySide6.QtGui import QAction, QActionGroup, QDesktopServices, QKeySequence
-from PySide6.QtWidgets import QCheckBox, QLabel, QMenu, QMessageBox, QWidgetAction
+from PySide6.QtWidgets import QDialog, QLabel, QMenu, QMessageBox, QWidgetAction
 
 from . import ui_dialog
 from . import themes
 from .model import BUFFER_CHOICES, MONITOR, STREAM
-from .ui_base import DISCORD_URL, ISSUES_URL, PROJECT_URL, default_size
+from .ui_base import DISCORD_URL, PROJECT_URL, default_size
 
 log = logging.getLogger("sluice.ui")
 
@@ -52,10 +53,16 @@ def keep_shortcut_gap(menu: QMenu) -> None:
     on the left and the shortcuts on the right, and with a style sheet it can leave only a few pixels between them in a narrow menu
     (it did beside Settings…); a wider menu moves the shortcuts away."""
     metrics = menu.fontMetrics()
-    names = [metrics.horizontalAdvance(plain(a.text()) + "\u2026" * a.text().endswith("\u2026")) for a in menu.actions()
-             if a.isVisible() and not a.isSeparator() and not a.property("heading")]
-    keys = [metrics.horizontalAdvance(a.shortcut().toString(QKeySequence.SequenceFormat.NativeText)) for a in menu.actions()
-            if a.isVisible() and not a.shortcut().isEmpty()]
+    names = [
+        metrics.horizontalAdvance(plain(a.text()) + "\u2026" * a.text().endswith("\u2026"))
+        for a in menu.actions()
+        if a.isVisible() and not a.isSeparator() and not a.property("heading")
+    ]
+    keys = [
+        metrics.horizontalAdvance(a.shortcut().toString(QKeySequence.SequenceFormat.NativeText))
+        for a in menu.actions()
+        if a.isVisible() and not a.shortcut().isEmpty()
+    ]
     if not names or not keys:
         return
     # the item's padding on both sides, room for a tick or a submenu arrow, the menu's own padding and border
@@ -79,7 +86,9 @@ class MenusMixin:
         action.setCheckable(checkable)
         if shortcut is not None:
             action.setShortcut(QKeySequence(shortcut))
-            self.addAction(action)  # the menu bar is out of sight (the menu button holds the menus): shortcuts belong to the window
+            self.addAction(
+                action
+            )  # the menu bar is out of sight (the menu button holds the menus): shortcuts belong to the window
         action.triggered.connect(lambda _checked=False: slot())
         return action
 
@@ -118,10 +127,16 @@ class MenusMixin:
         self.add_channel_action = self._action(mixer_menu, "&Add channel\u2026", self.add_channel, "Ctrl+N")
         self.refresh_action = self._action(mixer_menu, "Re&fresh devices and apps", self.refresh_now, "F5")
         heading(mixer_menu, "Mixes")
-        self.recording_action = self._action(mixer_menu, "&Recording mix (a third mix)", self.toggle_recording_mix, checkable=True)
+        self.recording_action = self._action(
+            mixer_menu, "&Recording mix (a third mix)", self.toggle_recording_mix, checkable=True
+        )
         self.own_devices_action = self._action(mixer_menu, "Recording &devices for OBS\u2026", self.show_own_devices)
-        self.follow_action = self._action(mixer_menu, "Recording devices f&ollow Broadcast",
-                                          lambda: self.set_devices_follow_broadcast(self.follow_action.isChecked()), checkable=True)  # 0.12.4: app channels' devices follow the Broadcast faders and mutes
+        self.follow_action = self._action(
+            mixer_menu,
+            "Recording devices f&ollow Broadcast",
+            lambda: self.set_devices_follow_broadcast(self.follow_action.isChecked()),
+            checkable=True,
+        )  # 0.12.4: app channels' devices follow the Broadcast faders and mutes
         # 0.12.6: in Settings › Audio (not in this menu): every app channel gets its own recording device
         self.devices_action = QAction("Every app channel has its own recording device", self)
         self.devices_action.setCheckable(True)
@@ -132,11 +147,14 @@ class MenusMixin:
         used = {"a", "f", "r", "d", "o", "m", "h"}  # the Alt-key letters the other items take
         for mix in self.engine.mixer.mixes:
             shortcut = {MONITOR: "Ctrl+Shift+L", STREAM: "Ctrl+Shift+B"}.get(mix.id, "")
-            letter = next((c for c in mix.label if c.isalnum() and c.lower() not in used), "")  # first letter of the name nobody has yet
+            letter = next(
+                (c for c in mix.label if c.isalnum() and c.lower() not in used), ""
+            )  # first letter of the name nobody has yet
             used.add(letter.lower())
             text = f"Mute {mix.label.replace(letter, '&' + letter, 1)}" if letter else f"Mute {mix.label}"
-            self.mute_actions[mix.id] = self._action(mixer_menu, text, partial(self.toggle_mix_mute, mix.id),
-                                                     shortcut or None, checkable=True)
+            self.mute_actions[mix.id] = self._action(
+                mixer_menu, text, partial(self.toggle_mix_mute, mix.id), shortcut or None, checkable=True
+            )
         # H for hear: kept away from Ctrl+Shift+B (Mute Broadcast), which does nearly the opposite
         self.hear_action = self._action(mixer_menu, "&Hear Broadcast", self.toggle_hear_broadcast, "Ctrl+H", checkable=True)
         mixer_menu.aboutToShow.connect(self._refresh_mixer_menu)
@@ -147,8 +165,11 @@ class MenusMixin:
         heading(view_menu, "Layout")
         self.layout_actions = {}
         layout_group = QActionGroup(self)
-        for key, text, keys in (("columns", "&Columns (a card for each channel)", "Ctrl+1"),
-                                ("rows", "&Rows (a line for each channel)", "Ctrl+2")):
+        for key, text, keys in (
+            ("columns", "&Columns (a card for each channel)", "Ctrl+1"),
+            ("rows", "&Rows (a line for each channel)", "Ctrl+2"),
+            ("list", "Compact &list (for a second screen)", "Ctrl+3"),
+        ):  # 0.13.1: from Nexus
             action = self._action(view_menu, text, partial(self.set_layout, key), keys, checkable=True)
             action.setActionGroup(layout_group)
             self.layout_actions[key] = action
@@ -156,8 +177,11 @@ class MenusMixin:
         units_menu = view_menu.addMenu("Show le&vels as")
         self.units_actions = {}
         units_group = QActionGroup(self)
-        for key, text in (("both", "dB and percent (-18 dB · 50%)"), ("db", "dB only (-18 dB)"),
-                          ("percent", "Percent only (50%, as your desktop's volume)")):
+        for key, text in (
+            ("both", "dB and percent (-18 dB · 50%)"),
+            ("db", "dB only (-18 dB)"),
+            ("percent", "Percent only (50%, as your desktop's volume)"),
+        ):
             action = self._action(units_menu, text, partial(self.set_level_units, key), checkable=True)
             action.setActionGroup(units_group)
             self.units_actions[key] = action
@@ -167,18 +191,21 @@ class MenusMixin:
         self.skin_menu.aboutToShow.connect(self._fill_skin_menu)
         self.theme_menu = view_menu.addMenu("&Theme")
         self.theme_menu.aboutToShow.connect(self._fill_theme_menu)
-        self.skin_colors_action = self._action(view_menu, "Skin's own colo&urs on Dark and Light",
-                                               lambda: self.set_skin_colors(self.skin_colors_action.isChecked()), checkable=True)
-        self.skin_colors_action.setToolTip("Nexus's deep blue and cyan, and Tile's graphite and white keys, on the Dark and Light themes. "
-                                           "Every other theme always keeps its own colours. Off: Dark and Light keep theirs too.")
+        self.skin_colors_action = self._action(
+            view_menu,
+            "Skin's own colo&urs on Dark and Light",
+            lambda: self.set_skin_colors(self.skin_colors_action.isChecked()),
+            checkable=True,
+        )
+        self.skin_colors_action.setToolTip(
+            "Nexus's deep blue and cyan, and Tile's graphite and white keys, on the Dark and Light themes. "
+            "Every other theme always keeps its own colours. Off: Dark and Light keep theirs too."
+        )
         self.nexus_section = self.reduce_action = None
-        self.reduce_action = self._action(view_menu, "Re&duce effects", lambda: self.set_reduce_effects(self.reduce_action.isChecked()),
-                                          checkable=True)
+        self.reduce_action = self._action(
+            view_menu, "Re&duce effects", lambda: self.set_reduce_effects(self.reduce_action.isChecked()), checkable=True
+        )
         self.nexus_section = self.reduce_action  # (0.11.5 had a Nexus heading here; the item shows only in Nexus)
-        self.see_through_action = self._action(view_menu, "S&ee-through window (Glass on KDE Plasma)",
-                                               lambda: self.set_see_through(self.see_through_action.isChecked()), checkable=True)
-        self.see_through_action.setToolTip("Your wallpaper shows through the window, blurred by KWin. Takes effect the next time "
-                                           "Sluice starts. Off, or on other desktops: Sluice paints a soft backdrop behind the panes.")
         self.reduce_action.setToolTip("For slow or busy computers: the Nexus rings stop shimmering and the cards do not glow")
         heading(view_menu, "Desktop")
         self.widgets_menu = view_menu.addMenu("Desktop wid&gets")
@@ -199,8 +226,11 @@ class MenusMixin:
         heading(background, "When I log in")
         group = QActionGroup(self)
         self.autostart_actions = {}
-        for key, text in (("off", "Do not start automatically"), ("window", "Start with the window open"),
-                          ("minimized", "Start minimized")):  # the last label says where it goes: see _refresh_background_menu
+        for key, text in (
+            ("off", "Do not start automatically"),
+            ("window", "Start with the window open"),
+            ("minimized", "Start minimized"),
+        ):  # the last label says where it goes: see _refresh_background_menu
             action = background.addAction(text)
             action.setCheckable(True)
             action.setActionGroup(group)
@@ -209,42 +239,67 @@ class MenusMixin:
         heading(background, "When I close the window")
         close_group = QActionGroup(self)
         self.close_actions = {}
-        for key, text in (("quit", "Quit Sluice"), ("minimize", "Keep running in the taskbar"),
-                          ("tray", "Keep running in the tray")):
+        for key, text in (
+            ("quit", "Quit Sluice"),
+            ("minimize", "Keep running in the taskbar"),
+            ("tray", "Keep running in the tray"),
+        ):
             action = background.addAction(text)
             action.setCheckable(True)
             action.setActionGroup(close_group)
             action.triggered.connect(lambda _c=False, key=key: self.set_close_action(key))
             self.close_actions[key] = action
         background.addSeparator()
-        self.no_tray_note = background.addAction("This desktop has no system tray, so \u201ctray\u201d falls back to the taskbar.")
+        self.no_tray_note = background.addAction(
+            "This desktop has no system tray, so \u201ctray\u201d falls back to the taskbar."
+        )
         self.no_tray_note.setEnabled(False)
         background.aboutToShow.connect(self._refresh_background_menu)
         self.background_menu = background
-        self.launcher_action = self._action(settings_menu, "Add Sluice to the &applications menu", self.toggle_launcher, checkable=True)
+        self.launcher_action = self._action(
+            settings_menu, "Add Sluice to the &applications menu", self.toggle_launcher, checkable=True
+        )
         heading(settings_menu, "Audio")
         buffer_menu = settings_menu.addMenu("Audio &buffer")
         self.buffer_actions = {}
-        labels = {256: "Smallest (256 frames): lowest delay, most CPU", 512: "Small (512 frames): the default",
-                  1024: "Large (1024 frames): less CPU", 2048: "Largest (2048 frames): least CPU, most delay"}
+        labels = {
+            256: "Smallest (256 frames): lowest delay, most CPU",
+            512: "Small (512 frames): the default",
+            1024: "Large (1024 frames): less CPU",
+            2048: "Largest (2048 frames): least CPU, most delay",
+        }
         for frames in BUFFER_CHOICES:
-            self.buffer_actions[frames] = self._action(buffer_menu, labels[frames], partial(self.set_buffer, frames), checkable=True)
+            self.buffer_actions[frames] = self._action(
+                buffer_menu, labels[frames], partial(self.set_buffer, frames), checkable=True
+            )
         buffer_menu.aboutToShow.connect(self._refresh_buffer_menu)
         self.controllers_heading = heading(settings_menu, "Controllers")
         self.controllers_heading.setVisible(False)  # until attach_controls() puts its item under it
         # "MIDI controllers and Stream Deck…" is put here by attach_controls(), in front of the next heading.
         self.controllers_separator = heading(settings_menu, "Updates")
-        self.auto_update_action = self._action(settings_menu, "&Update automatically when a new version is found",
-                                               self.toggle_auto_update, checkable=True)
+        self.auto_update_action = self._action(
+            settings_menu, "&Update automatically when a new version is found", self.toggle_auto_update, checkable=True
+        )
+        self.check_daily_action = self._action(
+            settings_menu, "Look for a new version once a &day", self.toggle_check_daily, checkable=True
+        )
+        self.check_daily_action.setToolTip(
+            "Shows an Update button at the top right when there is one. Nothing is downloaded until you choose to."
+        )
         self._action(settings_menu, "&Check for updates\u2026", self.check_for_updates)
         self.rollback_action = self._action(settings_menu, "&Go back to the previous version\u2026", self.rollback_update)
         # 0.12.2: which versions to look for (a list of choices, like Audio buffer)
         channel_menu = settings_menu.addMenu("Which &versions")
         self.channel_actions = {
-            "stable": self._action(channel_menu, "Stable: tested releases (recommended)",
-                                   partial(self.set_update_channel, "stable"), checkable=True),
-            "beta": self._action(channel_menu, "Beta: new features first, may have rough edges",
-                                 partial(self.set_update_channel, "beta"), checkable=True),
+            "stable": self._action(
+                channel_menu, "Stable: tested releases (recommended)", partial(self.set_update_channel, "stable"), checkable=True
+            ),
+            "beta": self._action(
+                channel_menu,
+                "Beta: new features first, may have rough edges",
+                partial(self.set_update_channel, "beta"),
+                checkable=True,
+            ),
         }
         channel_menu.aboutToShow.connect(self._refresh_settings_menu)
         settings_menu.aboutToShow.connect(self._refresh_settings_menu)
@@ -252,26 +307,44 @@ class MenusMixin:
         # Help: learning it, when something is wrong, the community, and about.
         self.help_menu = holder("&Help")
         self.help_menu.setToolTipsVisible(True)
-        heading(self.help_menu, "Learn")
+        # 0.13.1: the House Standard's Help menu, in its order; Sluice's own items follow
+        self.report_action = report_action = self._action(self.help_menu, "&Report a problem\u2026", self.open_report_dialog)
+        report_action.setToolTip(
+            "Write what happened, see exactly what the report holds, and save, copy or send it. "
+            "Nothing is sent until you choose to."
+        )
+        self.problem_action = report_action  # (the same item: 0.12 had a separate link)
+        self.whats_new_action = self.help_menu.addAction("&What's new", self.show_whats_new)
         self.shortcuts_action = self._action(self.help_menu, "&Keyboard shortcuts", self.show_shortcuts, "F1")
-        self.whats_new_action = self.help_menu.addAction("&What's new in this version", self.show_whats_new)
-        heading(self.help_menu, "Something wrong")
+        self.tour_action = self.help_menu.addAction("Show the &tour", self.show_tour)
+        self.about_action = self.help_menu.addAction("&About Sluice", self.show_about)
+        heading(self.help_menu, "Sluice")
         self.glitch_action = self._action(self.help_menu, "I heard a &glitch", self.mark_glitch, "Ctrl+Shift+G")
-        self.report_action = report_action = self.help_menu.addAction("Save bug &report\u2026", self.save_report)
-        report_action.setToolTip("Something wrong, or something looks wrong? Save this file and send it: it lists the window size, how the "
-                                 "window was arranged and where each part is, as well as the audio setup.")
-        self.problem_action = self.help_menu.addAction("Report a &problem", partial(self.open_link, ISSUES_URL))
-        heading(self.help_menu, "Community")
         self.discord_action = self.help_menu.addAction("Join the &Discord", partial(self.open_link, DISCORD_URL))
         self.github_action = self.help_menu.addAction("Project page on Git&Hub", partial(self.open_link, PROJECT_URL))
-        heading(self.help_menu, "About")
-        self.about_action = self.help_menu.addAction("&About Sluice", self.show_about)
-        self.help_menu.addSeparator()  # kept apart, so it is not clicked by mistake
-        self.uninstall_action = self.help_menu.addAction("&Uninstall Sluice\u2026", self.uninstall_app)
+        self.uninstall_action = QAction("&Uninstall Sluice\u2026", self)  # (in Settings > About & uninstall)
+        self.uninstall_action.triggered.connect(self.uninstall_app)
 
         self.open_settings_action = self._action(file_menu, "Setti&ngs\u2026", self.open_settings, "Ctrl+,")
         for menu in self.action_groups:
             watch_shortcut_gaps(menu)
+        from . import ui_command
+
+        ui_command.install(self)  # 0.13.1: Ctrl+K command search and ? for the shortcuts page
+
+    def open_report_dialog(self) -> None:
+        """Help > Report a problem (0.13.1)."""
+        from .ui_report import ReportDialog
+
+        self.report_dialog = ReportDialog(self)
+        self.report_dialog.show()
+
+    def show_tour(self) -> None:
+        """Help > Show the tour (0.13.1)."""
+        from .ui_tour import Tour
+
+        self.tour = Tour(self)
+        self.tour.show()
 
     def toggle_my_widgets(self) -> None:
         """Ctrl+Shift+W: put the open desktop widgets away (remembered with the settings, so this survives a restart or an update),
@@ -309,9 +382,6 @@ class MenusMixin:
         self.fullscreen_action.setChecked(self.isFullScreen())
         for key, action in getattr(self, "units_actions", {}).items():
             action.setChecked(self.engine.mixer.level_units == key)
-        self.see_through_action.setChecked(self.engine.mixer.see_through)
-        from . import desktop_place
-        self.see_through_action.setVisible(desktop_place.kde() and themes.valid_skin(self.engine.mixer.skin) == "glass")
         self.reduce_action.setChecked(self.engine.mixer.reduce_effects)
         self.skin_colors_action.setChecked(self.engine.mixer.skin_colors)
         self._show_skin_items()
@@ -322,18 +392,32 @@ class MenusMixin:
         menu.clear()
         items = [("Microphone mute button", "mic", None, None, "A round button: click it to mute or unmute your microphone")]
         for mix in self.engine.mixer.mixes:
-            items.append((f"{mix.label} volume dial", "dial", mix.id, None,
-                          f"A dial for the {mix.label} main level: scroll to change it, click to mute"))
+            items.append(
+                (
+                    f"{mix.label} volume dial",
+                    "dial",
+                    mix.id,
+                    None,
+                    f"A dial for the {mix.label} main level: scroll to change it, click to mute",
+                )
+            )
         items.append(("Channel list", "strip", None, None, "Every channel on one line, in a small window"))
         self._widget_items(menu, items)
         menu.addSeparator()  # 0.11.5: one mix or one channel, with its sliders
-        items = [(f"{mix.label} mix", "mix", mix.id, None, f"The {mix.label} mix with its slider, Mute and the Limiter")
-                 for mix in self.engine.mixer.mixes]
+        items = [
+            (f"{mix.label} mix", "mix", mix.id, None, f"The {mix.label} mix with its slider, Mute and the Limiter")
+            for mix in self.engine.mixer.mixes
+        ]
         self._widget_items(menu, items)
         channels = menu.addMenu("Channels")
         channels.setToolTipsVisible(True)
-        self._widget_items(channels, [(channel.label, "channel", None, channel.id,
-                                       f"{channel.label} with a slider and a mute button for each mix") for channel in self.engine.mixer.channels])
+        self._widget_items(
+            channels,
+            [
+                (channel.label, "channel", None, channel.id, f"{channel.label} with a slider and a mute button for each mix")
+                for channel in self.engine.mixer.channels
+            ],
+        )
         menu.addSeparator()
         close_all = menu.addAction("Close all widgets", lambda: self.desktop.close_all(forget=True))
         close_all.setEnabled(bool(self.desktop.open_widgets))
@@ -344,7 +428,9 @@ class MenusMixin:
             action.setCheckable(True)
             action.setChecked(self.desktop.is_open(kind, mix, channel))
             action.setToolTip(tip)
-            action.triggered.connect(lambda _c=False, kind=kind, mix=mix, channel=channel: self._toggle_desktop_widget(kind, mix, channel))
+            action.triggered.connect(
+                lambda _c=False, kind=kind, mix=mix, channel=channel: self._toggle_desktop_widget(kind, mix, channel)
+            )
 
     def _toggle_desktop_widget(self, kind: str, mix, channel=None) -> None:
         was_open = self.desktop.is_open(kind, mix, channel)
@@ -366,48 +452,44 @@ class MenusMixin:
         if "Demo" in self.engine.io.label:
             self.say("Demo mode changes nothing, so there is nothing to uninstall here.")
             return
-        keep_plan = uninstall.plan(keep_settings=True)
-        all_plan = uninstall.plan(keep_settings=False, remove_git=True)
+        from .ui_uninstall import UninstallDialog
 
-        def listing(result) -> str:
-            return uninstall.describe(result).replace("Sluice will remove:", "This will remove:")
-
-        box = ui_dialog.Message(self)
-        box.setWindowTitle("Uninstall Sluice")
-        box.setText("How much of Sluice should be removed?")
-        box.setInformativeText(
-            "Uninstall, keep my settings\n" + listing(keep_plan) +
-            "\n\nRemove everything\n" + listing(all_plan).replace("\n  (nothing: it is not installed here)", "") +
-            "\n\nBoth close Sluice first and remove these a moment later, then check that nothing was missed. "
-            + " ".join(uninstall.STAYS))
-        caches = QCheckBox("Also clear download caches (pip and cargo; other programs use them too)")
-        caches.setToolTip("Clears ~/.cache/pip and ~/.cargo/registry. Programs that use them just download again when they need to.")
-        box.setCheckBox(caches)
-        keep_button = box.addButton("Uninstall, keep my settings", QMessageBox.ButtonRole.AcceptRole)
-        everything_button = box.addButton("Remove everything", QMessageBox.ButtonRole.DestructiveRole)
-        box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
-        box.exec()
-        clicked = box.clickedButton()
-        if clicked not in (keep_button, everything_button):
+        self.uninstall_dialog = dialog = UninstallDialog(
+            uninstall.plan(keep_settings=True), uninstall.plan(keep_settings=False, remove_git=True), self
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted:
             return
-        keep = clicked is keep_button
+        keep, caches_on = not dialog.delete_settings.isChecked(), dialog.caches.isChecked()
         remove_git = False
-        if not keep and all_plan.git_folder:
+        if not keep and dialog.everything.git_folder:
             answer = ui_dialog.question(
-                self, "Delete the git folder?",
+                self,
+                "Delete the git folder?",
                 "The Sluice folder is a git clone. Deleting it also deletes any changes in it that you have not committed "
-                "or pushed.\n\nDelete it too?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No)
+                "or pushed.\n\nDelete it too?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
             remove_git = answer == QMessageBox.StandardButton.Yes
-        command = uninstall.command_for_gui(keep, clear_caches=caches.isChecked(), remove_git=remove_git)
-        script = ('sleep 4; out=$("$@" 2>&1); '
-                  'command -v notify-send >/dev/null 2>&1 && notify-send "Sluice uninstall" "$out"; exit 0')
+        command = uninstall.command_for_gui(keep, clear_caches=caches_on, remove_git=remove_git)
+        script = (
+            'sleep 4; out=$("$@" 2>&1); command -v notify-send >/dev/null 2>&1 && notify-send "Sluice uninstall" "$out"; exit 0'
+        )
         try:
             # a few seconds' wait lets this process finish closing (it holds the single-copy lock until then)
-            subprocess.Popen(["sh", "-c", script, "sluice-uninstall", *command], start_new_session=True,
-                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.Popen(
+                ["sh", "-c", script, "sluice-uninstall", *command],
+                start_new_session=True,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
         except OSError as exc:
-            ui_dialog.warning(self, "Uninstall Sluice", f"Could not start the uninstall: {exc}\nRun this in a terminal instead: sluice --uninstall")
+            ui_dialog.warning(
+                self,
+                "Uninstall Sluice",
+                f"Could not start the uninstall: {exc}\nRun this in a terminal instead: sluice --uninstall",
+            )
             return
         self.quit_app()
 
@@ -423,6 +505,7 @@ class MenusMixin:
         self.devices_action.setChecked(self.engine.mixer.devices_for_channels)
         for mix_id, action in self.mute_actions.items():
             action.setChecked(self.engine.mixer.mix(mix_id).mute)
+        self.check_daily_action.setChecked(self.engine.mixer.check_daily)
 
     def _refresh_settings_menu(self) -> None:
         self._refresh_file_menu()
@@ -436,6 +519,7 @@ class MenusMixin:
         """0.12.3: show levels in dB, percent or both, everywhere at once."""
         from . import ui_base
         from .model import LEVEL_UNITS
+
         if units not in LEVEL_UNITS:
             return
         self.engine.mixer.level_units = units
@@ -445,8 +529,13 @@ class MenusMixin:
         for action_key, action in getattr(self, "units_actions", {}).items():
             action.setChecked(action_key == units)
         self.save_settings()
-        self.say({"both": "Levels are shown in dB and percent.", "db": "Levels are shown in dB.",
-                  "percent": "Levels are shown in percent, as your desktop's volume slider shows them."}[units])
+        self.say(
+            {
+                "both": "Levels are shown in dB and percent.",
+                "db": "Levels are shown in dB.",
+                "percent": "Levels are shown in percent, as your desktop's volume slider shows them.",
+            }[units]
+        )
 
     def set_devices_for_channels(self, on: bool) -> None:
         """0.12.6: give every app channel its own recording device (and new ones too), or take them away."""
@@ -456,8 +545,11 @@ class MenusMixin:
             action.setChecked(bool(on))
         self.rebuild_channels()  # the strips' menus and tooltips follow
         self.save_settings()
-        self.say("Every app channel now has its own recording device, such as \u201cSluice (Game)\u201d, for OBS." if on else
-                 "App channels no longer have their own recording devices (the microphone keeps \u201cSluice (Mic)\u201d).")
+        self.say(
+            "Every app channel now has its own recording device, such as \u201cSluice (Game)\u201d, for OBS."
+            if on
+            else "App channels no longer have their own recording devices (the microphone keeps \u201cSluice (Mic)\u201d)."
+        )
 
     def ask_about_channel_devices(self) -> None:
         """0.12.6: once, after updating from a version where app channels had no recording device by default."""
@@ -465,13 +557,18 @@ class MenusMixin:
         if not mixer.ask_devices_for_channels or self.config_file is None:
             return
         from PySide6.QtWidgets import QMessageBox
+
         mixer.ask_devices_for_channels = False
         names = ", ".join(f"\u201cSluice ({c.label})\u201d" for c in mixer.channels if not c.devices)
         answer = QMessageBox.question(
-            self, "Recording devices for OBS",
+            self,
+            "Recording devices for OBS",
             "Give every channel its own recording device for OBS?\n\nEach one carries just that channel and follows its "
             f"Broadcast fader and mute: {names}. New Sluice setups start with them. You can change this later in Settings "
-            "\u203a Audio.", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.Yes)
+            "\u203a Audio.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
         self.set_devices_for_channels(answer == QMessageBox.StandardButton.Yes)
 
     def set_devices_follow_broadcast(self, on: bool) -> None:
@@ -481,15 +578,21 @@ class MenusMixin:
         if action is not None and action.isChecked() != bool(on):
             action.setChecked(bool(on))
         self.save_settings()
-        self.say("Recording devices for app channels now follow your Broadcast faders and mutes." if on else
-                 "Recording devices now stay at full level whatever the Broadcast faders do; set their levels in OBS.")
+        self.say(
+            "Recording devices for app channels now follow your Broadcast faders and mutes."
+            if on
+            else "Recording devices now stay at full level whatever the Broadcast faders do; set their levels in OBS."
+        )
 
     def toggle_recording_mix(self) -> None:
         mixer = self.engine.mixer
         turn_on = not mixer.has_recording_mix
-        text = ("Add a third mix, \u201cRecording\u201d: a second virtual microphone, \u201cSluice (Recording)\u201d, with its own "
-                "faders and mutes, so a recorder can get a different blend from the one your audience hears."
-                if turn_on else "Remove the Recording mix and its virtual microphone.")
+        text = (
+            "Add a third mix, \u201cRecording\u201d: a second virtual microphone, \u201cSluice (Recording)\u201d, with its own "
+            "faders and mutes, so a recorder can get a different blend from the one your audience hears."
+            if turn_on
+            else "Remove the Recording mix and its virtual microphone."
+        )
         ask = ui_dialog.Message(self)
         ask.setWindowTitle("Recording mix")
         ask.setText(text + "\n\nSluice has to restart to do this. Your settings are saved first.")
@@ -510,8 +613,11 @@ class MenusMixin:
         self._show_mic_state()
         self._refresh_tray_icon()
         self._sync_tray_timer()
-        self.say("Your microphone is muted everywhere, including Sluice (Mic)." if self.engine.mic_muted
-                 else "Your microphone is live.")
+        self.say(
+            "Your microphone is muted everywhere, including Sluice (Mic)."
+            if self.engine.mic_muted
+            else "Your microphone is live."
+        )
 
     def _show_mic_state(self) -> None:
         for strip in self.strips:
@@ -521,8 +627,11 @@ class MenusMixin:
         on = not self.engine.hear_broadcast  # from the real state, so a stale tick mark can never invert it
         self.engine.set_hear_broadcast(on)
         self.sync_from_model()
-        self.say("Your output now plays the Broadcast mix: this is what your audience hears." if on
-                 else "Your output is back on the Listen mix.")
+        self.say(
+            "Your output now plays the Broadcast mix: this is what your audience hears."
+            if on
+            else "Your output is back on the Listen mix."
+        )
 
     def toggle_mix_mute(self, mix_id: str) -> None:
         mix = self.engine.mixer.mix(mix_id)
@@ -599,7 +708,10 @@ class MenusMixin:
     def show_shortcuts(self) -> None:
         rows = self.shortcut_rows()
         table = "".join(f"<tr><td><b>{key}</b>&nbsp;&nbsp;&nbsp;</td><td>{what}</td></tr>" for key, what in rows)
-        ui_dialog.information(self, "Keyboard shortcuts", f"<table>{table}</table><br>"
-                                "Faders: scroll the mouse wheel over one, or use the arrow keys when it is selected.<br>"
-                                "For buttons and knobs outside the app, see <b>Settings > Controllers</b>.")
-
+        ui_dialog.information(
+            self,
+            "Keyboard shortcuts",
+            f"<table>{table}</table><br>"
+            "Faders: scroll the mouse wheel over one, or use the arrow keys when it is selected.<br>"
+            "For buttons and knobs outside the app, see <b>Settings > Controllers</b>.",
+        )

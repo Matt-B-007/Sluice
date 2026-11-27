@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """What changed before a dropout, the glitch marker, and the new report sections."""
+
 import logging
 import time
 
@@ -41,9 +42,11 @@ def test_events_report_what_came_before_a_moment_nearest_first_and_ignore_old_on
     assert [text for _, text in found] == ["input added: Cam Link 4K", "links changed: 20 wanted (+2, -0)"]  # oldest first
     text = events.describe(found)
     assert text.index("0.5 s before") < text.index("2.0 s before")
-    assert events.likely_cause(found) == "input added: Cam Link 4K"   # a "links changed" entry is a consequence, so the real cause is named
+    assert (
+        events.likely_cause(found) == "input added: Cam Link 4K"
+    )  # a "links changed" entry is a consequence, so the real cause is named
     assert events.likely_cause([(0.5, "links changed: 20 wanted (+2, -0)")]) == "links changed: 20 wanted (+2, -0)"
-    assert events.likely_cause(events.before(210.0, within=15.0)) is None   # nothing within 3 s of that moment
+    assert events.likely_cause(events.before(210.0, within=15.0)) is None  # nothing within 3 s of that moment
     events.clear()
 
 
@@ -67,7 +70,7 @@ def test_a_new_device_and_a_changed_default_are_named_in_the_log(rig, caplog):
 def test_sluice_s_own_devices_are_not_announced_as_new(rig, caplog):
     system, _io, engine = rig
     caplog.set_level(logging.INFO)
-    system.sinks.append(Device("sluice_ch_extra", "Sluice (Extra) output"))
+    system.sinks.append(Device("sluice_ch_extra", "Play to Sluice (Extra)"))
     engine.refresh_devices()
     assert "output added" not in "\n".join(messages(caplog))
 
@@ -75,7 +78,7 @@ def test_sluice_s_own_devices_are_not_announced_as_new(rig, caplog):
 def test_an_app_starting_to_play_is_named_in_the_log(rig, caplog):
     system, _io, engine = rig
     caplog.set_level(logging.INFO)
-    engine.apply_rules(time.monotonic())            # the first look only remembers what is playing
+    engine.apply_rules(time.monotonic())  # the first look only remembers what is playing
     assert "app started playing" not in "\n".join(messages(caplog))
     system.streams.append(Stream(9, "obs", "OBS Studio", system.sinks[0].name))
     engine.apply_rules(time.monotonic())
@@ -89,7 +92,7 @@ def test_a_dropout_right_after_a_change_says_so_and_does_not_suggest_a_bigger_bu
     events.clear()
     now = time.monotonic()
     events.record("input added: Cam Link 4K", now=now - 0.4)
-    events.record("links changed: 20 wanted (+2, -0)", now=now - 0.1)   # Sluice relinking is a consequence, not the cause
+    events.record("links changed: 20 wanted (+2, -0)", now=now - 0.1)  # Sluice relinking is a consequence, not the cause
     io.xruns = 1
     engine._pending_xruns, engine._pending_since = 1, now
     engine._log_dropouts(now + 0.1)

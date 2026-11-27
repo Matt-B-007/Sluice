@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Dropout counting and logging, the voice level check, preset matching, the report additions."""
+
 import logging
 import re
 import time
@@ -240,7 +241,7 @@ def test_one_click_or_cough_does_not_decide_how_much_room_the_voice_has():
 def test_peaks_that_keep_coming_limit_how_much_louder_it_may_get():
     voice = speech(-29.0)
     for start in range(30000, voice.shape[1], int(0.7 * SR)):  # a sharp peak in every phrase
-        voice[:, start:start + 480] = 0.8
+        voice[:, start : start + 480] = 0.8
     result = room.analyse_voice(voice, SR)
     assert result.status != "too_quiet" and result.change_db < 3  # raising it would clip those peaks
 
@@ -319,8 +320,9 @@ def test_the_two_choices_never_touch_each_others_effects(rig):
 
 
 def test_your_own_presets_are_recognised_too():
-    effects = chain(("echo_reducer", False, {"reverb_time": 0.5, "reduction_db": 8}),
-                    ("noise_reducer", False, {"reduction_db": 10}))
+    effects = chain(
+        ("echo_reducer", False, {"reverb_time": 0.5, "reduction_db": 8}), ("noise_reducer", False, {"reduction_db": 10})
+    )
     mine = {"My room": presets.snapshot(effects)}
     assert presets.user_name(effects, mine) == "My room"
     assert presets.user_name(effects, {}) is None
@@ -393,8 +395,10 @@ def test_the_report_has_the_buffer_size_and_who_is_erring(monkeypatch):
     def fake_run(command, timeout=6.0):
         seen.append(command[0])
         if command[0] == "pw-metadata":
-            return "update: id:0 key:'clock.rate' value:'48000'\nupdate: id:0 key:'log.level' value:'2'\n" \
-                   "update: id:0 key:'clock.force-quantum' value:'512'"
+            return (
+                "update: id:0 key:'clock.rate' value:'48000'\nupdate: id:0 key:'log.level' value:'2'\n"
+                "update: id:0 key:'clock.force-quantum' value:'512'"
+            )
         if command[0] == "pw-top":
             return PW_TOP
         return "(not available: x)"
@@ -421,7 +425,9 @@ def test_the_crash_log_says_when_each_session_started(tmp_path, monkeypatch):
         header = logs.crash_path().read_text().splitlines()[0]
     finally:
         logs.shutdown()
-    assert re.fullmatch(r"--- sluice session started \d{4}-\d\d-\d\d \d\d:\d\d:\d\d \(pid \d+, Sluice [\w.]+\) ---", header), header
+    assert re.fullmatch(r"--- sluice session started \d{4}-\d\d-\d\d \d\d:\d\d:\d\d \(pid \d+, Sluice [\w.-]+\) ---", header), (
+        header
+    )
 
 
 def test_a_third_mix_adds_no_surprises_to_the_status_text():

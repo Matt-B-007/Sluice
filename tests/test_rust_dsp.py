@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The Rust reducers (rust/sluice_dsp) must give the same sound as the Python ones. Skipped when the module is not built."""
+
 import os
 
 import numpy as np
@@ -27,7 +28,7 @@ def run(effect, x, blocks=BLOCKS):
     while pos < x.shape[1]:
         b = blocks[i % len(blocks)]
         i += 1
-        outs.append(np.asarray(effect.process(x[:, pos:pos + b])))
+        outs.append(np.asarray(effect.process(x[:, pos : pos + b])))
         pos += b
     return np.concatenate(outs, axis=1)
 
@@ -113,6 +114,6 @@ def test_silence_stays_silent_and_empty_blocks_work():
         assert not np.isnan(out).any() and np.max(np.abs(out)) < 1e-6
 
 
-@pytest.mark.skipif(bool(os.environ.get('SLUICE_NO_RUST')), reason='Rust switched off')
+@pytest.mark.skipif(bool(os.environ.get("SLUICE_NO_RUST")), reason="Rust switched off")
 def test_the_application_picks_the_rust_classes():
     assert py.BACKEND == "rust" and py.NoiseReducer is rust.NoiseReducer

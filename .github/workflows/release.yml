@@ -11,6 +11,15 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
+      # 0.13.1 (House Standard): stop before anything is made when the signing key is not set up
+      - name: Check the signing key secret is set (MINISIGN_SECRET_KEY)
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+        run: |
+          if [ -z "${MINISIGN_SECRET_KEY}" ]; then
+            echo "::error::The repository secret MINISIGN_SECRET_KEY is not set, so the release cannot be signed. Nothing was made."
+            exit 1
+          fi
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
@@ -27,10 +36,10 @@ jobs:
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "TAG=$tag" >> "$GITHUB_ENV"
-      - name: Install pyflakes and the pinned shellcheck (version in scripts/tool-versions)
+      - name: Install pyflakes, the pinned shellcheck and the pinned ruff (versions in scripts/tool-versions)
         run: |
           . scripts/tool-versions
-          pip install pyflakes "shellcheck-py==$SHELLCHECK_PY"
+          pip install pyflakes "shellcheck-py==$SHELLCHECK_PY" "ruff==$RUFF_VERSION"
       # 0.12.5: the same checks as CI, from the same script; then the tag must match and be newer than every release
       - name: Check shell scripts, Python, the version files and the tag (scripts/check.sh shell python release)
         run: bash scripts/check.sh shell python release
@@ -53,7 +62,48 @@ jobs:
           git archive --prefix=sluice/ -o "out/sluice-${TAG}.zip" HEAD
           # The in-app updater downloads this file next to the zip and refuses a zip that does not match it.
           (cd out && sha256sum "sluice-${TAG}.zip" > "sluice-${TAG}.zip.sha256")
-      - name: Attest where the files came from (GitHub build provenance; a failure here never stops the release)
+          # 0.13.1: one list of every file's checksum (the House Standard's SHA256SUMS); both lists are signed below
+          (cd out && sha256sum "sluice-${TAG}.zip") > out/SHA256SUMS
+          (cd dist && sha256sum -- *) >> out/SHA256SUMS
+      - name: Install minisign
+        run: sudo apt-get update -q && sudo apt-get install -y minisign
+      - name: Sign SHA256SUMS and the zip's checksum file with minisign
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+        run: |
+          key="$RUNNER_TEMP/minisign.key"
+          umask 077
+          printf '%s\n' "$MINISIGN_SECRET_KEY" > "$key"
+          chmod 600 "$key"
+          status=0
+          for file in out/SHA256SUMS "out/sluice-${TAG}.zip.sha256"; do
+            minisign -S -s "$key" -m "$file" -t "Sluice ${TAG}" < /dev/null || status=$?
+          done
+          rm -f "$key"
+          if [ "$status" -ne 0 ]; then
+            echo "::error::minisign could not sign the release. 'Error while loading the secret key file' means the secret's contents are wrong (it must be the unencrypted two-line key file)."
+            exit 1
+          fi
+      - name: Check both signatures against Sluice's public keys (primary or backup)
+        run: |
+          primary=RWQcs3jtP2jTiAMafwQX8UwciSjOH4o9tQcCVvYl2NkdnOeVupKPlhvC
+          backup=RWRObC9qlP598z1kmTFw7W+TKYKk3w2/63qWyRWkvRSkqGwGEgjmOlGe
+          for file in out/SHA256SUMS "out/sluice-${TAG}.zip.sha256"; do
+            if minisign -Vm "$file" -P "$primary" >/dev/null || minisign -Vm "$file" -P "$backup" >/dev/null; then
+              echo "$file: good signature"
+            else
+              echo "::error::$file is not signed by Sluice's primary or backup key. Nothing was published."
+              exit 1
+            fi
+          done
+          # the app carries the same two keys
+          python - <<'PY'
+          from sluice import signing
+          assert signing.PUBLIC_KEYS == {"primary": "RWQcs3jtP2jTiAMafwQX8UwciSjOH4o9tQcCVvYl2NkdnOeVupKPlhvC",
+                                         "backup": "RWRObC9qlP598z1kmTFw7W+TKYKk3w2/63qWyRWkvRSkqGwGEgjmOlGe"}, "keys differ"
+          PY
+      - name: Attest where the files came from (GitHub build provenance; public repositories only)
+        if: ${{ !github.event.repository.private }}
         continue-on-error: true
         uses: actions/attest-build-provenance@v3
         with:
@@ -86,12 +136,14 @@ jobs:
             dist/*
             out/*.zip
             out/*.sha256
+            out/SHA256SUMS
+            out/*.minisig
       - name: Check the draft has its zip and checksum, then publish it
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           assets=$(gh release view "$TAG" --json assets --jq '.assets[].name')
-          for need in "sluice-${TAG}.zip" "sluice-${TAG}.zip.sha256"; do
+          for need in "sluice-${TAG}.zip" "sluice-${TAG}.zip.sha256" "sluice-${TAG}.zip.sha256.minisig" SHA256SUMS SHA256SUMS.minisig; do
             echo "$assets" | grep -qx "$need" || { echo "::error::The release is missing $need, so it was left as a draft."; exit 1; }
           done
           latest=true

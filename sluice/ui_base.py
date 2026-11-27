@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The main window's shared pieces: sizes, names, small helpers and the small widgets every card uses (no cards here)."""
+
 from __future__ import annotations
 
 import logging
@@ -39,25 +40,34 @@ def default_size(available=None) -> tuple:
         width, height = min(width, max(360, available[0] - 40)), min(height, max(300, available[1] - 40))
     return width, height
 
+
 NONE_DATA = "__none__"  # combo item data for "no device" (Qt dislikes None)
 SOURCES_HEIGHT = 80  # the list of a channel's devices and apps: at most this tall (then it scrolls)...
-SOURCES_MIN = 32     # ...and at least one chip tall (0.12.0). Every card in the window takes the tallest list any of them needs.
-COLUMN_WIDTH = 80            # one mix's column on a channel card: the fader, its meter, the level and the mute button
-CHANNEL_WIDTH = 2 * COLUMN_WIDTH + 32     # a channel card with two mixes (Listen and Broadcast)
-CHANNEL_WIDTH_THREE = 3 * COLUMN_WIDTH + 32   # ...and with the optional third one
-MIX_WIDTH = 224              # a master card in the Columns layout
+SOURCES_MIN = 32  # ...and at least one chip tall (0.12.0). Every card in the window takes the tallest list any of them needs.
+COLUMN_WIDTH = 80  # one mix's column on a channel card: the fader, its meter, the level and the mute button
+CHANNEL_WIDTH = 2 * COLUMN_WIDTH + 32  # a channel card with two mixes (Listen and Broadcast)
+CHANNEL_WIDTH_THREE = 3 * COLUMN_WIDTH + 32  # ...and with the optional third one
+MIX_WIDTH = 224  # a master card in the Columns layout
 FIRST_RUN_WIDTH = 560
-ROW_NAME_WIDTH = 148         # the Rows layout: the name and what is on the channel
-ROW_TOOLS_WIDTH = 148        # ...the Effects and Link buttons
+ROW_NAME_WIDTH = 148  # the Rows layout: the name and what is on the channel
+ROW_TOOLS_WIDTH = 148  # ...the Effects and Link buttons
 ROW_CELL_MIN = sizing.ROW_CELL_MIN  # ...and the least width of one mix's slider, level and mute button (the window plans with it)
-LAYOUTS = ("columns", "rows")
-EMPTY_HINTS = {"mic": "Your microphone goes here.", "browser": "Chrome, Firefox and other browsers.",
-               "game": "Games and anything loud.", "chat": "Discord and voice chat.", "music": "Spotify, VLC and players.",
-               "system": "Notification sounds and everything else."}
+LAYOUTS = ("columns", "rows", "list")  # 0.13.1: "list", the compact list at any size, for a second screen (from Nexus)
+EMPTY_HINTS = {
+    "mic": "Your microphone goes here.",
+    "browser": "Chrome, Firefox and other browsers.",
+    "game": "Games and anything loud.",
+    "chat": "Discord and voice chat.",
+    "music": "Spotify, VLC and players.",
+    "system": "Notification sounds and everything else.",
+}
 MIX_TAGS = {MONITOR: "LISTEN", STREAM: "BROADCAST", RECORDING: "RECORDING"}
 MIX_HEADINGS = {MONITOR: "you hear", STREAM: "audience hears", RECORDING: "recorder hears"}
-MIX_NAMES = {MONITOR: "Listen: what you hear", STREAM: "Broadcast: what your audience hears",
-             RECORDING: "Recording: what your recorder hears"}
+MIX_NAMES = {
+    MONITOR: "Listen: what you hear",
+    STREAM: "Broadcast: what your audience hears",
+    RECORDING: "Recording: what your recorder hears",
+}
 
 
 def plain(text: str, keep_dots: bool = False) -> str:
@@ -67,8 +77,10 @@ def plain(text: str, keep_dots: bool = False) -> str:
     return text if keep_dots else text.rstrip("\u2026")
 
 
-_PROFILE = re.compile(r"\s+(?:(?:Analog|Digital|Pro|Multichannel)(?:\s+(?:Stereo|Mono|Surround\s+[\d.]+|Input|Output))?|Mono)"
-                      r"(?:\s+\(([^)]*)\))?$")
+_PROFILE = re.compile(
+    r"\s+(?:(?:Analog|Digital|Pro|Multichannel)(?:\s+(?:Stereo|Mono|Surround\s+[\d.]+|Input|Output))?|Mono)"
+    r"(?:\s+\(([^)]*)\))?$"
+)
 
 
 def short_device_name(description: str) -> str:
@@ -81,7 +93,7 @@ def short_device_name(description: str) -> str:
     detail = ""
     if match:
         detail = match.group(1) or ""
-        text = text[:match.start()].strip()
+        text = text[: match.start()].strip()
     text = re.sub(r"\s*\((?:Models?|Rev)[^)]*\)", "", text).strip()
     hdmi = re.match(r"HDMI\s*\d*", detail)
     if re.search(r"HDMI|DisplayPort|\bDP\b", text) and "Controller" in text:
@@ -97,7 +109,7 @@ def channel_width(mix_count: int) -> int:
 
 def _is_nexus(rows: bool = False) -> bool:
     """True in the Nexus look (the Columns layout; the Rows layout keeps its own shape until Nexus has one)."""
-    return themes.current_skin() == "nexus" and not rows
+    return False  # 0.13.1: Nexus was retired (a saved choice shows Tile); its code paths no longer run
 
 
 def _is_tile() -> bool:
@@ -156,8 +168,10 @@ def format_level(db: float, narrow: bool = False) -> str:
     return f"{number} dB · {format_percent(db)}"
 
 
-LEVEL_HELP = ("\nScroll over the number to change the level (hold Shift for fine steps), or click and type a level, in dB "
-              "(for example -12) or in percent (for example 50%), and press Enter.")
+LEVEL_HELP = (
+    "\nScroll over the number to change the level (hold Shift for fine steps), or click and type a level, in dB "
+    "(for example -12) or in percent (for example 50%), and press Enter."
+)
 
 
 def short_level(db: float) -> str:
@@ -197,6 +211,45 @@ def parse_level(text: str) -> Optional[float]:
     if "%" in text or UNITS == "percent" and "db" not in text.lower():
         return percent_to_db(number)
     return number
+
+
+class ElidedButton(QPushButton):
+    """0.13.1: a button whose one line of text ends in an ellipsis when it does not fit (the Broadcast card's "Sends to: Sluice
+    (Broadcast) for OBS" on a narrow card). ``full_text()`` is the whole text; what is shown is always what fits."""
+
+    PADDING = 28  # the style sheet's padding on both sides, and the border
+
+    def __init__(self, text: str = "") -> None:
+        super().__init__(text)
+        self._full = text
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+
+    def full_text(self) -> str:
+        return self._full
+
+    def set_full_text(self, text: str) -> None:
+        self._full = text
+        self._show_fitting()
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._show_fitting()
+
+    def changeEvent(self, event) -> None:  # noqa: N802
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.FontChange:
+            self._show_fitting()
+
+    def showEvent(self, event) -> None:  # noqa: N802
+        super().showEvent(event)  # (a hidden button gets no resize events: fit once it is shown, such as in folded-out details)
+        self._show_fitting()
+
+    def _show_fitting(self) -> None:
+        room = max(8, self.width() - self.PADDING)
+        QPushButton.setText(self, QFontMetrics(self.font()).elidedText(self._full, Qt.TextElideMode.ElideRight, room))
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        return QSize(48, super().minimumSizeHint().height())
 
 
 class ElidedLabel(QLabel):
@@ -273,7 +326,6 @@ def _label(text: str, name: str = "", center: bool = True) -> QLabel:
 
 
 MIX_ICONS = {MONITOR: "headphones", STREAM: "broadcast", RECORDING: "mic"}
-
 
 
 _NUMBER = re.compile(r"[-+]?(?:\d+\.?\d*|\.\d+)")

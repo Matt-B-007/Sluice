@@ -11,6 +11,7 @@ These work in steps of about a millisecond: the level is measured over each step
 of the step is worked out, and the gain glides there sample by sample. That is a few dozen Python steps per audio block, cheap,
 and the same on every computer, with or without the Rust engine. The limiter is the brick-wall one the Listen and Broadcast mixes
 already use (dsp.PeakLimiter: Rust when it is there), which never lets a sample past its ceiling."""
+
 from __future__ import annotations
 
 import math
@@ -46,8 +47,9 @@ def _levels(audio: np.ndarray, step: int, rms: bool) -> list:
     values = []
     if whole:
         part = audio[:, :whole].reshape(2, -1, step)
-        values = (np.sqrt(np.mean(np.square(part, dtype=np.float64), axis=(0, 2))) if rms
-                  else np.max(np.abs(part), axis=(0, 2))).tolist()
+        values = (
+            np.sqrt(np.mean(np.square(part, dtype=np.float64), axis=(0, 2))) if rms else np.max(np.abs(part), axis=(0, 2))
+        ).tolist()
     if whole < frames:
         rest = audio[:, whole:]
         values.append(float(np.sqrt(np.mean(np.square(rest, dtype=np.float64)))) if rms else float(np.max(np.abs(rest))))
@@ -181,8 +183,23 @@ class CeilingLimiter:
     def process(self, audio: np.ndarray) -> np.ndarray:
         if self._limiter is None:
             from .dsp import PeakLimiter
+
             self._limiter = PeakLimiter(self.sample_rate, self._threshold_db, self._release_ms)
         out = np.asarray(self._limiter.process(np.ascontiguousarray(audio, dtype=np.float32)), dtype=np.float32)
         before, after = float(np.max(np.abs(audio))) if audio.size else 0.0, float(np.max(np.abs(out))) if out.size else 0.0
         self.activity_db = 20.0 * math.log10(after / before) if before > 1e-6 and after > 0 else 0.0
         return out
+
+
+# 0.13.1: the classes above are the reference and the fallback. The Rust engine (0.12.0 and later) has the same three with the
+# same settings and results (tests/test_native_graph.py compares them); using them lets a chain of built-in effects run in the
+# Rust audio path without Python. SLUICE_NO_RUST=1 keeps these.
+PythonVoiceGate, PythonLinkedCompressor, PythonCeilingLimiter = VoiceGate, LinkedCompressor, CeilingLimiter
+if not __import__("os").environ.get("SLUICE_NO_RUST"):
+    try:
+        import sluice_dsp as _rust
+
+        if hasattr(_rust, "VoiceGate"):
+            VoiceGate, LinkedCompressor, CeilingLimiter = _rust.VoiceGate, _rust.LinkedCompressor, _rust.CeilingLimiter
+    except Exception:  # no Rust engine, or one built for another Python: the Python ones are used
+        pass

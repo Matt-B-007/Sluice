@@ -7,6 +7,7 @@ either finds no libjack at all or finds the one for the real JACK server, and th
 a program starts, so the only way to do the same is to start Sluice again with it set. This is only tried after
 connecting normally has failed, and only once.
 """
+
 from __future__ import annotations
 
 import glob
@@ -16,9 +17,9 @@ from typing import Optional
 
 MARKER = "SLUICE_JACK_RETRIED"
 PATTERNS = (
-    "/usr/lib/*/pipewire-0.3/jack",   # Debian, Ubuntu (multiarch)
-    "/usr/lib/pipewire-0.3/jack",     # Arch
-    "/usr/lib64/pipewire-0.3/jack",   # Fedora, openSUSE
+    "/usr/lib/*/pipewire-0.3/jack",  # Debian, Ubuntu (multiarch)
+    "/usr/lib/pipewire-0.3/jack",  # Arch
+    "/usr/lib64/pipewire-0.3/jack",  # Fedora, openSUSE
     "/usr/lib32/pipewire-0.3/jack",
     "/usr/local/lib/pipewire-0.3/jack",
     "/usr/local/lib/*/pipewire-0.3/jack",
@@ -27,7 +28,7 @@ PATTERNS = (
 
 def pipewire_jack_dirs(patterns: Optional[tuple] = None) -> list:
     found: list = []
-    for pattern in (PATTERNS if patterns is None else patterns):
+    for pattern in PATTERNS if patterns is None else patterns:
         for path in sorted(glob.glob(pattern)):
             if os.path.isdir(path) and any(name.startswith("libjack.so") for name in os.listdir(path)) and path not in found:
                 found.append(path)

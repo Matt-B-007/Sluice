@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """0.12.0's cleanup of how things line up: measured, so they stay lined up."""
+
 import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -39,7 +40,7 @@ def span(widgets, ref) -> float:
     return (left + right) / 2
 
 
-@pytest.mark.parametrize("skin", ["calm", "nexus", "glass"])
+@pytest.mark.parametrize("skin", ["calm"])  # (Nexus and Glass retired in 0.13.1; Tile lays its lanes out its own way)
 def test_each_fader_and_its_meter_sit_as_a_pair_under_their_name_and_over_their_level(qapp, tmp_path, skin):
     win, _ = make(qapp, tmp_path, skin)
     try:
@@ -53,22 +54,6 @@ def test_each_fader_and_its_meter_sit_as_a_pair_under_their_name_and_over_their_
             assert abs(pair - centre(card.readout, card)) <= 1
             gap = card.meter.mapTo(card, QPoint(0, 0)).x() - (card.fader.mapTo(card, QPoint(0, 0)).x() + card.fader.width())
             assert gap <= 16  # one pair, not two things 40 px apart
-    finally:
-        win.shutdown()
-
-
-def test_nexus_names_sit_under_the_ring_and_the_link_badge_is_in_the_header(qapp, tmp_path):
-    win, engine = make(qapp, tmp_path, "nexus")
-    try:
-        for strip in win.strips:
-            assert abs(centre(strip.title, strip) - centre(strip.ring, strip)) <= 1, strip.channel.id
-        game = next(s for s in win.strips if s.channel.id == "game")
-        engine.set_linked("game", True)
-        game.sync_from_model()
-        assert game.link_badge.isVisibleTo(game) and game.link_badge.parentWidget() is game.head_left
-        engine.set_linked("game", False)
-        game.sync_from_model()
-        assert not game.link_badge.isVisibleTo(game)
     finally:
         win.shutdown()
 
@@ -89,6 +74,7 @@ def test_the_effects_window_opens_on_the_chain_with_no_gap_and_arrows_only_for_p
     from PySide6.QtWidgets import QApplication
 
     from sluice.ui_effects import CARD_H, EffectsDialog
+
     win, engine = make(qapp, tmp_path)
     try:
         dialog = EffectsDialog(engine, engine.mixer.channel("mic"), win)
@@ -106,21 +92,25 @@ def test_the_effects_window_opens_on_the_chain_with_no_gap_and_arrows_only_for_p
         win.shutdown()
 
 
-@pytest.mark.parametrize("full,short", [
-    ("Navi 21/23 HDMI/DP Audio Controller Digital Stereo (HDMI 3)", "HDMI 3"),
-    ("Family 17h (Models 00h-0fh) HD Audio Controller Analog Stereo", "Built-in audio"),
-    ("Starship/Matisse HD Audio Controller Digital Stereo (IEC958)", "Built-in audio (digital)"),
-    ("Blue Yeti Analog Stereo", "Blue Yeti"),
-    ("Elgato Wave:3 Mono", "Elgato Wave:3"),
-    ("Headphones (USB Audio)", "Headphones (USB Audio)"),
-    ("Sluice (Broadcast)", "Sluice (Broadcast)"),
-])
+@pytest.mark.parametrize(
+    "full,short",
+    [
+        ("Navi 21/23 HDMI/DP Audio Controller Digital Stereo (HDMI 3)", "HDMI 3"),
+        ("Family 17h (Models 00h-0fh) HD Audio Controller Analog Stereo", "Built-in audio"),
+        ("Starship/Matisse HD Audio Controller Digital Stereo (IEC958)", "Built-in audio (digital)"),
+        ("Blue Yeti Analog Stereo", "Blue Yeti"),
+        ("Elgato Wave:3 Mono", "Elgato Wave:3"),
+        ("Headphones (USB Audio)", "Headphones (USB Audio)"),
+        ("Sluice (Broadcast)", "Sluice (Broadcast)"),
+    ],
+)
 def test_device_names_are_short_on_the_cards(full, short):
     assert short_device_name(full) == short
 
 
 def test_the_card_shows_the_short_name_and_the_tooltip_the_whole_one(qapp, tmp_path):
     from sluice.backend import Device
+
     win, engine = make(qapp, tmp_path)
     try:
         engine.sources.append(Device("alsa_input.usb-yeti.analog-stereo", "Blue Yeti Analog Stereo"))

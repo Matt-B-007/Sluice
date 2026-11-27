@@ -6,6 +6,7 @@ makes up its own input and discards the output, which powers ``--demo`` mode and
 
 Port names are shared by both so the engine can compute the links it wants either way.
 """
+
 from __future__ import annotations
 
 import logging
@@ -179,7 +180,8 @@ def _jack_environment() -> None:
 
 class RustJackIO(AudioIO):
     """The same as JackIO, with the client, the ports, the block timing and the dropout counting done in Rust
-    (``sluice_dsp.JackEngine``). The mixing graph is still called from Python for each block, because VST3 plugins need it."""
+    (``sluice_dsp.JackEngine``). 0.13.1: while every chain is native the Rust graph mixes the blocks without Python; otherwise
+    (VST3 plugins, the Effects window's live view, Measure my room) the mixing graph is called from Python, as before."""
 
     label = "PipeWire (JACK)"
     backend = "rust"
@@ -224,9 +226,14 @@ class RustJackIO(AudioIO):
         self._graph = graph
         graph.live = True
         _share_the_lock_sooner()
+        attach = getattr(graph, "attach_native", None)
+        if attach is not None and attach(self._engine):  # 0.13.1: blocks without Python while every chain is native
+            log.info("the Rust graph is ready: it mixes whenever every chain is native")
         self._engine.start(graph.process)
 
     def stop(self) -> None:
+        if self._graph is not None and getattr(self._graph, "native", None) is not None:
+            self._graph.detach_native()
         try:
             self._engine.stop()
         except Exception as exc:
@@ -332,7 +339,7 @@ class JackIO(AudioIO):
 
     def _init_timing(self) -> None:
         self._period = self.blocksize / self.sample_rate  # seconds one block lasts
-        self._busy_sum = 0.0   # seconds spent in our own audio work since take_load() was last called
+        self._busy_sum = 0.0  # seconds spent in our own audio work since take_load() was last called
         self._busy_peak = 0.0
         self._blocks = 0
         self._last_busy = 0.0

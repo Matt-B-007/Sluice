@@ -1,14 +1,15 @@
-# Sluice theme pack
+# Sluice theme pack (unmaintained)
 
-Twenty-one colour themes for [Sluice](https://github.com/Matt-B-007/Sluice) 0.9.2 or newer, all updated for the 0.10.0 look (the previews show it). A picture of each is in
-the `previews` folder (same name as the theme file).
+**These are community themes, provided as they are.** Since Sluice 0.13.1 they are not updated for new versions, not checked
+against the House Standard's contrast rule, and their preview pictures show an older look. They still import: any colour a
+file leaves out is worked out from its base (Dark or Light), and Sluice warns before adding one whose text would be hard to
+read. Eighteen themes for [Sluice](https://github.com/Matt-B-007/Sluice); a picture of each is in the `previews` folder.
 
-Sluice also has seven themes built in (Dark, Light, High contrast, Retro Purple, Midnight Blue, Amber Console and Paper), so
-those are not repeated here. The themes here need importing.
-
-0.11.5 trimmed the pack from thirty: the copies of the built-in themes went, and so did six that looked almost the same as another
-one (Cassette, Sepia Reader, Studio Slate, Vintage Hi-Fi, Halloween and Ocean). If you imported one of those, it stays in your themes
-folder and keeps working; Paper, Sunset, Amber Console and Midnight Blue are the closest ones still here or built in.
+Sluice 0.13.1 has seven themes built in and kept up to date: **Dark** and **Light** (the House Standard's colours), **High
+contrast**, **Colour-blind friendly**, **OLED Black**, **Paper** and **Synthwave**. Colour-blind friendly, OLED Black and
+Synthwave were in this pack until then; they are built in now, so they are not repeated here (an imported copy stays in your
+themes folder and keeps working). Retro Purple, Midnight Blue and Amber Console were retired as built-in themes in 0.13.1:
+settings that chose them show Dark.
 
 ## The themes
 
@@ -22,14 +23,11 @@ folder and keeps working; Paper, Sunset, Amber Console and Midnight Blue are the
 - Rose: dark plum with pink
 - Vampire: purple-grey with violet and pink
 - Streamer Purple: deep purple with a bright violet accent
-- Synthwave: indigo with pink and cyan
 - Neon Tokyo: black with magenta and electric blue
 - Retro Warm: warm retro browns and yellow
 - Terminal Green: black with phosphor-green text
 - Handheld Green: four-shades-of-olive handheld look
-- OLED Black: true black panels with thin borders
 - Night Mode: very dim and warm, for late nights
-- Colour-blind friendly: blue and orange accents instead of red and green
 
 **Light**
 - Lavender Fog: soft purple-grey

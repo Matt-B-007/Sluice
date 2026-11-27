@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """0.12.3: levels in percent as well as dB, on the scale KDE's volume slider and PulseAudio use."""
+
 import json
 
 import pytest
@@ -48,6 +49,7 @@ def test_either_can_be_typed():
 
 def test_the_choice_is_saved():
     from sluice.model import Mixer
+
     mixer = Mixer.demo()
     assert mixer.level_units == "both"
     mixer.level_units = "percent"
@@ -64,6 +66,7 @@ def test_the_window_shows_and_takes_percent(qapp, tmp_path):
     from sluice.linker import NullLinker
     from sluice.model import Mixer
     from sluice.ui import MainWindow
+
     engine = Engine(Mixer.demo(), MockSystem(), NullIO(realtime=False), NullLinker())
     engine.start()
     win = MainWindow(engine, tmp_path / "config.json")

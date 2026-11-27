@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Entry point: ``python -m sluice`` or the ``sluice`` command."""
+
 from __future__ import annotations
 
 import argparse
@@ -46,8 +47,10 @@ def _real_parts():
     except Exception as exc:
         system.cleanup()
         if "name_not_unique" in str(exc).lower():
-            raise RuntimeError("another program is already connected to PipeWire as \u201csluice\u201d: close any other "
-                               "Sluice (pkill -f sluice) and try again; if none is running, restart PipeWire") from exc
+            raise RuntimeError(
+                "another program is already connected to PipeWire as \u201csluice\u201d: close any other "
+                "Sluice (pkill -f sluice) and try again; if none is running, restart PipeWire"
+            ) from exc
         from .jackfix import retry_with_pipewire_jack
 
         log.info("could not use the JACK library the normal way; trying PipeWire's own")
@@ -124,8 +127,7 @@ def _already_running_message() -> str:
         who += f" (version {version}{'' if version == __version__ else f'; this is {__version__}'})"
     who += ", but its window could not be reached."
     if pid:
-        return (f"{who}\nClose it with:  kill {pid}\n"
-                f"If it is still listed afterwards:  kill -9 {pid}\nThen start Sluice again.")
+        return f"{who}\nClose it with:  kill {pid}\nIf it is still listed afterwards:  kill -9 {pid}\nThen start Sluice again."
     return f"{who}\nFind it with:  pgrep -af sluice   and stop it with kill NUMBER, then start Sluice again."
 
 
@@ -175,6 +177,7 @@ def _replace_stuck_copy(ask=None):
     if not pid or pid == os.getpid() or not _is_sluice_process(pid):
         return None
     if ask is None:
+
         def ask() -> bool:
             from PySide6.QtWidgets import QApplication, QMessageBox
 
@@ -188,6 +191,7 @@ def _replace_stuck_copy(ask=None):
             box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
             box.exec()
             return box.clickedButton() is restart
+
     try:
         if not ask():
             return None
@@ -264,7 +268,9 @@ def _report(target: str) -> int:
     except Exception as exc:
         print(f"sluice: could not write the report: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 1
-    print(f"Saved {logs.short_path(path)}\nYour user name, computer name and serial numbers are replaced. It still has device names, app names and plugin paths: look it over before sharing.")
+    print(
+        f"Saved {logs.short_path(path)}\nYour user name, computer name and serial numbers are replaced. It still has device names, app names and plugin paths: look it over before sharing."
+    )
     return 0
 
 
@@ -299,9 +305,15 @@ def _uninstall(args) -> int:
         print("sluice is running. Close it first (Help > Uninstall Sluice closes it for you).", file=sys.stderr)
         return 1
     try:
-        return uninstall.run(keep_settings=args.keep_settings, assume_yes=args.yes, dry_run=args.dry_run,
-                             cleanup_devices=_cleanup_devices, list_devices=_list_devices,
-                             clear_caches=args.clear_caches, remove_git=args.remove_git_folder)
+        return uninstall.run(
+            keep_settings=args.keep_settings,
+            assume_yes=args.yes,
+            dry_run=args.dry_run,
+            cleanup_devices=_cleanup_devices,
+            list_devices=_list_devices,
+            clear_caches=args.clear_caches,
+            remove_git=args.remove_git_folder,
+        )
     finally:
         _release_lock(lock)
 
@@ -335,8 +347,10 @@ def _desktop(install: bool) -> int:
         except OSError as exc:
             print(f"sluice: could not write the launcher: {exc}", file=sys.stderr)
             return 1
-        print(f"Added Sluice to the applications menu ({entry}).\n"
-              "Search for \u201cSluice\u201d in your launcher. Remove it again with: sluice --uninstall-desktop")
+        print(
+            f"Added Sluice to the applications menu ({entry}).\n"
+            "Search for \u201cSluice\u201d in your launcher. Remove it again with: sluice --uninstall-desktop"
+        )
         return 0
     print("Removed Sluice from the applications menu." if launcher.uninstall() else "Sluice was not in the applications menu.")
     return 0
@@ -344,6 +358,7 @@ def _desktop(install: bool) -> int:
 
 def _run_gui(args, log_file: Optional[Path]) -> int:
     from . import efficiency
+
     efficiency.startup_mark("Python and imports")  # 0.12.6: start-up is measured, for the bug report
     lock = None
     notice = ""
@@ -374,12 +389,17 @@ def _run_gui(args, log_file: Optional[Path]) -> int:
             from .distro import install_hint
 
             hint = install_hint(["pipewire", "pulse", "session", "jack", "pwlink"])
-            print(f"sluice: {exc}\nStarting in demo mode. Run 'sluice --diagnose' to see what is missing.\n"
-                  f"To install the usual missing parts (PipeWire and its JACK library): {hint}", file=sys.stderr)
+            print(
+                f"sluice: {exc}\nStarting in demo mode. Run 'sluice --diagnose' to see what is missing.\n"
+                f"To install the usual missing parts (PipeWire and its JACK library): {hint}",
+                file=sys.stderr,
+            )
             parts = _demo_parts()
             setup_needed = True  # 0.12.0: the window opens Settings at the Setup check, which says what is missing
-            notice = (f"Could not start audio ({exc}); running in demo mode. Often the PipeWire JACK library is missing: "
-                      f"{hint}. Then run sluice --diagnose.")
+            notice = (
+                f"Could not start audio ({exc}); running in demo mode. Often the PipeWire JACK library is missing: "
+                f"{hint}. Then run sluice --diagnose."
+            )
     system, io, linker = parts
     efficiency.startup_mark("audio connected")
     from .audio_io import is_demo as _is_demo
@@ -435,14 +455,18 @@ def _run_gui(args, log_file: Optional[Path]) -> int:
     efficiency.startup_mark("engine started")
     if getattr(args, "finish_move", None):
         from . import update_install
+
         moved = update_install.finish_move(Path(args.finish_move))
         notice = f"{notice} {moved}".strip()
     window = MainWindow(engine, config_file=config_file, notice=notice)
+    window.allow_tour = not is_demo  # 0.13.1: the tour may start by itself (on a new install only); never in tests or the demo
     efficiency.startup_mark("window built")
     window.on_shut_down = _exit_safety_net
     from .ui_controllers import Controls
 
-    window.attach_controls(Controls(engine, window, config_file.with_name("controls.json") if config_file else None, demo=is_demo))
+    window.attach_controls(
+        Controls(engine, window, config_file.with_name("controls.json") if config_file else None, demo=is_demo)
+    )
     if args.minimized:
         window.start_minimized()
     else:
@@ -455,6 +479,7 @@ def _run_gui(args, log_file: Optional[Path]) -> int:
     signal.signal(signal.SIGTERM, lambda *_: app.quit())
 
     if args.screenshot:
+
         def grab() -> None:
             window.grab().save(args.screenshot)
             app.quit()
@@ -484,33 +509,91 @@ def main(argv: Optional[list] = None) -> int:
     parser.add_argument("--demo", action="store_true", help="use a fake audio backend; touches no audio and saves nothing")
     parser.add_argument("--reset", action="store_true", help="ignore the saved configuration")
     parser.add_argument("--diagnose", action="store_true", help="check that everything sluice needs is installed and running")
-    parser.add_argument("--debug", action="store_true", help="log every detail (links, commands) to the log file and the terminal")
-    parser.add_argument("--report", nargs="?", const="", metavar="FILE", help="write a bug report file (default: ~/sluice-report-VERSION-DATE-TIME.txt)")
+    parser.add_argument(
+        "--self-test",
+        action="store_true",
+        help="the full self-check (the same as --diagnose); with --quick, only "
+        "whether this copy starts, loads its window and reads the settings (a few seconds, no network, no audio)",
+    )
+    parser.add_argument("--quick", action="store_true", help=argparse.SUPPRESS)  # with --self-test
+    parser.add_argument(
+        "--update",
+        action="store_true",
+        help="check for a newer version, download and verify it; it is installed now if Sluice is not running, or when it closes",
+    )
+    parser.add_argument(
+        "--debug", action="store_true", help="log every detail (links, commands) to the log file and the terminal"
+    )
+    parser.add_argument(
+        "--report",
+        nargs="?",
+        const="",
+        metavar="FILE",
+        help="write a bug report file (default: ~/sluice-report-VERSION-DATE-TIME.txt)",
+    )
     parser.add_argument("--rollback", action="store_true", help="go back to the version before the last in-app update")
     parser.add_argument("--cleanup", action="store_true", help="remove virtual devices left behind by a crash")
-    parser.add_argument("--install-desktop", action="store_true", help="add Sluice to the applications menu (your own folders only)")
+    parser.add_argument(
+        "--install-desktop", action="store_true", help="add Sluice to the applications menu (your own folders only)"
+    )
     parser.add_argument("--uninstall-desktop", action="store_true", help="remove Sluice from the applications menu")
     parser.epilog = "remote control: sluice ctl --help"
-    parser.add_argument("--uninstall", action="store_true", help="remove Sluice completely (shows what it will remove and asks first)")
-    parser.add_argument("--keep-settings", action="store_true", help="with --uninstall: keep your settings, presets and controller bindings (the default is to remove everything)")
-    parser.add_argument("--clear-caches", action="store_true",
-                        help="with --uninstall: also clear the pip and cargo download caches (other programs share them)")
-    parser.add_argument("--remove-git-folder", action="store_true",
-                        help="with --uninstall: also remove the Sluice folder when it is a git clone (unpushed changes are lost)")
+    parser.add_argument(
+        "--uninstall", action="store_true", help="remove Sluice completely (shows what it will remove and asks first)"
+    )
+    parser.add_argument(
+        "--keep-settings",
+        action="store_true",
+        help="with --uninstall: keep your settings, presets and controller bindings (the default is to remove everything)",
+    )
+    parser.add_argument(
+        "--clear-caches",
+        action="store_true",
+        help="with --uninstall: also clear the pip and cargo download caches (other programs share them)",
+    )
+    parser.add_argument(
+        "--remove-git-folder",
+        action="store_true",
+        help="with --uninstall: also remove the Sluice folder when it is a git clone (unpushed changes are lost)",
+    )
     parser.add_argument("--yes", action="store_true", help="with --uninstall: do not ask")
     parser.add_argument("--dry-run", action="store_true", help="with --uninstall: show what would be removed and change nothing")
-    parser.add_argument("--minimized", action="store_true", help="start with the window minimized (to the tray if \"Keep running in the tray\" is chosen, otherwise to the taskbar)")
+    parser.add_argument(
+        "--minimized",
+        action="store_true",
+        help='start with the window minimized (to the tray if "Keep running in the tray" is chosen, otherwise to the taskbar)',
+    )
     parser.add_argument("--startup", action="store_true", help=argparse.SUPPRESS)  # only the launcher script uses this
     parser.add_argument("--finish-move", metavar="OLD", help=argparse.SUPPRESS)  # 0.12.0: the moved copy deletes the old folder
-    parser.add_argument("--autostart", choices=["off", "window", "minimized"], help="start Sluice when you log in: with the window open, minimized, or never")
+    parser.add_argument(
+        "--autostart",
+        choices=["off", "window", "minimized"],
+        help="start Sluice when you log in: with the window open, minimized, or never",
+    )
     parser.add_argument("--screenshot", metavar="PNG", help=argparse.SUPPRESS)  # developer option
     args = parser.parse_args(args_list)
 
-    is_command = bool(args.diagnose or args.cleanup or args.rollback or args.autostart or args.install_desktop
-                      or args.uninstall_desktop or args.uninstall or args.report is not None)
+    is_command = bool(
+        args.diagnose
+        or args.self_test
+        or args.update
+        or args.cleanup
+        or args.rollback
+        or args.autostart
+        or args.install_desktop
+        or args.uninstall_desktop
+        or args.uninstall
+        or args.report is not None
+    )
     log_file = logs.setup(debug=args.debug, session=not is_command)
     try:
-        if args.diagnose:
+        if args.self_test and args.quick:  # 0.13.1 (House Standard): what the updater runs on a new version before the swap
+            from .selftest import quick
+
+            return quick()
+        if args.update:
+            return _update()
+        if args.diagnose or args.self_test:
             from .diagnose import report
 
             text, ok = report()
@@ -530,10 +613,14 @@ def main(argv: Optional[list] = None) -> int:
             except OSError as exc:
                 print(f"sluice: could not change start-up: {exc}", file=sys.stderr)
                 return 1
-            print({"off": "Sluice will no longer start when you log in.",
-                   "window": "Sluice will start when you log in, with its window open.",
-                   "minimized": "Sluice will start when you log in, minimized (to the tray if \"Keep running in the tray\" is chosen, "
-                                "otherwise to the taskbar)."}[args.autostart])
+            print(
+                {
+                    "off": "Sluice will no longer start when you log in.",
+                    "window": "Sluice will start when you log in, with its window open.",
+                    "minimized": 'Sluice will start when you log in, minimized (to the tray if "Keep running in the tray" is chosen, '
+                    "otherwise to the taskbar).",
+                }[args.autostart]
+            )
             return 0
         if args.install_desktop or args.uninstall_desktop:
             return _desktop(install=args.install_desktop)
@@ -542,6 +629,54 @@ def main(argv: Optional[list] = None) -> int:
         return _run_gui(args, log_file)
     finally:
         logs.shutdown()
+
+
+def _update() -> int:
+    """``sluice --update`` (0.13.1, House Standard): the same check, download and verification as the window's updater."""
+    from . import update_check, update_install
+    from .model import Mixer, config_path
+
+    root = update_install.install_root()
+    reason = update_install.unavailable_reason(root)
+    if reason:
+        print(f"sluice: {reason}", file=sys.stderr)
+        return 1
+    channel = Mixer.load(config_path()).update_channel if config_path().is_file() else "stable"
+    try:
+        result = update_check.check(__version__, channel=channel)
+    except Exception as exc:  # noqa: BLE001 - said plainly, never a traceback
+        print(f"sluice: could not check for updates: {exc}", file=sys.stderr)
+        return 1
+    if result.status == "error":
+        print(f"sluice: could not check for updates: {result.message}", file=sys.stderr)
+        return 1
+    if result.status != "available":
+        print(f"Sluice {__version__} is the newest {channel} version." if result.status == "up_to_date" else result.message)
+        return 0
+    problem = update_install.offer_problem(root, result)
+    if problem:
+        print(f"sluice: {problem}", file=sys.stderr)
+        return 1
+    print(f"Downloading Sluice {result.latest}...")
+    try:
+        update_install.stage(result, root)
+    except Exception as exc:  # noqa: BLE001
+        print(f"sluice: the update was not installed: {exc}", file=sys.stderr)
+        return 1
+    pid = _lock_holder()[0]
+    running = False
+    if pid and pid != os.getpid():
+        try:
+            os.kill(pid, 0)
+            running = True
+        except OSError:
+            running = False
+    if running:
+        print(f"Sluice {result.latest} is downloaded and checked. It installs when Sluice closes.")
+        return 0
+    installed = update_install.apply_staged(root)
+    print(f"Sluice {installed or result.latest} is installed. Start Sluice to use it.")
+    return 0
 
 
 def run() -> None:
