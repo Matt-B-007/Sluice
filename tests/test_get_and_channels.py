@@ -188,7 +188,9 @@ def test_release_sh_sets_a_new_version_everywhere(tmp_path):
 
 def test_the_release_workflow_makes_test_versions_pre_releases_and_nothing_else():
     workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text()
-    assert "check-version.py --tag" in workflow and "workflow_dispatch" in workflow
+    script = (ROOT / "scripts" / "check.sh").read_text()  # 0.12.5: the tag check is in the one check script
+    assert "check.sh shell python release" in workflow and 'check-version.py --tag "$TAG" --new' in script
+    assert "workflow_dispatch" in workflow
     assert "startsWith(github.ref_name, 'v0.')" not in workflow  # every 0.x used to be a pre-release, hiding it from Stable
 
 

@@ -6,7 +6,11 @@
 #[inline]
 pub fn ramp_value(previous: f64, target: f64, i: usize, frames: usize) -> f32 {
     if frames <= 1 || previous == target {
-        return if frames <= 1 { previous as f32 } else { target as f32 };
+        return if frames <= 1 {
+            previous as f32
+        } else {
+            target as f32
+        };
     }
     (previous + (target - previous) * (i as f64) / ((frames - 1) as f64)) as f32
 }

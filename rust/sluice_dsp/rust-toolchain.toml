@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# The Rust version the checks use (scripts/check.sh and GitHub), pinned so a new Rust release cannot change what rustfmt and
+# clippy say overnight. With rustup, cargo run in this folder uses exactly this version. Installing Sluice does not download
+# it: install.sh builds with the Rust you already have when this version is not installed.
+[toolchain]
+channel = "1.97.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

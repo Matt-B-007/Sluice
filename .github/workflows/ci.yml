@@ -51,10 +51,11 @@ jobs:
           echo "Still missing:"
           for pkg in $missing; do dpkg -s "$pkg" >/dev/null 2>&1 || echo "  $pkg"; done
           true
-      - name: Check that Qt's system libraries are there
-        run: python3 tools/check-qt-libs.py  # 0.12.4: asks the loader, as Qt does (the library cache missed libraries that load)
-      - run: pip install -e ".[dev]"
-      - run: QT_QPA_PLATFORM=offscreen pytest -q
+      - name: Install Sluice and its test tools
+        run: pip install -e ".[dev]"
+      # 0.12.5: every check is in scripts/check.sh, so a check run on a computer and one run here cannot differ
+      - name: Run the tests (scripts/check.sh tests; Qt libraries check, then pytest)
+        run: bash scripts/check.sh tests
   rust:
     # The same tests with the Rust engine built, against a dummy JACK server; the job above runs them without Rust.
     runs-on: ubuntu-24.04
@@ -87,20 +88,28 @@ jobs:
             sudo sed -i 's#mirror+file:/etc/apt/apt-mirrors.txt#http://mirrors.edge.kernel.org/ubuntu/#g; s#http://azure.archive.ubuntu.com/ubuntu/\?#http://mirrors.edge.kernel.org/ubuntu/#g; s#https\?://\(security\|archive\)\.ubuntu\.com/ubuntu/\?#http://mirrors.edge.kernel.org/ubuntu/#g' /etc/apt/sources.list /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list 2>/dev/null || true
             sudo apt-get $opts update && sudo apt-get $opts install -y --no-install-recommends $pkgs
           fi
-      - name: Check that Qt's system libraries are there
-        run: python3 tools/check-qt-libs.py  # 0.12.4: asks the loader, as Qt does (the library cache missed libraries that load)
-      - run: pip install -e ".[dev]" maturin
-      - name: Build the Rust engine
+      - name: Install the pinned Rust toolchain with rustfmt and clippy (rust/sluice_dsp/rust-toolchain.toml)
+        run: |
+          version="$(sed -n 's/^channel = "\(.*\)"/\1/p' rust/sluice_dsp/rust-toolchain.toml)"
+          rustup toolchain install "$version" --profile minimal --component rustfmt --component clippy
+      - name: Install Sluice, its test tools and maturin
+        run: pip install -e ".[dev]" maturin
+      - name: Build and install the Rust engine
         run: cd rust/sluice_dsp && maturin build --release -o ../../dist && pip install ../../dist/sluice_dsp-*.whl
-      - run: python -c "import sluice_dsp, sluice.spectral as s; assert s.BACKEND == 'rust', s.RUST_ERROR; print(sluice_dsp.VERSION)"
-      - run: QT_QPA_PLATFORM=offscreen pytest -q
-      - name: Python and Rust agree with the Rust engine switched off too
-        run: SLUICE_NO_RUST=1 QT_QPA_PLATFORM=offscreen pytest -q
-  shell:
+      - name: Check the Rust code and run the tests with and without the Rust engine (scripts/check.sh rust tests)
+        env:
+          SLUICE_EXPECT_RUST: "1"
+        run: bash scripts/check.sh rust tests
+  lint:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
-      - run: bash -n install.sh && bash -n tools/set-github-repo.sh && ./install.sh --help
-      - run: bash -n get.sh && bash -n tools/release.sh && bash -n tools/make-release.sh
-      - name: The version files and the changelogs agree (so a release made from main never fails on them)
-        run: python3 tools/check-version.py
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install pyflakes and the pinned shellcheck (version in scripts/tool-versions)
+        run: |
+          . scripts/tool-versions
+          pip install pyflakes "shellcheck-py==$SHELLCHECK_PY"
+      - name: Check shell scripts (bash -n + shellcheck), Python (pyflakes) and the version files (scripts/check.sh shell python)
+        run: bash scripts/check.sh shell python

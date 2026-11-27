@@ -155,6 +155,17 @@ if [ "${SLUICE_NO_RUST:-}" = 1 ]; then
     say "Skipped (SLUICE_NO_RUST=1). Sluice will use its Python engine."
 elif command -v cargo >/dev/null 2>&1 && [ -d rust/sluice_dsp ]; then
     say "Building the Rust engine (a minute or two the first time)..."
+    # 0.12.5: rust/sluice_dsp/rust-toolchain.toml pins the Rust version the checks use. With rustup that would download that
+    # exact version first; installing Sluice builds with the Rust you already have instead.
+    if command -v rustup >/dev/null 2>&1 && [ -z "${RUSTUP_TOOLCHAIN:-}" ]; then
+        pinned_rust="$(sed -n 's/^channel = "\(.*\)"/\1/p' rust/sluice_dsp/rust-toolchain.toml)"
+        if [ -n "$pinned_rust" ] && ! rustup toolchain list 2>/dev/null | grep -q "^$pinned_rust"; then
+            default_rust="$(rustup default 2>/dev/null | awk '{print $1}')"
+            if [ -n "$default_rust" ]; then
+                export RUSTUP_TOOLCHAIN="$default_rust"
+            fi
+        fi
+    fi
     if [ "$dry" = 1 ]; then
         say "   (dry run) pip install maturin; maturin develop --release"
     elif .venv/bin/python -m pip install maturin >/dev/null && (cd rust/sluice_dsp && VIRTUAL_ENV="$here/.venv" "$here/.venv/bin/maturin" develop --release >/dev/null 2>&1); then

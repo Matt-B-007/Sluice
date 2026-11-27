@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Tool versions that can change what the checks find, pinned so a new release of a tool cannot break CI overnight.
+# Read by scripts/check.sh and by the workflows in .github/workflows (which install exactly these on GitHub).
+# Rust is pinned in rust/sluice_dsp/rust-toolchain.toml, which rustup honours.
+# shellcheck disable=SC2034  # these are read by the files that source this one
+SHELLCHECK_VERSION=0.11.0
+SHELLCHECK_PY=0.11.0.1

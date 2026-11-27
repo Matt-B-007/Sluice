@@ -27,8 +27,13 @@ jobs:
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "TAG=$tag" >> "$GITHUB_ENV"
-      - name: Check the version files, the changelogs and the tag agree
-        run: python tools/check-version.py --tag "$TAG" --new  # --new: newer than every release so far (0.12.3)
+      - name: Install pyflakes and the pinned shellcheck (version in scripts/tool-versions)
+        run: |
+          . scripts/tool-versions
+          pip install pyflakes "shellcheck-py==$SHELLCHECK_PY"
+      # 0.12.5: the same checks as CI, from the same script; then the tag must match and be newer than every release
+      - name: Check shell scripts, Python, the version files and the tag (scripts/check.sh shell python release)
+        run: bash scripts/check.sh shell python release
       - name: Make the tag (run by hand only)
         if: github.event_name == 'workflow_dispatch'
         run: |
@@ -93,3 +98,21 @@ jobs:
           [ "${{ steps.notes.outputs.prerelease }}" = "true" ] && latest=false
           gh release edit "$TAG" --draft=false --latest="$latest"
           echo "Published Sluice ${TAG#v}: https://github.com/${GITHUB_REPOSITORY}/releases/tag/$TAG"
+      # 0.12.5: a failed release says plainly whether it left anything to tidy up (House Standard 1.2: releases fail closed)
+      - name: Say whether a draft release or a tag was left behind
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -z "${TAG:-}" ]; then
+            echo "The release stopped before it had a tag: nothing was made, nothing to delete."
+            exit 0
+          fi
+          if [ "$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null)" = "true" ]; then
+            echo "::error::A DRAFT release $TAG was left behind (no one can see it). Delete it on the Releases page, or: gh release delete $TAG"
+          else
+            echo "No draft release was left behind."
+          fi
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "::warning::This run made the tag $TAG. Delete it before trying again: git push --delete origin $TAG"
+          fi

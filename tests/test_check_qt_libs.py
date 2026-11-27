@@ -22,9 +22,11 @@ def test_the_message_blames_ubuntus_servers_only_on_github():
     assert "This computer cannot load libGL.so.1" in local and "package servers" not in local
 
 
-def test_both_test_jobs_use_the_check():
-    lines = (ROOT / ".github" / "workflows" / "ci.yml").read_text().splitlines()
-    steps = [i for i, line in enumerate(lines) if line.strip() == "- name: Check that Qt's system libraries are there"]
-    assert len(steps) == 2
-    assert all(lines[i + 1].strip().startswith("run: python3 tools/check-qt-libs.py") for i in steps)
-    assert not any("ldconfig -p" in line for line in lines)
+def test_the_tests_check_qt_libraries_first():
+    """0.12.5: the check moved from two CI steps into scripts/check.sh, which both test jobs run."""
+    script = (ROOT / "scripts" / "check.sh").read_text()
+    tests = script[script.index("check_tests() {"):]
+    assert tests.index("tools/check-qt-libs.py") < tests.index("-m pytest")
+    assert "ldconfig -p" not in script
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    assert "ldconfig -p" not in ci and ci.count("bash scripts/check.sh") >= 2

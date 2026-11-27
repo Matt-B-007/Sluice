@@ -48,8 +48,14 @@ impl Stft {
             window,
             frame: [vec![0.0; N], vec![0.0; N]],
             ola: [vec![0.0; N], vec![0.0; N]],
-            inb: [VecDeque::with_capacity(QUEUE), VecDeque::with_capacity(QUEUE)],
-            outb: [VecDeque::with_capacity(QUEUE), VecDeque::with_capacity(QUEUE)],
+            inb: [
+                VecDeque::with_capacity(QUEUE),
+                VecDeque::with_capacity(QUEUE),
+            ],
+            outb: [
+                VecDeque::with_capacity(QUEUE),
+                VecDeque::with_capacity(QUEUE),
+            ],
             scratch_fwd: fwd.make_scratch_vec(),
             scratch_inv: inv.make_scratch_vec(),
             hop_in: [vec![0.0; HOP], vec![0.0; HOP]],
@@ -57,7 +63,10 @@ impl Stft {
             gains: vec![1.0; K],
             fwd,
             inv,
-            spec: [vec![Complex32::new(0.0, 0.0); K], vec![Complex32::new(0.0, 0.0); K]],
+            spec: [
+                vec![Complex32::new(0.0, 0.0); K],
+                vec![Complex32::new(0.0, 0.0); K],
+            ],
             buf: vec![0.0; N],
             sample_rate,
         }
@@ -79,7 +88,12 @@ impl Stft {
 
     /// `input` and `output` are (2, frames). `gain` gets the mixed power spectrum of one frame and fills in the gain for
     /// every bin. The output has the same length (the first blocks are delayed by up to 16 ms of silence).
-    pub fn process<F: FnMut(&[f64], &mut [f64])>(&mut self, input: ArrayView2<f32>, mut output: ArrayViewMut2<f32>, mut gain: F) {
+    pub fn process<F: FnMut(&[f64], &mut [f64])>(
+        &mut self,
+        input: ArrayView2<f32>,
+        mut output: ArrayViewMut2<f32>,
+        mut gain: F,
+    ) {
         let frames = input.shape()[1];
         for c in 0..2 {
             self.inb[c].extend(input.row(c).iter().copied());
@@ -114,7 +128,9 @@ impl Stft {
             for i in 0..N {
                 self.buf[i] = self.frame[c][i] * self.window[i];
             }
-            self.fwd.process_with_scratch(&mut self.buf, &mut self.spec[c], &mut self.scratch_fwd).unwrap();
+            self.fwd
+                .process_with_scratch(&mut self.buf, &mut self.spec[c], &mut self.scratch_fwd)
+                .unwrap();
         }
         for k in 0..K {
             let re = 0.5 * (self.spec[0][k].re + self.spec[1][k].re);
@@ -129,7 +145,9 @@ impl Stft {
             // the DC and Nyquist bins of a real signal are real
             self.spec[c][0].im = 0.0;
             self.spec[c][K - 1].im = 0.0;
-            self.inv.process_with_scratch(&mut self.spec[c], &mut self.buf, &mut self.scratch_inv).unwrap();
+            self.inv
+                .process_with_scratch(&mut self.spec[c], &mut self.buf, &mut self.scratch_inv)
+                .unwrap();
             for i in 0..N {
                 // realfft's inverse is unnormalised: divide by N (numpy's irfft does), then window, then the overlap scale 1/2
                 self.ola[c][i] += (self.buf[i] / N as f32) * self.window[i] * 0.5;

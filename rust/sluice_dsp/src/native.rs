@@ -40,7 +40,10 @@ pub struct HighPass {
 
 impl HighPass {
     pub fn new(cutoff_hz: f64) -> Self {
-        HighPass { cutoff_hz, s: [0.0; 2] }
+        HighPass {
+            cutoff_hz,
+            s: [0.0; 2],
+        }
     }
 }
 
@@ -49,9 +52,9 @@ impl Effect for HighPass {
         // JUCE FirstOrderTPTFilter
         let g = (PI * self.cutoff_hz / sr as f64).tan();
         let gg = g / (1.0 + g);
-        for c in 0..2 {
+        for (c, channel) in audio.iter_mut().enumerate() {
             let mut s = self.s[c];
-            for x in audio[c].iter_mut() {
+            for x in channel.iter_mut() {
                 let xi = *x as f64;
                 let v = (xi - s) * gg;
                 let lp = v + s;
@@ -83,7 +86,14 @@ pub struct Biquad {
 
 impl Biquad {
     pub fn new(shape: Shape, freq: f64, gain_db: f64, q: f64) -> Self {
-        Biquad { shape, freq, gain_db, q, s1: [0.0; 2], s2: [0.0; 2] }
+        Biquad {
+            shape,
+            freq,
+            gain_db,
+            q,
+            s1: [0.0; 2],
+            s2: [0.0; 2],
+        }
     }
 
     /// juce::dsp::IIR::Coefficients::makeLowShelf / makeHighShelf / makePeakFilter, normalised by a0.
@@ -145,9 +155,9 @@ impl Biquad {
 impl Effect for Biquad {
     fn process(&mut self, audio: &mut Stereo, sr: u32) {
         let [b0, b1, b2, a1, a2] = self.coefficients(sr as f64);
-        for c in 0..2 {
+        for (c, channel) in audio.iter_mut().enumerate() {
             let (mut s1, mut s2) = (self.s1[c], self.s2[c]);
-            for x in audio[c].iter_mut() {
+            for x in channel.iter_mut() {
                 let xi = *x as f64;
                 let y = xi * b0 + s1;
                 s1 = xi * b1 - y * a1 + s2;
@@ -186,7 +196,11 @@ impl Ballistics {
     #[inline]
     fn step(&mut self, c: usize, x: f64, level: Level, cte_attack: f64, cte_release: f64) -> f64 {
         let v = if level == Level::Rms { x * x } else { x.abs() };
-        let k = if v > self.y[c] { cte_attack } else { cte_release };
+        let k = if v > self.y[c] {
+            cte_attack
+        } else {
+            cte_release
+        };
         let r = v + k * (self.y[c] - v);
         self.y[c] = r;
         if level == Level::Rms {
@@ -207,7 +221,13 @@ pub struct Compressor {
 
 impl Compressor {
     pub fn new(threshold_db: f64, ratio: f64, attack_ms: f64, release_ms: f64) -> Self {
-        Compressor { threshold_db, ratio, attack_ms, release_ms, env: Ballistics::new() }
+        Compressor {
+            threshold_db,
+            ratio,
+            attack_ms,
+            release_ms,
+            env: Ballistics::new(),
+        }
     }
 }
 
@@ -218,11 +238,15 @@ impl Effect for Compressor {
         let threshold_inv = 1.0 / threshold;
         let ratio_inv = 1.0 / self.ratio;
         let (ca, cr) = (cte(self.attack_ms, sr), cte(self.release_ms, sr));
-        for c in 0..2 {
-            for x in audio[c].iter_mut() {
+        for (c, channel) in audio.iter_mut().enumerate() {
+            for x in channel.iter_mut() {
                 let xi = *x as f64;
                 let env = self.env.step(c, xi, Level::Peak, ca, cr);
-                let gain = if env < threshold { 1.0 } else { (env * threshold_inv).powf(ratio_inv - 1.0) };
+                let gain = if env < threshold {
+                    1.0
+                } else {
+                    (env * threshold_inv).powf(ratio_inv - 1.0)
+                };
                 *x = (gain * xi) as f32;
             }
         }
@@ -240,7 +264,14 @@ pub struct NoiseGate {
 
 impl NoiseGate {
     pub fn new(threshold_db: f64, ratio: f64, attack_ms: f64, release_ms: f64) -> Self {
-        NoiseGate { threshold_db, ratio, attack_ms, release_ms, rms: Ballistics::new(), env: Ballistics::new() }
+        NoiseGate {
+            threshold_db,
+            ratio,
+            attack_ms,
+            release_ms,
+            rms: Ballistics::new(),
+            env: Ballistics::new(),
+        }
     }
 }
 
@@ -253,12 +284,16 @@ impl Effect for NoiseGate {
         // the attack and release you set, then the gain from the ratio below the threshold
         let c_rms = cte(50.0, sr);
         let (ca, cr) = (cte(self.attack_ms, sr), cte(self.release_ms, sr));
-        for c in 0..2 {
-            for x in audio[c].iter_mut() {
+        for (c, channel) in audio.iter_mut().enumerate() {
+            for x in channel.iter_mut() {
                 let xi = *x as f64;
                 let level = self.rms.step(c, xi, Level::Rms, 0.0, c_rms);
                 let env = self.env.step(c, level, Level::Peak, ca, cr);
-                let gain = if env > threshold { 1.0 } else { (env * threshold_inv).powf(self.ratio - 1.0) };
+                let gain = if env > threshold {
+                    1.0
+                } else {
+                    (env * threshold_inv).powf(self.ratio - 1.0)
+                };
                 *x = (gain * xi) as f32;
             }
         }
@@ -274,7 +309,7 @@ pub struct Limiter {
     pub release_ms: f64,
     first: Compressor,
     second: Compressor,
-    gain: Option<f64>,   // the make-up gain reached so far (it glides to a new value over 1 ms)
+    gain: Option<f64>, // the make-up gain reached so far (it glides to a new value over 1 ms)
 }
 
 impl Limiter {
@@ -295,10 +330,13 @@ impl Effect for Limiter {
         self.second.release_ms = self.release_ms;
         self.first.process(audio, sr);
         self.second.process(audio, sr);
-        let target = 10f64.powf(10.0 * (1.0 - 0.25) / 40.0) * db_to_gain(-self.threshold_db.max(-100.0));
+        let target =
+            10f64.powf(10.0 * (1.0 - 0.25) / 40.0) * db_to_gain(-self.threshold_db.max(-100.0));
         let mut g = self.gain.unwrap_or(target);
         let step = (target - g) / (sr as f64 * 0.001).max(1.0);
         let frames = audio[0].len();
+        #[allow(clippy::needless_range_loop)]
+        // frame by frame across both channels: one gain step per frame, applied to both
         for i in 0..frames {
             if (target - g).abs() > step.abs() {
                 g += step;

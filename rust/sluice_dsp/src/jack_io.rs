@@ -3,7 +3,10 @@
 //! measuring of how long each block takes and whose dropouts they are. libjack is loaded when the client is opened, so
 //! the module builds and imports without it. The mixing itself is still called in Python for each block (VST3 plugins
 //! need Python); everything around that call is Rust.
-use jack::{AsyncClient, AudioIn, AudioOut, Client, ClientOptions, ClientStatus, Control, Port, ProcessScope};
+use jack::{
+    AsyncClient, AudioIn, AudioOut, Client, ClientOptions, ClientStatus, Control, Port,
+    ProcessScope,
+};
 use numpy::{PyArray2, PyArrayMethods, PyReadonlyArray2, PyUntypedArrayMethods};
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
@@ -59,7 +62,11 @@ impl Proc {
     fn run_python(&self, ports: &mut Ports, ps: &ProcessScope, frames: usize) -> PyResult<()> {
         Python::attach(|py| {
             let cb = {
-                let guard = self.shared.callback.lock().map_err(|_| PyRuntimeError::new_err("callback lock poisoned"))?;
+                let guard = self
+                    .shared
+                    .callback
+                    .lock()
+                    .map_err(|_| PyRuntimeError::new_err("callback lock poisoned"))?;
                 match guard.as_ref() {
                     Some(cb) => cb.clone_ref(py),
                     None => return Err(PyRuntimeError::new_err("no callback")),
@@ -87,7 +94,9 @@ impl Proc {
                     Some(block) => {
                         let a: PyReadonlyArray2<f32> = block.extract()?;
                         if a.shape()[0] != 2 {
-                            return Err(PyValueError::new_err("a mix block must have shape (2, frames)"));
+                            return Err(PyValueError::new_err(
+                                "a mix block must have shape (2, frames)",
+                            ));
                         }
                         let v = a.as_array();
                         let n = v.shape()[1];
@@ -117,7 +126,16 @@ impl jack::ProcessHandler for Proc {
         if let Ok(mut ports) = s.ports.try_lock() {
             if let Err(e) = self.run_python(&mut ports, ps, frames) {
                 // never let a failure reach the audio thread: say it, and play silence
-                let text = Python::attach(|py| format!("{}: {}", e.get_type(py).name().map(|n| n.to_string()).unwrap_or_default(), e.value(py)));
+                let text = Python::attach(|py| {
+                    format!(
+                        "{}: {}",
+                        e.get_type(py)
+                            .name()
+                            .map(|n| n.to_string())
+                            .unwrap_or_default(),
+                        e.value(py)
+                    )
+                });
                 s.set_error(text);
                 for (l, r) in ports.outputs.values_mut() {
                     l.as_mut_slice(ps).fill(0.0);
@@ -141,14 +159,16 @@ struct Notify {
 
 impl jack::NotificationHandler for Notify {
     unsafe fn shutdown(&mut self, _status: ClientStatus, reason: &str) {
-        self.shared.set_error(format!("Audio server shut down: {reason}"));
+        self.shared
+            .set_error(format!("Audio server shut down: {reason}"));
     }
     fn xrun(&mut self, _: &Client) -> Control {
         let s = &self.shared;
         s.xruns.fetch_add(1, Ordering::Relaxed);
         // Ours if the block that was running (or had just run) used most of its time: Sluice was the slow one.
         let busy = if s.in_block.load(Ordering::Acquire) {
-            s.now_ns().saturating_sub(s.block_start_ns.load(Ordering::Relaxed))
+            s.now_ns()
+                .saturating_sub(s.block_start_ns.load(Ordering::Relaxed))
         } else {
             s.last_busy_ns.load(Ordering::Relaxed)
         };
@@ -189,9 +209,14 @@ impl JackEngine {
     #[pyo3(signature = (client_name = "sluice"))]
     fn new(py: Python<'_>, client_name: &str) -> PyResult<Self> {
         let name = client_name.to_string();
-        let opened = py.detach(|| Client::new(&name, ClientOptions::NO_START_SERVER | ClientOptions::USE_EXACT_NAME));
+        let opened = py.detach(|| {
+            Client::new(
+                &name,
+                ClientOptions::NO_START_SERVER | ClientOptions::USE_EXACT_NAME,
+            )
+        });
         let (client, status) = opened.map_err(|e| PyRuntimeError::new_err(format!("{e:?}")))?;
-        let sample_rate = client.sample_rate() as u32;
+        let sample_rate = client.sample_rate();
         let blocksize = client.buffer_size();
         let period_ns = (blocksize as f64 / sample_rate.max(1) as f64 * 1e9) as u64;
         let _ = status;
@@ -210,7 +235,12 @@ impl JackEngine {
             busy_peak_ns: AtomicU64::new(0),
             blocks: AtomicU64::new(0),
         });
-        Ok(JackEngine { state: Mutex::new(State::Idle(client)), shared, sample_rate, blocksize })
+        Ok(JackEngine {
+            state: Mutex::new(State::Idle(client)),
+            shared,
+            sample_rate,
+            blocksize,
+        })
     }
 
     #[getter]
@@ -223,7 +253,11 @@ impl JackEngine {
     }
     #[getter]
     fn error(&self) -> String {
-        self.shared.error.lock().map(|e| e.clone()).unwrap_or_default()
+        self.shared
+            .error
+            .lock()
+            .map(|e| e.clone())
+            .unwrap_or_default()
     }
     #[setter]
     fn set_error(&self, value: String) {
@@ -243,43 +277,89 @@ impl JackEngine {
         (total as f64 / blocks as f64 / p, peak as f64 / p)
     }
 
-    fn sync_ports(&self, py: Python<'_>, channel_ids: Vec<String>, mix_ids: Vec<String>) -> PyResult<()> {
+    fn sync_ports(
+        &self,
+        py: Python<'_>,
+        channel_ids: Vec<String>,
+        mix_ids: Vec<String>,
+    ) -> PyResult<()> {
         let shared = self.shared.clone();
         let state = &self.state;
         py.detach(move || -> PyResult<()> {
-            let guard = state.lock().map_err(|_| PyRuntimeError::new_err("state lock poisoned"))?;
-            let client = client_of(&guard).ok_or_else(|| PyRuntimeError::new_err("the audio client is closed"))?;
+            let guard = state
+                .lock()
+                .map_err(|_| PyRuntimeError::new_err("state lock poisoned"))?;
+            let client = client_of(&guard)
+                .ok_or_else(|| PyRuntimeError::new_err("the audio client is closed"))?;
             let err = |e: jack::Error| PyRuntimeError::new_err(format!("{e:?}"));
             // 1. what is missing, looked up with the lock held only for a moment (the callback keeps the whole old set meanwhile)
             let (missing_in, missing_out): (Vec<String>, Vec<String>) = {
-                let ports = shared.ports.lock().map_err(|_| PyRuntimeError::new_err("ports lock poisoned"))?;
+                let ports = shared
+                    .ports
+                    .lock()
+                    .map_err(|_| PyRuntimeError::new_err("ports lock poisoned"))?;
                 (
-                    channel_ids.iter().filter(|id| !ports.inputs.contains_key(*id)).cloned().collect(),
-                    mix_ids.iter().filter(|id| !ports.outputs.contains_key(*id)).cloned().collect(),
+                    channel_ids
+                        .iter()
+                        .filter(|id| !ports.inputs.contains_key(*id))
+                        .cloned()
+                        .collect(),
+                    mix_ids
+                        .iter()
+                        .filter(|id| !ports.outputs.contains_key(*id))
+                        .cloned()
+                        .collect(),
                 )
             };
             // 2. register the new ports without holding the lock: the callback still sees every port it had
             let mut new_in: BTreeMap<String, InPair> = BTreeMap::new();
             let mut new_out: BTreeMap<String, OutPair> = BTreeMap::new();
             for id in &missing_in {
-                let l = client.register_port(&format!("in_{id}_L"), AudioIn::default()).map_err(err)?;
-                let r = client.register_port(&format!("in_{id}_R"), AudioIn::default()).map_err(err)?;
+                let l = client
+                    .register_port(&format!("in_{id}_L"), AudioIn::default())
+                    .map_err(err)?;
+                let r = client
+                    .register_port(&format!("in_{id}_R"), AudioIn::default())
+                    .map_err(err)?;
                 new_in.insert(id.clone(), (l, r));
             }
             for id in &missing_out {
-                let l = client.register_port(&format!("out_{id}_L"), AudioOut::default()).map_err(err)?;
-                let r = client.register_port(&format!("out_{id}_R"), AudioOut::default()).map_err(err)?;
+                let l = client
+                    .register_port(&format!("out_{id}_L"), AudioOut::default())
+                    .map_err(err)?;
+                let r = client
+                    .register_port(&format!("out_{id}_R"), AudioOut::default())
+                    .map_err(err)?;
                 new_out.insert(id.clone(), (l, r));
             }
             // 3. one short swap under the lock: add the new ports, take out only the ports that are no longer wanted
             let (old_in, old_out) = {
-                let mut ports = shared.ports.lock().map_err(|_| PyRuntimeError::new_err("ports lock poisoned"))?;
+                let mut ports = shared
+                    .ports
+                    .lock()
+                    .map_err(|_| PyRuntimeError::new_err("ports lock poisoned"))?;
                 ports.inputs.extend(new_in);
                 ports.outputs.extend(new_out);
-                let stale_in: Vec<String> = ports.inputs.keys().filter(|k| !channel_ids.contains(*k)).cloned().collect();
-                let stale_out: Vec<String> = ports.outputs.keys().filter(|k| !mix_ids.contains(*k)).cloned().collect();
-                let old_in: Vec<InPair> = stale_in.iter().filter_map(|k| ports.inputs.remove(k)).collect();
-                let old_out: Vec<OutPair> = stale_out.iter().filter_map(|k| ports.outputs.remove(k)).collect();
+                let stale_in: Vec<String> = ports
+                    .inputs
+                    .keys()
+                    .filter(|k| !channel_ids.contains(*k))
+                    .cloned()
+                    .collect();
+                let stale_out: Vec<String> = ports
+                    .outputs
+                    .keys()
+                    .filter(|k| !mix_ids.contains(*k))
+                    .cloned()
+                    .collect();
+                let old_in: Vec<InPair> = stale_in
+                    .iter()
+                    .filter_map(|k| ports.inputs.remove(k))
+                    .collect();
+                let old_out: Vec<OutPair> = stale_out
+                    .iter()
+                    .filter_map(|k| ports.outputs.remove(k))
+                    .collect();
                 (old_in, old_out)
             };
             // 4. give the unwanted ports back (the callback no longer uses them)
@@ -297,14 +377,25 @@ impl JackEngine {
 
     /// Start calling ``callback(inputs, frames)`` (inputs: channel id -> (2, frames) float32; returns mix id -> (2, frames)).
     fn start(&self, py: Python<'_>, callback: Py<PyAny>) -> PyResult<()> {
-        *self.shared.callback.lock().map_err(|_| PyRuntimeError::new_err("callback lock poisoned"))? = Some(callback);
+        *self
+            .shared
+            .callback
+            .lock()
+            .map_err(|_| PyRuntimeError::new_err("callback lock poisoned"))? = Some(callback);
         let shared = self.shared.clone();
         let state = &self.state;
         py.detach(move || -> PyResult<()> {
-            let mut guard = state.lock().map_err(|_| PyRuntimeError::new_err("state lock poisoned"))?;
+            let mut guard = state
+                .lock()
+                .map_err(|_| PyRuntimeError::new_err("state lock poisoned"))?;
             match std::mem::replace(&mut *guard, State::Closed) {
                 State::Idle(client) => {
-                    match client.activate_async(Notify { shared: shared.clone() }, Proc { shared }) {
+                    match client.activate_async(
+                        Notify {
+                            shared: shared.clone(),
+                        },
+                        Proc { shared },
+                    ) {
                         Ok(active) => {
                             *guard = State::Active(active);
                             Ok(())
@@ -335,10 +426,20 @@ impl JackEngine {
                 State::Idle(_) | State::Closed => String::new(),
             }
         });
-        *self.shared.callback.lock().map_err(|_| PyRuntimeError::new_err("callback lock poisoned"))? = None;
+        *self
+            .shared
+            .callback
+            .lock()
+            .map_err(|_| PyRuntimeError::new_err("callback lock poisoned"))? = None;
         // The ports keep the JACK client alive. Let go of them now, while the server is still there, so the client is closed here and
         // not whenever Python finally frees this object (which can be after the server has gone, and libjack then crashes).
-        let ports = std::mem::take(&mut *self.shared.ports.lock().map_err(|_| PyRuntimeError::new_err("ports lock poisoned"))?);
+        let ports = std::mem::take(
+            &mut *self
+                .shared
+                .ports
+                .lock()
+                .map_err(|_| PyRuntimeError::new_err("ports lock poisoned"))?,
+        );
         py.detach(move || drop(ports));
         if !message.is_empty() {
             self.shared.set_error(message);

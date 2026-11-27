@@ -8,7 +8,10 @@ const VOICE_LO: usize = 2;
 const VOICE_HI: usize = 170;
 
 fn db(g: &[f64]) -> f64 {
-    let sum: f64 = g[VOICE_LO..VOICE_HI].iter().map(|&x| x.max(1e-4).log10()).sum();
+    let sum: f64 = g[VOICE_LO..VOICE_HI]
+        .iter()
+        .map(|&x| x.max(1e-4).log10())
+        .sum();
     20.0 * sum / (VOICE_HI - VOICE_LO) as f64
 }
 
@@ -120,8 +123,8 @@ impl NoiseState {
             out.iter_mut().for_each(|x| *x = 1.0);
             return;
         }
-        for k in 0..K {
-            self.power[k] = power_in[k] + 1e-12;
+        for (power, input) in self.power.iter_mut().zip(&power_in[..K]) {
+            *power = input + 1e-12;
         }
         if !self.ps_ready {
             self.ps.copy_from_slice(&self.power);
@@ -154,16 +157,22 @@ impl NoiseState {
             self.noise_ready = true;
         }
         for k in 0..K {
-            let voice = if self.ps[k] / self.quiet[k].max(1e-12) > SPEECH_RATIO { 1.0 } else { 0.0 };
+            let voice = if self.ps[k] / self.quiet[k].max(1e-12) > SPEECH_RATIO {
+                1.0
+            } else {
+                0.0
+            };
             self.speech[k] = 0.9 * self.speech[k] + 0.1 * voice;
             let rate = 0.92 + 0.08 * self.speech[k];
-            self.noise[k] = rate * self.noise[k] + (1.0 - rate) * self.power[k].min(self.quiet[k] * 3.0);
+            self.noise[k] =
+                rate * self.noise[k] + (1.0 - rate) * self.power[k].min(self.quiet[k] * 3.0);
             self.ratio[k] = self.power[k] / self.noise[k].max(1e-12);
         }
         for k in 0..K {
             let post = (self.ratio[k] - 1.0).max(0.0);
             let snr = if self.prev_snr_ready {
-                BETA * self.prev_gain[k] * self.prev_gain[k] * self.prev_snr_post[k] + (1.0 - BETA) * post
+                BETA * self.prev_gain[k] * self.prev_gain[k] * self.prev_snr_post[k]
+                    + (1.0 - BETA) * post
             } else {
                 post
             };
@@ -205,7 +214,8 @@ const ALPHA: f64 = 0.7;
 impl EchoState {
     pub fn new(sample_rate: u32, reverb_time: f64, reduction_db: f64) -> Self {
         // Python's round() rounds halves to even
-        let delay = ((LATE_SECONDS * sample_rate as f64 / HOP as f64).round_ties_even() as usize).max(1);
+        let delay =
+            ((LATE_SECONDS * sample_rate as f64 / HOP as f64).round_ties_even() as usize).max(1);
         EchoState {
             reverb_time,
             reduction_db,
@@ -235,8 +245,8 @@ impl EchoState {
     /// Fills `out` (K values) with the gain for every frequency of this frame.
     pub fn gain(&mut self, power_in: &[f64], out: &mut [f64]) {
         let floor = 10f64.powf(-self.reduction_db.max(0.0) / 20.0);
-        for k in 0..K {
-            self.power[k] = power_in[k] + 1e-12;
+        for (power, input) in self.power.iter_mut().zip(&power_in[..K]) {
+            *power = input + 1e-12;
         }
         if self.ps_ready {
             for k in 0..K {
@@ -251,12 +261,21 @@ impl EchoState {
         self.at = (self.at + 1) % self.ring.len();
         let decay = 10f64.powf(-6.0 * LATE_SECONDS / self.reverb_time.max(0.1));
         for k in 0..K {
-            self.g[k] = (1.0 - decay * self.late[k] / self.power[k]).max(0.0).min(1.0).sqrt();
+            // max/min rather than clamp on purpose: a NaN (from a broken input) becomes 0, silence, instead of spreading
+            #[allow(clippy::manual_clamp)]
+            let g = (1.0 - decay * self.late[k] / self.power[k])
+                .max(0.0)
+                .min(1.0);
+            self.g[k] = g.sqrt();
         }
         smooth(&self.g, &mut self.g2);
         for k in 0..K {
             let v = self.g2[k].max(floor).min(1.0);
-            self.g2[k] = if v < self.prev[k] { 0.5 * self.prev[k] + 0.5 * v } else { v };
+            self.g2[k] = if v < self.prev[k] {
+                0.5 * self.prev[k] + 0.5 * v
+            } else {
+                v
+            };
         }
         self.prev.copy_from_slice(&self.g2);
         self.activity_db += 0.1 * (db(&self.g2) - self.activity_db);

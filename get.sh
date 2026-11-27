@@ -42,7 +42,6 @@ main() {
     local py
     py="$(command -v python3 || true)"
     [ -n "$py" ] || fail "python3 is needed. Install it with your package manager (it is called python or python3), then run this again."
-    local fetch
     if command -v curl >/dev/null 2>&1; then
         fetch() { curl -fsSL --retry 3 --connect-timeout 15 -o "$2" "$1"; }
     elif command -v wget >/dev/null 2>&1; then

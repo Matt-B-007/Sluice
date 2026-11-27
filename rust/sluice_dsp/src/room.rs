@@ -39,7 +39,9 @@ pub fn block_power(l: &[f32], r: &[f32], size: usize) -> Vec<f64> {
 /// window, both channels averaged before the power is taken (as the noise reducer measures it).
 pub fn noise_profile(l: &[f32], r: &[f32], n: usize, hop: usize) -> Vec<f64> {
     let bins = n / 2 + 1;
-    let window: Vec<f32> = (0..n).map(|i| (0.5 - 0.5 * (2.0 * PI * i as f64 / n as f64).cos()).sqrt() as f32).collect();
+    let window: Vec<f32> = (0..n)
+        .map(|i| (0.5 - 0.5 * (2.0 * PI * i as f64 / n as f64).cos()).sqrt() as f32)
+        .collect();
     let mut planner = FftPlanner::<f64>::new();
     let fft = planner.plan_fft_forward(n);
     let mut total = vec![0.0f64; bins];
@@ -71,16 +73,18 @@ pub fn noise_profile(l: &[f32], r: &[f32], n: usize, hop: usize) -> Vec<f64> {
 /// 200 Hz), then the power of every `block` samples (+1e-18). Same as the numpy code in `analyse_echo`.
 pub fn echo_energy(l: &[f64], r: &[f64], sample_rate: f64, block: usize) -> Vec<f64> {
     let n = l.len();
-    let mut data: Vec<Complex64> = (0..n).map(|i| Complex64::new((l[i] + r[i]) / 2.0, 0.0)).collect();
+    let mut data: Vec<Complex64> = (0..n)
+        .map(|i| Complex64::new((l[i] + r[i]) / 2.0, 0.0))
+        .collect();
     let mut planner = FftPlanner::<f64>::new();
     let fwd = planner.plan_fft_forward(n);
     let inv = planner.plan_fft_inverse(n);
     fwd.process(&mut data);
     // rfft keeps bins 0..=n/2; the mirror half is rebuilt from them, so scale both halves the same way
-    for k in 0..n {
+    for (k, bin) in data.iter_mut().enumerate().take(n) {
         let kk = if k <= n / 2 { k } else { n - k };
         let f = kk as f64 * sample_rate / n as f64;
-        data[k] *= ((f - 100.0) / 100.0).clamp(0.0, 1.0);
+        *bin *= ((f - 100.0) / 100.0).clamp(0.0, 1.0);
     }
     inv.process(&mut data);
     let scale = 1.0 / n as f64;
@@ -89,8 +93,8 @@ pub fn echo_energy(l: &[f64], r: &[f64], sample_rate: f64, block: usize) -> Vec<
     (0..blocks)
         .map(|b| {
             let mut s = 0.0;
-            for i in b * block..(b + 1) * block {
-                let v = data[i].re * scale;
+            for value in &data[b * block..(b + 1) * block] {
+                let v = value.re * scale;
                 s += v * v;
             }
             s / block as f64 + 1e-18

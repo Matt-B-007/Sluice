@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.12.5
+One check script for every check, and the first clean-ups by the code checkers. Nothing Sluice does has changed.
+- **One check script.** `scripts/check.sh` runs every check GitHub runs, in the same order with the same flags: the shell
+  scripts (bash -n and shellcheck), Python (pyflakes), the version files, the Rust engine (rustfmt and clippy) and the tests
+  with and without the Rust engine. GitHub's checks now call it and nothing else, so a check run on a computer (StowLock runs
+  it before pushing) and one run on GitHub cannot differ.
+- **It looks for its tools first.** Every missing tool is listed at once with the command that installs it on Arch or CachyOS
+  (`sudo pacman -S --needed …`, and `paru` for pulsectl, which is in the AUR), before anything is checked. Exit codes:
+  0 passed, 1 a check failed, 3 only tools are missing.
+- **Tool versions are pinned,** so a new release of a tool cannot break the checks overnight: Rust 1.97.0 in
+  `rust/sluice_dsp/rust-toolchain.toml` (rustup honours it) and shellcheck 0.11.0 in `scripts/tool-versions`. On a computer
+  with a different version, a finding that version alone makes is shown and listed, but GitHub's pinned version decides.
+  Installing Sluice does not download the pinned Rust: install.sh builds with the Rust you already have.
+- **A failed release says what it left behind:** whether a draft release (or, when run by hand, a tag) is there to delete.
+- **First clean-ups:** the Rust engine's code is formatted by rustfmt and passes clippy with warnings as errors (12 loops and
+  casts written the plainer way; two kept on purpose, with the reason beside them: the limiter steps both channels frame by
+  frame, and the Echo Reducer keeps max/min instead of clamp so a broken input becomes silence instead of spreading). One
+  unused variable removed from get.sh. The Rust engine keeps its version number, 0.11.0: it does exactly what it did.
+
 ## 0.12.4
 OBS hears what your Broadcast faders say, warnings for the routings that bypass them, and fixes from a long stream.
 - **Recording devices follow Broadcast.** An app channel's own recording device (such as "Sluice (Game)", the one OBS

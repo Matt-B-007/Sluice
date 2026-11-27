@@ -3,7 +3,7 @@
 
 import os as _os
 
-__version__ = "0.12.4"
+__version__ = "0.12.5"
 
 # 0.11.7: the maths libraries numpy and scipy load start one worker thread per processor thread (32 on a 16-core Ryzen), and Sluice
 # never gives them work big enough to share. One each is enough; set before numpy is imported. A value you set yourself is kept.

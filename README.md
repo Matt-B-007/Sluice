@@ -56,17 +56,15 @@ The same mixer in the light theme, in the Rows layout, and the first-run screen:
 ![Rows layout](docs/screenshot-rows.png)
 ![First run](docs/first-run.png)
 
-## What's new in 0.12.4
+## What's new in 0.12.5
 
-- **OBS follows your Broadcast faders:** an app channel's recording device (such as "Sluice (Game)") follows its Broadcast
-  fader and mute, so muting Game on Broadcast mutes it in OBS. *Mixer > Recording devices follow Broadcast* turns this off.
-- **Warnings for routings that skip the faders:** OBS recording "Monitor of Sluice (…)", or an app that can hear itself on
-  Broadcast.
-- **Apps not on a channel** are listed under *Playing now*, one click from a channel. No app can play into Sluice's own outputs.
-- **Fixes and less CPU:** no false "Could not move" errors, a quick quiet quit at logout, Tile cards stay one height, the
-  tray updates only when something changes, and meters run at 30 a second while another window is in use.
+- **One check script:** `scripts/check.sh` runs every check GitHub runs, the same way, so a release that passes on a computer
+  passes on GitHub too. It lists any missing tool with the command to install it, and tool versions are pinned.
+- **First clean-ups by the code checkers** (rustfmt and clippy for the Rust engine, shellcheck for the scripts). Nothing Sluice
+  does has changed.
 
-0.12.3, the release before this, made voice meters quicker and showed levels in percent as well as dB.
+0.12.4, the release before this, made OBS follow your Broadcast faders, warned about routings that skip them, and fixed
+several things from a long stream.
 
 The full list, and every earlier version, is in [CHANGELOG.md](CHANGELOG.md) (also under *Help > What's new in this version*).
 
