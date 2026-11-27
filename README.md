@@ -56,7 +56,13 @@ The same mixer in the light theme, in the Rows layout, and the first-run screen:
 ![Rows layout](docs/screenshot-rows.png)
 ![First run](docs/first-run.png)
 
-## What's new in 0.12.6
+## What's new in 0.12.7
+
+- **Sluice's own fonts everywhere:** Inter for the whole window and every weight of JetBrains Mono the Tile look uses are
+  bundled, so text is the same width on every computer (on GitHub's machine, "Broadcast" was cut off on its tile).
+- **Mix tile names end in an ellipsis** with the whole name in a tooltip when they do not fit, like channel names.
+
+0.12.6, the release before this:
 
 - **Every channel has its own recording device from the start**, such as "Sluice (Game)" for OBS (one switch in Settings ›
   Audio; updating asks once if some of yours have none).
@@ -64,8 +70,6 @@ The same mixer in the light theme, in the Rows layout, and the first-run screen:
   on the wrong thing.
 - **Measured:** how long audio blocks wait for the window, and how long start-up takes, step by step, in the bug report.
 - **Screen readers** hear a name for every control, and faders say their level in dB.
-
-0.12.5, the release before this, added one check script for every check and the first clean-ups by the code checkers.
 
 The full list, and every earlier version, is in [CHANGELOG.md](CHANGELOG.md) (also under *Help > What's new in this version*).
 
@@ -792,6 +796,10 @@ virtual devices now start with `Sluice` and `sluice_`, so choose **Sluice (Broad
 ## License and notices
 
 GPL-3.0-or-later. See `LICENSE`. pedalboard is GPLv3 as well, which is why Sluice uses the same license.
+
+Bundled fonts: [Inter](https://rsms.me/inter/) and [JetBrains Mono](https://www.jetbrains.com/lp/mono/), both under the SIL Open
+Font License 1.1. Their licences are next to the font files: `sluice/data/fonts/Inter-LICENSE.txt` and
+`sluice/data/fonts/JetBrainsMono-LICENSE.txt`. They are added for Sluice alone; nothing is installed on your system.
 
 The S in the logo is the letter from the font [Inter](https://rsms.me/inter/) Bold, converted to a shape. Inter is licensed under the SIL Open Font License 1.1, which allows this.
 

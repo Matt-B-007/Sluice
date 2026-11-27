@@ -14,7 +14,11 @@ def qapp():
     pytest.importorskip("PySide6")
     from PySide6.QtWidgets import QApplication
 
-    return QApplication.instance() or QApplication([])
+    app = QApplication.instance() or QApplication([])
+    from sluice import fonts
+
+    fonts.install(app)  # 0.12.7: the same start-up step Sluice itself takes, before any window is made
+    return app
 
 
 @pytest.fixture

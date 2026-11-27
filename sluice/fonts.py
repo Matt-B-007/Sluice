@@ -10,7 +10,12 @@ from pathlib import Path
 log = logging.getLogger("sluice.fonts")
 FOLDER = Path(__file__).resolve().parent / "data" / "fonts"
 FILES = ("Inter-Regular.ttf", "Inter-Medium.ttf", "Inter-SemiBold.ttf", "Inter-Bold.ttf",
-         "JetBrainsMono-Regular.ttf", "JetBrainsMono-Medium.ttf")
+         "JetBrainsMono-Regular.ttf", "JetBrainsMono-Medium.ttf",
+         # 0.12.7: the Tile look's names are JetBrains Mono at weight 600 (SemiBold). Without its own file, Qt made that weight
+         # from whatever the computer had, so a name fitted on one computer and was cut off on another (GitHub's).
+         "JetBrainsMono-SemiBold.ttf", "JetBrainsMono-Bold.ttf")
+UI_FAMILY = "Inter"
+UI_POINT_SIZE = 10
 _loaded: list = []
 
 
@@ -34,4 +39,20 @@ def load() -> list:
             if family not in families:
                 families.append(family)
     _loaded.extend(families or ["(none)"])
+    return families
+
+
+def install(app) -> list:
+    """0.12.7: add the bundled fonts and make Inter the whole application's font, before any window is made. Sluice's text
+    then has the same width on every computer, whatever fonts it has installed (GitHub's test machine has little more than
+    DejaVu). Called by Sluice's start-up, and by the tests' shared QApplication the same way. Returns the families added."""
+    families = load()
+    if UI_FAMILY in families:
+        from PySide6.QtGui import QFont
+
+        font = QFont(UI_FAMILY, UI_POINT_SIZE)
+        font.setStyleHint(QFont.StyleHint.SansSerif)
+        app.setFont(font)
+    else:
+        log.info("Inter was not found among the bundled fonts: the system's font is used")
     return families

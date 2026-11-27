@@ -9,6 +9,7 @@ import pytest
 
 pytest.importorskip("PySide6")
 from PySide6.QtCore import QPoint, QRect, Qt
+from PySide6.QtWidgets import QLabel
 
 from sluice import fonts, skin_tile, sizing, themes
 from sluice.audio_io import NullIO
@@ -178,6 +179,43 @@ def test_the_bundled_fonts_load():
     assert all((fonts.FOLDER / name).is_file() for name in fonts.FILES)
     assert (fonts.FOLDER / "Inter-LICENSE.txt").is_file() and (fonts.FOLDER / "JetBrainsMono-LICENSE.txt").is_file()
     assert "Inter" in families and "JetBrains Mono" in families
+
+
+def test_the_app_uses_the_bundled_fonts_whatever_the_computer_has(qapp):
+    """0.12.7: GitHub's test machine (little more than DejaVu) cut "Broadcast" off where the developer's computer did not. The
+    app's font and the Tile look's weights all come from Sluice's own files now."""
+    from PySide6.QtGui import QFont, QFontInfo
+
+    assert QFontInfo(qapp.font()).family() == "Inter"
+    for weight, style in ((500, "Medium"), (600, "SemiBold"), (700, "Bold")):
+        font = QFont("JetBrains Mono")
+        font.setPixelSize(13)
+        font.setWeight(QFont.Weight(weight))
+        info = QFontInfo(font)
+        assert info.family() == "JetBrains Mono" and info.styleName() == style, (weight, info.styleName())
+
+
+@pytest.mark.parametrize("width", [200, 75, 40])
+def test_a_mix_tiles_name_ends_in_an_ellipsis_with_the_name_in_a_tooltip(qapp, tmp_path, width):
+    """0.12.7: the Listen and Broadcast tiles' names were plain labels, cut off when the font was wider than the room."""
+    from PySide6.QtGui import QFont, QFontMetrics
+
+    win, engine = make(qapp, tmp_path)
+    try:
+        title = next(s for s in win.mix_strips if s.mix.id == STREAM).lcd_title
+        assert isinstance(title, ElidedLabel) and title.text() == "Broadcast"
+        title.setFixedWidth(width)
+        qapp.processEvents()
+        shown = QLabel.text(title)  # what is on screen, drawn in capitals
+        plain = QFont(title.font())
+        plain.setCapitalization(QFont.Capitalization.MixedCase)
+        assert QFontMetrics(plain).horizontalAdvance(shown.upper()) <= title.contentsRect().width() + 1, (width, shown)
+        if shown == "Broadcast":
+            assert title.toolTip() == ""
+        else:
+            assert shown.endswith("\u2026") and title.toolTip() == "Broadcast"
+    finally:
+        win.shutdown()
 
 
 # ---------------------------------------------------------------- the Free layout

@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.12.7
+Text is the same width on every computer: Sluice uses its own fonts, whatever fonts are installed.
+- **The Tile look's "Broadcast" was cut off on some computers.** GitHub's test machine has few fonts (mostly DejaVu), and there
+  the Broadcast tile's name did not fit (87 pixels of text in 75). Two causes, both fixed: the tile names are JetBrains Mono at
+  weight 600, a weight Sluice did not ship, so Qt made it from whatever the computer had; and the rest of the window used the
+  computer's own font, so how much room the tiles got differed from one computer to the next.
+- **Sluice's own fonts for the whole window.** Inter is now the font of every look, set when Sluice starts, before any window
+  is made; JetBrains Mono SemiBold and Bold are bundled next to Regular and Medium. Nothing is installed on the system. Their
+  licences (SIL Open Font License 1.1) are next to the font files in `sluice/data/fonts`.
+- **The Listen and Broadcast tiles' names end in an ellipsis when they do not fit**, with the whole name in a tooltip, like the
+  channel names. A renamed mix with a long name, or a computer whose fonts are wider, can no longer cut a name off.
+- **Tests:** the tests get the fonts the same way Sluice does (the shared Qt application runs Sluice's start-up step), so they
+  measure text the same on every computer. New tests check that the app font is Inter, that weights 500, 600 and 700 come from
+  the bundled files, and that a mix tile's name elides (with its tooltip) at 200, 75 and 40 pixels. No test's expected values
+  were changed, and the "text cut off" check is as strict as before.
+- **Checked with GitHub's fonts:** all tests pass with fontconfig limited to the bundled fonts and DejaVu, and with DejaVu alone
+  (the bundled files removed) nothing is cut off: only the two tests that check the bundled fonts are there fail, as they
+  should.
+
 ## 0.12.6
 Fixes from a stream's bug report, every channel ready for OBS from the start, and measurements that show where time goes.
 - **No more false "can hear itself" warning.** 0.12.4 said "OBS can hear itself on Broadcast" whenever OBS recorded any

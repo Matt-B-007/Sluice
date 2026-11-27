@@ -397,6 +397,9 @@ def _run_gui(args, log_file: Optional[Path]) -> int:
     from .ui import MainWindow
 
     app = QApplication.instance() or QApplication(sys.argv[:1])  # an existing one only happens in tests
+    from . import fonts
+
+    fonts.install(app)  # 0.12.7: Sluice's own fonts, before any widget, so text is the same width on every computer
     app.setStyle("Fusion")
     app.setApplicationName("Sluice")
     app.setDesktopFileName("sluice")  # matches sluice.desktop, so the launcher's icon is used for the window

@@ -1077,7 +1077,9 @@ def build_mix_key(strip, mix, on_remove=None, on_add_recording=None) -> None:
     names = QVBoxLayout(strip.lcd)
     names.setContentsMargins(8, 2, 8, 3)
     names.setSpacing(0)
-    title = QLabel(mix.label)
+    # 0.12.7: ends in an ellipsis, with the whole name as a tooltip, when it does not fit (like the channel names): on a
+    # computer whose fonts are wider, "Broadcast" was cut off
+    title = ElidedLabel(mix.label, tip_when_cut=True)
     title.setObjectName("tilename")
     title.setStyleSheet(f"color: {skin_tile.lcd_ink(color, skin_tile.is_light(themes.color('panel')))};")
     strip.lcd_title = title
