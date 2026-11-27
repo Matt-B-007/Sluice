@@ -122,6 +122,10 @@ class MenusMixin:
         self.own_devices_action = self._action(mixer_menu, "Recording &devices for OBS\u2026", self.show_own_devices)
         self.follow_action = self._action(mixer_menu, "Recording devices f&ollow Broadcast",
                                           lambda: self.set_devices_follow_broadcast(self.follow_action.isChecked()), checkable=True)  # 0.12.4: app channels' devices follow the Broadcast faders and mutes
+        # 0.12.6: in Settings › Audio (not in this menu): every app channel gets its own recording device
+        self.devices_action = QAction("Every app channel has its own recording device", self)
+        self.devices_action.setCheckable(True)
+        self.devices_action.triggered.connect(lambda: self.set_devices_for_channels(self.devices_action.isChecked()))
         heading(mixer_menu, "Quick mutes")
         self.mic_action = self._action(mixer_menu, "Mute my &microphone", self.toggle_mic_mute, "Ctrl+M", checkable=True)
         self.mute_actions = {}
@@ -416,6 +420,7 @@ class MenusMixin:
         self.mic_action.setChecked(self.engine.mic_muted)
         self.recording_action.setChecked(self.engine.mixer.has_recording_mix)
         self.follow_action.setChecked(self.engine.mixer.devices_follow_broadcast)
+        self.devices_action.setChecked(self.engine.mixer.devices_for_channels)
         for mix_id, action in self.mute_actions.items():
             action.setChecked(self.engine.mixer.mix(mix_id).mute)
 
@@ -442,6 +447,32 @@ class MenusMixin:
         self.save_settings()
         self.say({"both": "Levels are shown in dB and percent.", "db": "Levels are shown in dB.",
                   "percent": "Levels are shown in percent, as your desktop's volume slider shows them."}[units])
+
+    def set_devices_for_channels(self, on: bool) -> None:
+        """0.12.6: give every app channel its own recording device (and new ones too), or take them away."""
+        self.engine.set_devices_for_channels(on)
+        action = getattr(self, "devices_action", None)
+        if action is not None and action.isChecked() != bool(on):
+            action.setChecked(bool(on))
+        self.rebuild_channels()  # the strips' menus and tooltips follow
+        self.save_settings()
+        self.say("Every app channel now has its own recording device, such as \u201cSluice (Game)\u201d, for OBS." if on else
+                 "App channels no longer have their own recording devices (the microphone keeps \u201cSluice (Mic)\u201d).")
+
+    def ask_about_channel_devices(self) -> None:
+        """0.12.6: once, after updating from a version where app channels had no recording device by default."""
+        mixer = self.engine.mixer
+        if not mixer.ask_devices_for_channels or self.config_file is None:
+            return
+        from PySide6.QtWidgets import QMessageBox
+        mixer.ask_devices_for_channels = False
+        names = ", ".join(f"\u201cSluice ({c.label})\u201d" for c in mixer.channels if not c.devices)
+        answer = QMessageBox.question(
+            self, "Recording devices for OBS",
+            "Give every channel its own recording device for OBS?\n\nEach one carries just that channel and follows its "
+            f"Broadcast fader and mute: {names}. New Sluice setups start with them. You can change this later in Settings "
+            "\u203a Audio.", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.Yes)
+        self.set_devices_for_channels(answer == QMessageBox.StandardButton.Yes)
 
     def set_devices_follow_broadcast(self, on: bool) -> None:
         """0.12.4: app channels' recording devices follow the Broadcast faders and mutes, or stay at full level."""

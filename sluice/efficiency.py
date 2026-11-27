@@ -252,6 +252,7 @@ class Tracker:
             "rss_peak_mb": _mb(_status("VmHWM")),
             "rss_baseline_mb": _mb(self.rss_baseline),
             "rss_over_time": [list(sample) for sample in self.rss_samples],
+            "startup": dict(STARTUP),
             "threads": _status("Threads"),
             "helper_cpu_seconds": round(max(0.0, _helper_cpu_seconds() - self.helper_cpu_start), 3),
         }
@@ -317,6 +318,7 @@ def _engine_facts(engine) -> dict:
         "audio_load_worst_at": getattr(engine, "worst_block", lambda: (None, 0.0))()[0],
         "audio_load_worst_after": round(getattr(engine, "worst_block", lambda: (None, 0.0))()[1], 1),
         "audio_load_samples": blocks,
+        "audio_wait": getattr(engine, "wait_stats", lambda: None)(),
         "dropouts": int(getattr(engine.io, "xruns", 0) or 0),
         "channels": len(mixer.channels),
         "mixes": len(mixer.mixes),
@@ -393,6 +395,51 @@ def flags(data: dict) -> list:
     if dsp_text.startswith("python"):
         notes.append("The Rust engine is not in use, so Sluice runs its slower Python version of the audio work.")
     return notes
+
+
+# ------------------------------------------------------------------------------------------------ 0.12.6: start-up
+STARTUP: dict = {}  # name -> seconds after the process started, in the order they happened
+
+
+def process_age() -> Optional[float]:
+    """Seconds since this process started (the kernel's own record, so Python's start-up and imports are counted too)."""
+    try:
+        start_ticks = int(Path("/proc/self/stat").read_text().rsplit(")", 1)[1].split()[19])
+        uptime = float(Path("/proc/uptime").read_text().split()[0])
+        return max(0.0, uptime - start_ticks / os.sysconf("SC_CLK_TCK"))
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def startup_mark(name: str) -> None:
+    """Note that start-up reached ``name`` (only the first time)."""
+    if name not in STARTUP:
+        age = process_age()
+        if age is not None:
+            STARTUP[name] = round(age, 3)
+
+
+def startup_line(marks: Optional[dict]) -> str:
+    """ "window shown 1.42 s after start (Python and imports 0.61, audio connected 0.66, ...)" """
+    if not marks:
+        return ""
+    steps, previous = [], 0.0
+    for name, at in marks.items():
+        steps.append(f"{name} {at:.2f} (+{at - previous:.2f})")
+        previous = at
+    return " · ".join(steps)
+
+
+def wait_line(wait) -> str:
+    """0.12.6: how much of the audio work was waiting for Python's lock, held by the window: a block that waits long enough
+    for the window becomes a dropout, however little work it has."""
+    if not wait:
+        return "waiting for the window (Python's lock): not measured (only the Rust audio client 0.11.1 and later measures it)"
+    average, worst, in_worst = (list(wait) + [None, None, None])[:3]
+    text = f"of that, waiting for the window (Python's lock) before the work could start: average {average:.1%}, worst {worst:.1%}"
+    if in_worst is not None:
+        text += f"; the worst block spent {in_worst:.1%} of a block's time waiting"
+    return text
 
 
 def memory_over_time(samples: list, every: float = 3600.0) -> str:
@@ -492,6 +539,10 @@ def format_section(data: Optional[dict], source: str = "") -> str:
         over = memory_over_time(data.get("rss_over_time") or [])
         if over:
             lines.append("  over time: " + over)
+        if data.get("startup"):
+            lines.append("")
+            lines.append("Start-up (seconds after the process started, and the step's own share)")
+            lines.append("  " + startup_line(data["startup"]))
     else:
         lines.append("  (not available on this system)")
     split = data.get("cpu_split")
@@ -538,6 +589,7 @@ def format_section(data: Optional[dict], source: str = "") -> str:
             when = time.strftime("%H:%M:%S", time.localtime(data["audio_load_worst_at"]))
             lines.append(f"  the worst block was at {when}, {after:g} s after Sluice started"
                          + (" (during start-up)" if after < 10 else ""))
+        lines.append("  " + wait_line(data.get("audio_wait")))
     else:
         lines.append("  (not measured by this audio backend)")
     if "channels" in data:

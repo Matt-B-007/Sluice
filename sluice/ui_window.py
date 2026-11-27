@@ -1047,6 +1047,9 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
 
     # ------------------------------------------------------------------ timers
     def _update_meters(self) -> None:
+        if "first meter" not in efficiency.STARTUP and efficiency.STARTUP:
+            efficiency.startup_mark("first meter")
+            log.info("start-up (seconds after the process started): %s", efficiency.startup_line(efficiency.STARTUP))
         levels = self.engine.sample_levels()
         for strip in self.strips:
             loudest = 0.0
@@ -1229,6 +1232,8 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         if not self.isVisible() or self.isMinimized():
             return
         self._whats_new_done = True
+        if self.engine.mixer.ask_devices_for_channels:  # 0.12.6: asked once, after the notes, on settings from before
+            QTimer.singleShot(1500, self.ask_about_channel_devices)
         marker = whatsnew.read_marker(self.config_file)
         text = whatsnew.what_to_show(self._config_existed, marker, __version__)
         whatsnew.write_marker(self.config_file, __version__)
@@ -1447,6 +1452,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
                 self.meter_timer.setInterval(wanted)
 
     def showEvent(self, event) -> None:
+        efficiency.startup_mark("window shown")  # 0.12.6 (only the first time counts)
         if themes.see_through() and not getattr(self, "_blur_asked", False) and self.windowHandle() is not None:
             from . import ui_glass
             self._blur_asked = ui_glass.blur_window(self)  # KWin blurs the wallpaper behind the see-through window

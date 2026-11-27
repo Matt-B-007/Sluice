@@ -36,6 +36,7 @@ class AppPickerDialog(QDialog):
 
         self.search = QLineEdit()
         self.search.setPlaceholderText("Search, or type a program name...")
+        self.search.setAccessibleName(f"Search programs to add to {channel_label}")  # 0.12.6: a placeholder is not a name
         self.search.setClearButtonEnabled(True)
         layout.addWidget(self.search)
         self.games_only = QCheckBox("Games only")

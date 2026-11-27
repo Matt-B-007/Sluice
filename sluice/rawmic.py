@@ -68,6 +68,7 @@ def short(app: str) -> str:
 # ----------------------------------------------------------------------------- 0.12.4: recording around Sluice's faders
 MONITOR = " · monitor"  # warning keys: "OBS · monitor" (the plain app name is the raw-microphone warning)
 LOOP = " · loop"
+FORGET_SECONDS = 60.0  # 0.12.6: a warning that stops is remembered this long, so a quick reconnect does not repeat it
 
 
 def find_monitors(links: Iterable, channels: Iterable) -> dict:
@@ -102,28 +103,39 @@ BROADCAST_NODES = ("sluice_stream_mic", "sluice_stream")  # what "Sluice (Broadc
 
 
 def find_loops(links: Iterable, streams: Iterable, channel_for_stream: Callable, in_broadcast: Callable) -> dict:
-    """{app: channel}: apps that record Sluice's Broadcast (or a recording device) while their own sound plays into a channel
-    that goes to Broadcast: what they play comes back in what they record (OBS monitoring into an "OBS" channel, say)."""
-    recorders = set()
+    """{app: (channel, via)}: apps whose own sound comes back in what they record. ``via`` is "broadcast": the app records
+    Sluice's Broadcast while its sound plays into a channel that goes to Broadcast (OBS monitoring into an "OBS" channel); or
+    "own": the app records the recording device of the very channel its sound plays into.
+    0.12.6: recording another channel's device is not a loop (0.12.4 said "OBS can hear itself" when OBS recorded Mic)."""
+    recorded: dict = {}
     for out_port, in_port in links:
         out_node, app = node_of(out_port), node_of(in_port)
         if (out_node in BROADCAST_NODES or out_node.startswith("sluice_solo_")) and not app.startswith("sluice") \
                 and not ignorable(app):
-            recorders.add(app)
+            recorded.setdefault(app, set()).add(out_node)
     found: dict = {}
-    for app in recorders:
+    for app, nodes in recorded.items():
         lowered = app.lower()
         for stream in streams:
             if lowered not in stream.names and not any(lowered.startswith(name) for name in stream.names if len(name) > 2):
                 continue
             channel = channel_for_stream(stream)
-            if channel is not None and in_broadcast(channel):
-                found[app] = channel
+            if channel is None:
+                continue
+            if {f"sluice_solo_{channel.id}", f"sluice_solo_{channel.id}_mic"} & nodes:
+                found[app] = (channel, "own")
+                break
+            if nodes & set(BROADCAST_NODES) and in_broadcast(channel):
+                found[app] = (channel, "broadcast")
                 break
     return found
 
 
-def loop_message(app: str, channel) -> str:
+def loop_message(app: str, channel, via: str = "broadcast") -> str:
+    if via == "own":
+        return (f"{app} records \u201cSluice ({channel.label})\u201d, and {app}'s own sound plays into the {channel.label} "
+                f"channel: what {app} plays comes back into what it records, so your stream can echo or hear things twice. "
+                f"In {app} set its audio monitoring to your headphones, or record another channel's device.")
     return (f"{app} records your Broadcast, and {app}'s own sound plays into the {channel.label} channel, which goes to "
             f"Broadcast too: what {app} plays comes back into what it records, so your stream can echo or hear things "
             f"twice. Mute {channel.label} in Broadcast, or in {app} set its audio monitoring to your headphones.")

@@ -38,7 +38,8 @@ def peak(io, key="stream", blocks=3):
 # ------------------------------------------------------------------ virtual devices
 def test_start_creates_a_sink_per_channel_and_the_stream_mix(rig):
     system, *_ = rig
-    assert set(system.null_sinks) == {"sluice_ch_mic", "sluice_ch_browser", "sluice_ch_game", "sluice_ch_chat", "sluice_ch_music", "sluice_ch_system", "sluice_stream", "sluice_solo_mic"}
+    ids = ["mic", "browser", "game", "chat", "music", "system"]  # 0.12.6: every channel has its own recording device from the start
+    assert set(system.null_sinks) == {f"sluice_ch_{i}" for i in ids} | {f"sluice_solo_{i}" for i in ids} | {"sluice_stream"}
     assert system.null_sinks["sluice_stream"][1] is True  # also exposed as a microphone
     assert system.null_sinks["sluice_ch_game"][1] is False
 
@@ -46,7 +47,8 @@ def test_start_creates_a_sink_per_channel_and_the_stream_mix(rig):
 def test_ports_match_channels_and_mixes(rig):
     _, io, _, _ = rig
     assert io.channel_ids == ["mic", "browser", "game", "chat", "music", "system"]
-    assert io.mix_ids == [MONITOR, STREAM, "solo_mic"]  # the Mic channel has its own recording device from the start
+    # 0.12.6: every channel has its own recording device from the start (only the Mic's before)
+    assert io.mix_ids == [MONITOR, STREAM] + [f"solo_{i}" for i in io.channel_ids]
 
 
 # ------------------------------------------------------------------------ apps
@@ -493,6 +495,8 @@ def test_changing_an_output_is_logged_and_multichannel_ones_warn(rig, caplog):
 # --------------------------------------------------------- a channel as its own recording device
 def test_a_channel_can_be_its_own_recording_device(rig):
     system, io, linker, engine = rig
+    engine.set_separate("music", False)  # 0.12.6: on from the start now; turned off first to see it come on
+    engine.set_separate("game", False)  # (and Game's off, as the old default, for the "no game in it" check below)
     assert "sluice_solo_music" not in system.null_sinks and not any("solo_music" in out for out, _ in linker.links)
     engine.set_separate("music", True)
     assert system.null_sinks["sluice_solo_music"] == ("Sluice (Music) recording feed", True)  # also offered as a microphone
@@ -539,7 +543,7 @@ def test_own_output_follows_the_channels_effects_and_rename_and_removal(rig):
 
 def test_own_output_is_saved_and_restored(rig, tmp_path):
     _, _, _, engine = rig
-    engine.set_separate("game", True)
+    engine.set_separate("music", False)
     engine.save_config(tmp_path / "c.json")
     assert Mixer.load(tmp_path / "c.json").channel("game").separate is True
     assert Mixer.load(tmp_path / "c.json").channel("music").separate is False
@@ -623,7 +627,7 @@ def test_the_mic_channel_follows_a_new_system_default_microphone(rig):
 
 def test_the_mic_has_its_own_recording_device_with_its_effects_from_the_start():
     mixer = Mixer.default()
-    assert mixer.channel("mic").separate is True and not any(c.separate for c in mixer.channels if c.id != "mic")
+    assert all(c.separate for c in mixer.channels)  # 0.12.6: every channel, not only the Mic
     assert mixer.channel("mic").solo_description == "Sluice (Mic)"  # what OBS, Discord and games list as a microphone
     assert mixer.channel("mic").description == "Sluice (Mic) output"  # the output apps play into: a different name
     assert mixer.mix(STREAM).source_description == "Sluice (Broadcast)"

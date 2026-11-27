@@ -638,6 +638,8 @@ def test_channel_menu_and_dialog_turn_on_an_own_recording_device(ui):
     win, system, engine = ui
     from sluice.ui import OwnDevicesDialog
 
+    engine.set_separate("music", False)  # 0.12.6: on from the start now; turned off first to see the menu turn it on
+    engine.set_separate("game", False)
     music = strip_for(win, "music")
     music.toggle_separate()
     assert engine.mixer.channel("music").separate and "sluice_solo_music" in system.null_sinks

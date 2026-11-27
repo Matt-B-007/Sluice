@@ -73,3 +73,36 @@ def test_dmesg_is_still_tried_when_the_journal_cannot_be_read(monkeypatch):
     monkeypatch.setattr(report, "_run", lambda command, timeout=6.0: "(journalctl not found)" if command[0] == "journalctl"
                         else "2026-11-26T10:00:00 usb 1-4: USB disconnect, device number 7")
     assert "USB disconnect" in report.usb_events()
+
+
+# ----------------------------------------------------------------------------- 0.12.6
+UNNAMED = """Source Output #948
+	Source: 941
+	Properties:
+		media.name = "Remapped sluice_stream.monitor"
+		node.name = "input.sluice_stream_mic"
+Sink Input #36
+	Sink: 71
+	Properties:
+		media.name = "stereo_elgato output"
+		node.name = "output.stereo_elgato"
+"""
+
+
+def test_streams_without_an_app_name_get_their_other_names():
+    """0.12.6: your report showed "(no name)" for Sluice's own copies and for the Elgato's stereo loopback."""
+    rows = report._stream_blocks(UNNAMED, "Source Output", "Source") + report._stream_blocks(UNNAMED, "Sink Input", "Sink")
+    names = {index: app for index, app, _binary, _target in rows}
+    assert names["948"] == "Sluice's own (input.sluice_stream_mic)"
+    assert names["36"] == "stereo_elgato output"
+
+
+def test_the_standard_placeholders():
+    text = report.anonymize("192.168.1.20 fe80::1c2b:3aff:fe4d:5e6f 00:1A:7D:DA:71:13 76561198012345678 steam:1240440 "
+                            "token=ghp_abcdefghijklmnopqrstuvwxyz0123 Z:\\home\\matt\\Games")
+    assert text == "<ip> <ip> <mac> <steamid> steam:1240440 token=<secret> ~\\Games"
+
+
+def test_version_numbers_and_times_are_not_addresses():
+    kept = "shellcheck-py==0.11.0.1 v0.12.5 0.11.0.1 Python 3.14.10 19:02:00,870 127.0.0.1 ::1 secret(s) Tile Size: 65472"
+    assert report.anonymize(kept) == kept

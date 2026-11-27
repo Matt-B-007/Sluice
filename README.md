@@ -56,15 +56,16 @@ The same mixer in the light theme, in the Rows layout, and the first-run screen:
 ![Rows layout](docs/screenshot-rows.png)
 ![First run](docs/first-run.png)
 
-## What's new in 0.12.5
+## What's new in 0.12.6
 
-- **One check script:** `scripts/check.sh` runs every check GitHub runs, the same way, so a release that passes on a computer
-  passes on GitHub too. It lists any missing tool with the command to install it, and tool versions are pinned.
-- **First clean-ups by the code checkers** (rustfmt and clippy for the Rust engine, shellcheck for the scripts). Nothing Sluice
-  does has changed.
+- **Every channel has its own recording device from the start**, such as "Sluice (Game)" for OBS (one switch in Settings ›
+  Audio; updating asks once if some of yours have none).
+- **Fixed:** the false "OBS can hear itself on Broadcast" warning, warnings repeating when OBS reconnects, and dropouts blamed
+  on the wrong thing.
+- **Measured:** how long audio blocks wait for the window, and how long start-up takes, step by step, in the bug report.
+- **Screen readers** hear a name for every control, and faders say their level in dB.
 
-0.12.4, the release before this, made OBS follow your Broadcast faders, warned about routings that skip them, and fixed
-several things from a long stream.
+0.12.5, the release before this, added one check script for every check and the first clean-ups by the code checkers.
 
 The full list, and every earlier version, is in [CHANGELOG.md](CHANGELOG.md) (also under *Help > What's new in this version*).
 
@@ -482,6 +483,30 @@ measured: that would put a clock on the audio thread.
 
 Reports are named with the Sluice version, date and time (for example `sluice-report-0.9.7-2026-11-14-1002.txt`), so
 several of them are easy to tell apart. Each save writes one file, and the newest ten are kept in the folder.
+
+## Privacy
+
+Sluice runs on your computer and sends nothing anywhere by itself.
+
+**Never collected or sent:** your audio, your settings, your logs, your bug reports, the names of your devices, apps,
+channels or games, usage statistics, crash reports, or any identifier for you or your computer. There is no telemetry and
+no account.
+
+**The only time Sluice uses the internet** is for updates: when you press *Check for updates*, or if you turn on automatic
+updates (off by default), it reads the list of releases from GitHub and, if you choose to update, downloads the new version
+from GitHub and checks its checksum. GitHub sees the request, as it does for any page you open.
+
+**Bug reports stay on your computer** until you send one yourself. Before saving, Sluice replaces your home folder with `~`,
+and your user name, computer name, network addresses, Bluetooth and network hardware addresses, USB serial numbers, Steam
+account number and any token or password with `<user>`, `<host>`, `<ip>`, `<mac>`, `<serial>`, `<steamid>` and `<secret>`.
+Device names, app names and plugin paths stay in, so look a report over before sharing it.
+
+**Where Sluice keeps things:** settings in `~/.config/sluice/` (`config.json`; its `"version"` number is the settings
+format version, upgraded on load, with rolling backups and every write made to a temporary file first), logs and crash notes
+in `~/.local/state/sluice/`, and the installed program in `~/.local/share/sluice/program/` (the House Standard allows
+`~/.local/share/<app>`). Outside those, Sluice writes only the applications-menu entry and the `sluice` command in
+`~/.local/bin/`, the start-at-login entry if you ask for it, a KWin window rule if desktop widgets need one to stay on top,
+and bug reports where you save them.
 
 ## Controllers (Stream Deck, MIDI)
 

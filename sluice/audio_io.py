@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import os
 import threading
+import sys
 import time
 import zlib
 from abc import ABC, abstractmethod
@@ -22,6 +23,7 @@ log = logging.getLogger("sluice.audio")
 
 CLIENT = "sluice"
 SLOW_BLOCK = 0.7  # a block that used more than this share of its time counts as Sluice running late
+RECENT_BLOCKS = 8  # 0.12.6: the last blocks looked at when a dropout is reported (it comes a moment after its cause)
 
 
 def in_port_names(channel_id: str) -> tuple:
@@ -50,6 +52,12 @@ class AudioIO(ABC):
         (0, 0) when the backend does not measure it."""
         return 0.0, 0.0
 
+    def take_wait(self) -> Optional[tuple]:
+        """0.12.6: (average, worst, in the slowest block) share of a block's time spent waiting for Python's lock before the
+        block's own work could start, since the last call; None when the backend cannot measure it (only the Rust client
+        can: the wait happens before any Python code runs). Call it right after take_load."""
+        return None
+
     @abstractmethod
     def sync_ports(self, channel_ids: list, mix_ids: list) -> None:
         """Make sure there is one stereo input per channel and one stereo output per mix."""
@@ -59,6 +67,17 @@ class AudioIO(ABC):
 
     @abstractmethod
     def stop(self) -> None: ...
+
+
+SWITCH_INTERVAL = 0.001  # seconds; Python's default is 0.005
+
+
+def _share_the_lock_sooner() -> None:
+    """0.12.6: every audio block runs some Python, so it needs Python's lock, and the window's thread may be holding it. Python
+    makes a thread hand the lock over after the "switch interval": 5 ms by default, a quarter of a 1024-frame block. 1 ms
+    keeps a waiting audio block from losing more than that to Python code on the window's side (Qt's own drawing, outside
+    Python, is not affected). The cost is a little more switching between threads, too small to measure here."""
+    sys.setswitchinterval(SWITCH_INTERVAL)
 
 
 # ===================================================================== synthetic
@@ -194,12 +213,17 @@ class RustJackIO(AudioIO):
     def take_load(self) -> tuple:
         return self._engine.take_load()
 
+    def take_wait(self) -> Optional[tuple]:
+        measure = getattr(self._engine, "take_wait", None)  # the Rust engine 0.11.1 and later
+        return measure() if measure is not None else None
+
     def sync_ports(self, channel_ids: list, mix_ids: list) -> None:
         self._engine.sync_ports(list(channel_ids), list(mix_ids))
 
     def start(self, graph) -> None:
         self._graph = graph
         graph.live = True
+        _share_the_lock_sooner()
         self._engine.start(graph.process)
 
     def stop(self) -> None:
@@ -291,6 +315,7 @@ class JackIO(AudioIO):
     def start(self, graph) -> None:
         self._graph = graph
         graph.live = True
+        _share_the_lock_sooner()
         self.client.activate()
 
     def stop(self) -> None:
@@ -313,6 +338,7 @@ class JackIO(AudioIO):
         self._last_busy = 0.0
         self._block_start = 0.0
         self._in_block = False
+        self._recent: list = []  # 0.12.6: (start, busy) of the last few blocks, for deciding whose dropout it was
 
     def take_load(self) -> tuple:
         blocks, total, peak = self._blocks, self._busy_sum, self._busy_peak
@@ -353,12 +379,20 @@ class JackIO(AudioIO):
         self._blocks += 1
         if busy > self._busy_peak:
             self._busy_peak = busy
+        self._recent.append((start, busy))
+        if len(self._recent) > RECENT_BLOCKS:
+            del self._recent[0]
 
     def _on_xrun(self, _delay: float) -> None:
         self.xruns += 1
-        # Ours if the block that was running (or had just run) used most of its time: Sluice was the slow one. If it was
-        # quick, the server was waiting for somebody else.
-        busy = time.perf_counter() - self._block_start if self._in_block else self._last_busy
+        # Ours if a block of Sluice's used most of its time just before: the one running now, or one of the last few (0.12.6:
+        # only the last one was looked at, and by the time a dropout is reported a quick block has often run since). If they
+        # were all quick, the server was waiting for somebody else.
+        now = time.perf_counter()
+        busy = now - self._block_start if self._in_block else self._last_busy
+        for start, took in list(self._recent):
+            if now - start <= RECENT_BLOCKS * self._period:
+                busy = max(busy, took)
         if busy > SLOW_BLOCK * self._period:
             self.xruns_ours += 1
 

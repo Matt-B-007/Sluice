@@ -324,6 +324,7 @@ class SettingsWindow(QDialog):
                               "fader and mute, so muting Broadcast mutes it in OBS too. A microphone's device always stays on, "
                               "because voice chats such as Discord often use it.")
         self._bind(devices, w.follow_action)
+        self._bind(devices, w.devices_action)  # 0.12.6: one switch for every app channel (each can still turn its own off)
 
     def _startup(self, column: QVBoxLayout) -> None:
         w = self.window_

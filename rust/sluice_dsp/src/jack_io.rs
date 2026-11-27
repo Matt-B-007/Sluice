@@ -17,6 +17,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 const SLOW_BLOCK: f64 = 0.7; // a block that used more than this share of its time counts as Sluice running late
+const RECENT: usize = 8; // 0.11.1: the last blocks remembered for deciding whose dropout it was
 
 type InPair = (Port<AudioIn>, Port<AudioIn>);
 type OutPair = (Port<AudioOut>, Port<AudioOut>);
@@ -41,6 +42,16 @@ struct Shared {
     busy_sum_ns: AtomicU64,
     busy_peak_ns: AtomicU64,
     blocks: AtomicU64,
+    // 0.11.1: the last few blocks (start, busy), because a dropout is reported a moment after the block that caused it, often
+    // when a quick block has run since; and how long each block waited for Python's lock before its own work could start
+    recent_start_ns: [AtomicU64; RECENT],
+    recent_busy_ns: [AtomicU64; RECENT],
+    block_index: AtomicU64,
+    wait_ns: AtomicU64,
+    wait_sum_ns: AtomicU64,
+    wait_peak_ns: AtomicU64,
+    peak_block_wait_ns: AtomicU64,
+    wait_blocks_seen: AtomicU64,
 }
 
 impl Shared {
@@ -59,8 +70,18 @@ struct Proc {
 }
 
 impl Proc {
-    fn run_python(&self, ports: &mut Ports, ps: &ProcessScope, frames: usize) -> PyResult<()> {
+    fn run_python(
+        &self,
+        ports: &mut Ports,
+        ps: &ProcessScope,
+        frames: usize,
+        start: u64,
+    ) -> PyResult<()> {
         Python::attach(|py| {
+            // the time until Python's lock was ours: spent waiting for another thread (the window), not working
+            let s = &self.shared;
+            s.wait_ns
+                .store(s.now_ns().saturating_sub(start), Ordering::Relaxed);
             let cb = {
                 let guard = self
                     .shared
@@ -122,9 +143,10 @@ impl jack::ProcessHandler for Proc {
         let start = s.now_ns();
         s.block_start_ns.store(start, Ordering::Relaxed);
         s.in_block.store(true, Ordering::Release);
+        s.wait_ns.store(0, Ordering::Relaxed);
         let frames = ps.n_frames() as usize;
         if let Ok(mut ports) = s.ports.try_lock() {
-            if let Err(e) = self.run_python(&mut ports, ps, frames) {
+            if let Err(e) = self.run_python(&mut ports, ps, frames, start) {
                 // never let a failure reach the audio thread: say it, and play silence
                 let text = Python::attach(|py| {
                     format!(
@@ -148,7 +170,15 @@ impl jack::ProcessHandler for Proc {
         s.last_busy_ns.store(busy, Ordering::Relaxed);
         s.busy_sum_ns.fetch_add(busy, Ordering::Relaxed);
         s.blocks.fetch_add(1, Ordering::Relaxed);
-        s.busy_peak_ns.fetch_max(busy, Ordering::Relaxed);
+        let wait = s.wait_ns.load(Ordering::Relaxed);
+        s.wait_sum_ns.fetch_add(wait, Ordering::Relaxed);
+        s.wait_peak_ns.fetch_max(wait, Ordering::Relaxed);
+        if s.busy_peak_ns.fetch_max(busy, Ordering::Relaxed) < busy {
+            s.peak_block_wait_ns.store(wait, Ordering::Relaxed); // how much of the slowest block was waiting
+        }
+        let slot = (s.block_index.fetch_add(1, Ordering::Relaxed) as usize) % RECENT;
+        s.recent_start_ns[slot].store(start, Ordering::Relaxed);
+        s.recent_busy_ns[slot].store(busy, Ordering::Relaxed);
         Control::Continue
     }
 }
@@ -165,13 +195,20 @@ impl jack::NotificationHandler for Notify {
     fn xrun(&mut self, _: &Client) -> Control {
         let s = &self.shared;
         s.xruns.fetch_add(1, Ordering::Relaxed);
-        // Ours if the block that was running (or had just run) used most of its time: Sluice was the slow one.
-        let busy = if s.in_block.load(Ordering::Acquire) {
-            s.now_ns()
-                .saturating_sub(s.block_start_ns.load(Ordering::Relaxed))
+        // Ours if a block of Sluice's used most of its time just before: the one running now, or one of the last few (0.11.1:
+        // only the last one was looked at, and by the time the dropout was reported a quick block had often run since).
+        let now = s.now_ns();
+        let mut busy = if s.in_block.load(Ordering::Acquire) {
+            now.saturating_sub(s.block_start_ns.load(Ordering::Relaxed))
         } else {
             s.last_busy_ns.load(Ordering::Relaxed)
         };
+        let window = s.period_ns.saturating_mul(RECENT as u64);
+        for (start, took) in s.recent_start_ns.iter().zip(&s.recent_busy_ns) {
+            if now.saturating_sub(start.load(Ordering::Relaxed)) <= window {
+                busy = busy.max(took.load(Ordering::Relaxed));
+            }
+        }
         if busy as f64 > SLOW_BLOCK * s.period_ns as f64 {
             s.xruns_ours.fetch_add(1, Ordering::Relaxed);
         }
@@ -234,6 +271,14 @@ impl JackEngine {
             busy_sum_ns: AtomicU64::new(0),
             busy_peak_ns: AtomicU64::new(0),
             blocks: AtomicU64::new(0),
+            recent_start_ns: std::array::from_fn(|_| AtomicU64::new(0)),
+            recent_busy_ns: std::array::from_fn(|_| AtomicU64::new(0)),
+            block_index: AtomicU64::new(0),
+            wait_ns: AtomicU64::new(0),
+            wait_sum_ns: AtomicU64::new(0),
+            wait_peak_ns: AtomicU64::new(0),
+            peak_block_wait_ns: AtomicU64::new(0),
+            wait_blocks_seen: AtomicU64::new(0),
         });
         Ok(JackEngine {
             state: Mutex::new(State::Idle(client)),
@@ -262,6 +307,27 @@ impl JackEngine {
     #[setter]
     fn set_error(&self, value: String) {
         self.shared.set_error(value);
+    }
+
+    /// 0.11.1: (average, worst, in the slowest block) share of a block's time spent waiting for Python's lock before the
+    /// block's own work could start, since the last call. Call it right after take_load.
+    fn take_wait(&self) -> (f64, f64, f64) {
+        let s = &self.shared;
+        let total = s.wait_sum_ns.swap(0, Ordering::Relaxed);
+        let peak = s.wait_peak_ns.swap(0, Ordering::Relaxed);
+        let in_slowest = s.peak_block_wait_ns.swap(0, Ordering::Relaxed);
+        let blocks = s.block_index.load(Ordering::Relaxed).max(1);
+        let counted = s.wait_blocks_seen.swap(blocks, Ordering::Relaxed);
+        let n = blocks.saturating_sub(counted).max(1);
+        if s.period_ns == 0 {
+            return (0.0, 0.0, 0.0);
+        }
+        let p = s.period_ns as f64;
+        (
+            total as f64 / n as f64 / p,
+            peak as f64 / p,
+            in_slowest as f64 / p,
+        )
     }
 
     /// (average, worst) share of a block's time used since the last call.

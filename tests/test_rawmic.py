@@ -56,21 +56,24 @@ def test_the_message_says_which_device_to_choose(engine):
     assert "“Sluice (Broadcast)”" in rawmic.message("OBS", [channel])
 
 
-def test_it_takes_a_while_before_an_app_is_reported_and_only_once(engine):
-    engine.linker.others = links_for("OBS")
-    engine.check_raw_mic(100.0)
-    assert engine.raw_mic == {}  # a meter flicker, not a recording
-    engine.check_raw_mic(100.0 + rawmic.SECONDS + 1)
-    assert list(engine.raw_mic) == ["OBS"] and "OBS" in engine.raw_mic["OBS"]
-    engine.raw_mic.clear()
-    engine.check_raw_mic(130.0)
-    assert engine.raw_mic == {}  # already told
+def test_it_takes_a_while_before_an_app_is_reported_and_only_once(engine, caplog):
+    import logging
+    with caplog.at_level(logging.WARNING, logger="sluice.engine"):
+        engine.linker.others = links_for("OBS")
+        engine.check_raw_mic(100.0)
+        assert engine.raw_mic == {}  # a meter flicker, not a recording
+        engine.check_raw_mic(100.0 + rawmic.SECONDS + 1)
+        assert list(engine.raw_mic) == ["OBS"] and "OBS" in engine.raw_mic["OBS"]
+        engine.check_raw_mic(130.0)
+        assert list(engine.raw_mic) == ["OBS"]  # still happening: still shown (0.12.6)
+    assert caplog.text.count("OBS") == 1  # but told once
     engine.linker.others = set()
     engine.check_raw_mic(140.0)
+    engine.check_raw_mic(140.0 + rawmic.FORGET_SECONDS + 1)  # gone for a minute: forgotten
     engine.linker.others = links_for("OBS")
-    engine.check_raw_mic(150.0)
-    engine.check_raw_mic(150.0 + rawmic.SECONDS + 1)
-    assert list(engine.raw_mic) == ["OBS"]  # it stopped and came back: worth saying again
+    engine.check_raw_mic(300.0)
+    engine.check_raw_mic(300.0 + rawmic.SECONDS + 1)
+    assert list(engine.raw_mic) == ["OBS"]  # it stopped for a while and came back: worth saying again
 
 
 def test_dont_remind_me_is_remembered_with_the_settings(engine, tmp_path):

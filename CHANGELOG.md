@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.12.6
+Fixes from a stream's bug report, every channel ready for OBS from the start, and measurements that show where time goes.
+- **No more false "can hear itself" warning.** 0.12.4 said "OBS can hear itself on Broadcast" whenever OBS recorded any
+  channel's own device (Mic or Browser, say) while OBS's monitoring played into the OBS channel. Now it only warns when an app
+  records the Broadcast, or the device of the very channel its own sound plays into (a new case it also catches).
+- **Warnings are not repeated when OBS reconnects.** A warning that stops leaves the status bar at once, but is remembered for
+  a minute: if it comes back in that time (OBS reconnects its sources often), it shows again without a new log line.
+- **Every channel has its own recording device from the start** on new setups and for new channels, such as "Sluice (Game)"
+  for OBS. *Settings › Audio › Every app channel has its own recording device* turns them all on or off; each channel can
+  still turn its own off. Updating keeps your channels as they are; if some have no device, Sluice asks once.
+- **Dropouts are blamed correctly.** Whose dropout it was is now decided by the slowest of the last few audio blocks, not only
+  the last one: a dropout is reported a moment after the slow block that caused it, often when a quick block has run since,
+  so your report said "0 while Sluice was running late" next to blocks of 152-292%.
+- **Waiting for the window is measured.** Every audio block runs some Python and needs Python's lock, which the window's
+  thread may be holding. The Rust engine (now 0.11.1; Sluice offers to rebuild it after the update) measures that wait apart
+  from the work, and the bug report and the dropout lines in the log show it. This tells whether moving the whole audio path
+  into Rust, the next release, will cure those slow blocks. Meanwhile Python hands its lock over every 1 ms instead of 5 ms.
+- **Start-up is measured:** the bug report shows how long each step took after the process started (Python and imports, audio
+  connected, settings read, installed programs found, engine started, window built, window shown, first meter), so the next
+  release can make the slowest step faster.
+- **Screen readers:** every control in the window (all four skins), Settings, the effect editor, the recording-devices panel
+  and the app picker has a name, faders say their level in dB ("-6.0 dB") and effect sliders their value, and a test fails if
+  a new control has no name. Faders already worked from the keyboard (arrows, Page Up/Down, Home, End).
+- **Bug report:** streams without an app name show their other names ("Sluice's own (input.sluice_stream_mic)",
+  "stereo_elgato output") instead of "(no name)", and the warning check reuses the connection list Sluice has just read
+  (fewer helper programs). Placeholders follow the House Standard: `<mac>` (was `<address>`), and new `<ip>`, `<secret>`,
+  `<steamid>` (Steam account numbers only; game ids stay) and Windows-style paths. Version numbers are left alone.
+- **Docs:** SUPPORT.md (where to get help; reports go in a private Discord ticket), RELEASING.md, a pull request template, and
+  a Privacy section in the README listing what is never collected.
+
 ## 0.12.5
 One check script for every check, and the first clean-ups by the code checkers. Nothing Sluice does has changed.
 - **One check script.** `scripts/check.sh` runs every check GitHub runs, in the same order with the same flags: the shell

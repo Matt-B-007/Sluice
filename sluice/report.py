@@ -307,8 +307,10 @@ def _stream_blocks(text: str, header: str, target: str) -> list:
     for raw in text.splitlines():
         line = raw.strip()
         if line.startswith(header + " #"):
-            current = {"index": line.split("#", 1)[1].strip(), "app": "", "binary": "", "target": ""}
+            current = {"index": line.split("#", 1)[1].strip(), "app": "", "binary": "", "target": "", "other": "", "node": ""}
             found.append(current)
+        elif re.match(r"^[A-Z][A-Za-z ]+ #\d+$", line):
+            current = None  # a block of another kind: its lines are not this stream's
         elif current is None:
             continue
         elif line.startswith(target + ":"):
@@ -317,7 +319,20 @@ def _stream_blocks(text: str, header: str, target: str) -> list:
             current["app"] = line.split("=", 1)[1].strip().strip('"')
         elif line.startswith("application.process.binary = "):
             current["binary"] = line.split("=", 1)[1].strip().strip('"')
-    return [(b["index"], b["app"], b["binary"], b["target"]) for b in found]
+        elif line.startswith(("media.name = ", "node.description = ")) and not current["other"]:
+            current["other"] = line.split("=", 1)[1].strip().strip('"')  # 0.12.6: for streams without an app name
+        elif line.startswith("node.name = "):
+            current["node"] = line.split("=", 1)[1].strip().strip('"')
+    rows = []
+    for b in found:
+        app = b["app"]
+        if not app and not b["binary"]:
+            if "sluice" in b["node"].lower():  # the copies behind Sluice's own recording devices and Broadcast
+                app = f"Sluice's own ({b['node']})"
+            else:
+                app = b["other"] or b["node"]
+        rows.append((b["index"], app, b["binary"], b["target"]))
+    return rows
 
 
 def stream_routes(streams_text: str, devices_text: str, header: str, target: str, verb: str) -> str:
@@ -397,8 +412,43 @@ def anonymize(text: str) -> str:
     text = re.sub(r"/(?:home|Users)/[^/\s]+", "~", text)
     # USB serial numbers: alsa_input.usb-Vendor_Product_SERIAL-00.analog-stereo
     text = re.sub(r"(usb-[A-Za-z0-9]+(?:_[A-Za-z0-9]+)*?)_([A-Z0-9]{8,})(-\d+)", r"\1_<serial>\3", text)
-    text = re.sub(r"(?i)\b(?:[0-9a-f]{2}[:_]){5}[0-9a-f]{2}\b", "<address>", text)
+    # 0.12.6: the House Standard's placeholders (~ <user> <host> <ip> <mac> <secret> <steamid>), plus Sluice's own
+    text = re.sub(r"(?i)\b(?:[0-9a-f]{2}[:_]){5}[0-9a-f]{2}\b", "<mac>", text)  # Bluetooth and network addresses
+    text = _IPV4.sub(_ip_or_version, text)
+    text = _IPV6.sub(_ipv6_or_not, text)
+    text = re.sub(r"\b7656119\d{10}\b", "<steamid>", text)  # Steam ACCOUNT ids only: game ids (steam:1240440) stay
+    text = re.sub(r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b", "<secret>", text)
+    text = re.sub(r"(?i)\b((?:api[_-]?key|access[_-]?token|auth[_-]?token|token|secret|password|passwd)\s*[=:]\s*)"
+                  r"(?!<secret>)[^\s\"',;]{6,}", r"\1<secret>", text)
+    text = re.sub(r"(?i)(Authorization:\s*(?:Bearer|token)\s+)\S+", r"\1<secret>", text)
+    text = re.sub(r"(?i)\b[A-Z]:\\(?:home|users)\\[^\\\s]+", "~", text)  # Windows-style paths, as Proton games show them
     return text
+
+
+_IPV4 = re.compile(r"(?<![\w.=-])((?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3})(?![\w.])")
+_IPV6 = re.compile(r"(?<![\w:])[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,7}(?![\w:])")
+
+
+def _ipv6_or_not(match) -> str:
+    """Only what really is an IPv6 address (a time of day such as 19:02:00 is not) becomes <ip>; ::1 stays."""
+    import ipaddress
+    text = match.group(0)
+    if not any(ch.isdigit() for ch in text):  # "a::b" in a program's text is not an address
+        return text
+    try:
+        address = ipaddress.IPv6Address(text)
+    except ValueError:
+        return text
+    return text if address.is_loopback or address.is_unspecified else "<ip>"
+
+
+def _ip_or_version(match) -> str:
+    """An IPv4 address becomes <ip>; a version number that looks like one (0.11.0.1, ==0.10.0) does not, nor does 127.0.0.1."""
+    text = match.group(1)
+    first = int(text.split(".")[0])
+    if first == 0 or text.startswith("127.") or text == "255.255.255.255":
+        return text
+    return "<ip>"
 
 
 def _section(title: str, body: str) -> str:

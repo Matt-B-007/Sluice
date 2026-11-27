@@ -262,6 +262,8 @@ class Fader(QAbstractSlider):
         self.setToolTip("Double-click to reset to 0 dB")
         self.fill_color = themes.color("accent")
         self.valueChanged.connect(lambda _position: self.gainChanged.emit(self.gain()))
+        self.valueChanged.connect(self._announce)  # 0.12.6: screen readers hear "-6.0 dB", not the handle's position
+        self._announce()
 
     def set_fill(self, color: str) -> None:
         self.fill_color = color
@@ -303,6 +305,10 @@ class Fader(QAbstractSlider):
 
     def refresh_theme(self) -> None:
         self.update()
+
+    def _announce(self, *_args) -> None:
+        from .ui_base import format_db
+        self.setAccessibleDescription(format_db(self.gain() / 10.0))
 
     def gain(self) -> int:
         return round(fader_position_to_db(self.value() / FADER_STEPS) * 10)

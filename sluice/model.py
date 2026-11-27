@@ -257,6 +257,9 @@ class Mixer:
         self.update_channel = "stable"  # 0.12.2: "stable" (full releases) or "beta" (pre-releases too)
         self.level_units = "both"  # 0.12.3: levels shown in "db", "percent" or "both"
         self.devices_follow_broadcast = True  # 0.12.4: an app channel's recording device follows its Broadcast fader and mute
+        # 0.12.6: app channels get their own recording device ("Sluice (Game)" for OBS) unless this is turned off
+        self.devices_for_channels = True
+        self.ask_devices_for_channels = False  # set on loading older settings where some app channels have none (asked once)
         self.auto_update = False  # download new releases in the background and install them when Sluice closes (off by default)
         self.layout = "columns"  # how the channels are laid out: "columns" (a card each) or "rows" (a line each); a saved "free" (gone in 0.11.5) loads as columns
         self.widget_skin = ""   # 0.11.6: the desktop widgets' own skin; "" is the same as the window
@@ -380,8 +383,18 @@ class Mixer:
             mutes={m.id: False for m in self.mixes},
             linked=linked,
         )
+        channel.separate = bool(devices) or self.devices_for_channels  # 0.12.6: its own recording device from the start
         self.channels.append(channel)
         return channel
+
+    def set_devices_for_channels(self, on: bool) -> None:
+        """0.12.6: every app channel gets (or loses) its own recording device, and new ones follow. Microphone channels keep
+        theirs ("Sluice (Mic)" is what Discord and OBS use for your voice)."""
+        self.devices_for_channels = on
+        self.ask_devices_for_channels = False
+        for channel in self.channels:
+            if not channel.devices:
+                channel.separate = on
 
     def remove_channel(self, channel_id: str) -> None:
         self.channels.remove(self.channel(channel_id))
@@ -438,6 +451,7 @@ class Mixer:
             "update_channel": self.update_channel,
             "level_units": self.level_units,
             "recording_devices_follow_broadcast": self.devices_follow_broadcast,
+            "recording_devices_for_channels": self.devices_for_channels,
             "theme": self.theme,
             "skin": self.skin,
             "layout": self.layout,
@@ -503,6 +517,10 @@ class Mixer:
             mixer.level_units = data["level_units"]
         if isinstance(data.get("recording_devices_follow_broadcast"), bool):
             mixer.devices_follow_broadcast = data["recording_devices_follow_broadcast"]
+        if isinstance(data.get("recording_devices_for_channels"), bool):
+            mixer.devices_for_channels = data["recording_devices_for_channels"]
+        else:
+            mixer.devices_for_channels = None  # decided once the channels are read, below
         theme = data.get("theme")
         if isinstance(theme, str) and 0 < len(theme) <= 80:
             mixer.theme = theme  # an id that no longer exists simply shows the default theme
@@ -602,6 +620,10 @@ class Mixer:
             channels.append(channel)
         if channels or raw_channels == []:
             mixer.channels = channels
+        if mixer.devices_for_channels is None:  # 0.12.6: settings from before this: every channel stays as it is, and if
+            apps = [c for c in mixer.channels if not c.devices]  # some app channels have no device, Sluice asks once
+            mixer.devices_for_channels = all(c.separate for c in apps)
+            mixer.ask_devices_for_channels = not mixer.devices_for_channels
         return mixer
 
     def save(self, path: Optional[Path] = None, backups: bool = False) -> None:

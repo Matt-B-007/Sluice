@@ -343,6 +343,8 @@ def _desktop(install: bool) -> int:
 
 
 def _run_gui(args, log_file: Optional[Path]) -> int:
+    from . import efficiency
+    efficiency.startup_mark("Python and imports")  # 0.12.6: start-up is measured, for the bug report
     lock = None
     notice = ""
     setup_needed = False  # audio could not start: open Settings at the Setup check (0.12.0)
@@ -379,6 +381,7 @@ def _run_gui(args, log_file: Optional[Path]) -> int:
             notice = (f"Could not start audio ({exc}); running in demo mode. Often the PipeWire JACK library is missing: "
                       f"{hint}. Then run sluice --diagnose.")
     system, io, linker = parts
+    efficiency.startup_mark("audio connected")
     from .audio_io import is_demo as _is_demo
 
     is_demo = _is_demo(io)
@@ -408,6 +411,7 @@ def _run_gui(args, log_file: Optional[Path]) -> int:
         icon = QIcon(str(bundled_png(256)))
     app.setWindowIcon(icon)
     logs.install_qt_handler()
+    efficiency.startup_mark("Qt ready")
 
     config_file = None if is_demo else config_path()
     if is_demo:
@@ -418,15 +422,20 @@ def _run_gui(args, log_file: Optional[Path]) -> int:
         mixer = Mixer.default() if args.reset else Mixer.load(config_file)
         log.info("settings: %s%s", config_file, " (reset requested)" if args.reset else "")
 
+    efficiency.startup_mark("settings read")
     from .apps import Catalog
 
-    engine = Engine(mixer, system, io, linker, catalog=Catalog.scan())
+    catalog = Catalog.scan()
+    efficiency.startup_mark("installed programs found")
+    engine = Engine(mixer, system, io, linker, catalog=catalog)
     engine.start()
+    efficiency.startup_mark("engine started")
     if getattr(args, "finish_move", None):
         from . import update_install
         moved = update_install.finish_move(Path(args.finish_move))
         notice = f"{notice} {moved}".strip()
     window = MainWindow(engine, config_file=config_file, notice=notice)
+    efficiency.startup_mark("window built")
     window.on_shut_down = _exit_safety_net
     from .ui_controllers import Controls
 

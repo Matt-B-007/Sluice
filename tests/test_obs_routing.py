@@ -94,9 +94,70 @@ def test_obs_hearing_itself_on_broadcast_is_found(engine):
     engine.streams = [Stream(9, "obs", "OBS", obs.sink_name)]
     links = {("sluice_stream_mic:capture_FL", "obs:input_1")}
     in_broadcast = lambda channel: engine.mixer.route_gain(channel, engine.mixer.mix(STREAM)) > 0  # noqa: E731
-    assert rawmic.find_loops(links, engine.streams, engine.channel_for_stream, in_broadcast) == {"obs": obs}
+    assert rawmic.find_loops(links, engine.streams, engine.channel_for_stream, in_broadcast) == {"obs": (obs, "broadcast")}
     engine.set_mute(obs.id, STREAM, True)  # muted in Broadcast: no loop
     assert rawmic.find_loops(links, engine.streams, engine.channel_for_stream, in_broadcast) == {}
+
+
+def test_recording_another_channels_device_is_not_a_loop(engine):
+    """0.12.6: your report: OBS recorded "Sluice (Mic)" and "Sluice (Browser)" while its monitoring played into the OBS
+    channel, and 0.12.4 said "OBS can hear itself on Broadcast". Neither device carries the OBS channel."""
+    channels = [c for c in engine.mixer.channels if not c.devices]
+    obs, browser = channels[0], channels[1]
+    mic = mic_channel(engine)
+    obs.apps.append("obs")
+    engine.streams = [Stream(9, "obs", "OBS", obs.sink_name)]
+    links = {(f"sluice_solo_{mic.id}_mic:capture_FL", "OBS:input_FL"),
+             (f"sluice_solo_{browser.id}:monitor_FL", "OBS:input_FL")}
+    in_broadcast = lambda channel: True  # noqa: E731
+    assert rawmic.find_loops(links, engine.streams, engine.channel_for_stream, in_broadcast) == {}
+
+
+def test_recording_the_device_of_the_channel_you_play_into_is_a_loop(engine):
+    obs = app_channel(engine)
+    obs.apps.append("obs")
+    engine.streams = [Stream(9, "obs", "OBS", obs.sink_name)]
+    links = {(f"sluice_solo_{obs.id}_mic:capture_FL", "OBS:input_FL")}
+    found = rawmic.find_loops(links, engine.streams, engine.channel_for_stream, lambda channel: False)
+    assert found == {"OBS": (obs, "own")}  # even when that channel is not in Broadcast: the device carries it anyway
+    assert f"records \u201cSluice ({obs.label})\u201d" in rawmic.loop_message("OBS", obs, "own")
+
+
+def test_a_warning_is_not_repeated_when_obs_reconnects(engine, caplog):
+    import logging
+    game = app_channel(engine)
+    engine.linker.others = {(f"{game.sink_name}:monitor_FL", "obs:input_1")}
+    key = "obs" + rawmic.MONITOR
+    with caplog.at_level(logging.WARNING, logger="sluice.engine"):
+        engine.check_raw_mic(100.0)
+        engine.check_raw_mic(100.0 + rawmic.SECONDS + 1)
+        engine.linker.others = set()  # OBS reconnects its sources
+        engine.check_raw_mic(110.0)
+        assert key not in engine.raw_mic  # gone from the status bar at once
+        engine.linker.others = {(f"{game.sink_name}:monitor_FL", "obs:input_1")}
+        engine.check_raw_mic(112.0)
+        assert key in engine.raw_mic  # back at once, no new waiting
+    assert caplog.text.count("records around your faders") == 1  # 0.12.4 logged it each time
+    engine.linker.others = set()
+    engine.check_raw_mic(113.0)
+    engine.check_raw_mic(113.0 + rawmic.FORGET_SECONDS + 1)  # gone for a minute: forgotten, may be reported again later
+    assert key not in engine._raw_reported
+
+
+def test_the_check_uses_the_link_list_the_last_sync_read():
+    from sluice.linker import PwLinker
+    calls = []
+
+    def run(args):
+        calls.append(args)
+        if args == ["-l"]:
+            return 0, "a:out_1\n  |-> b:in_1\n"
+        return 0, ""
+    linker = PwLinker(run=run)
+    linker.sync({("a:out_1", "b:in_1"), ("c:out_1", "d:in_1")})
+    assert calls.count(["-l"]) == 1
+    assert linker.fresh_links() == {("a:out_1", "b:in_1"), ("c:out_1", "d:in_1")}  # no second pw-link -l
+    assert linker.fresh_links(max_age=-1) is None  # too old: read again
 
 
 # ----------------------------------------------------------------------------- 3. Sluice's own outputs
@@ -297,3 +358,55 @@ def test_meters_run_at_half_rate_while_another_window_is_in_use(qapp, tmp_path):
     finally:
         win.shutdown()
         ui_meters.FRAME_S = 1 / 60
+
+
+# ----------------------------------------------------------------------------- 0.12.6: recording devices on by default
+def test_new_setups_and_new_channels_have_their_own_recording_device(engine):
+    assert all(c.separate for c in Mixer.default().channels)
+    added = engine.add_channel("Podcast")
+    assert added.separate and added.solo_sink_name in engine.system.null_sinks
+    engine.set_devices_for_channels(False)
+    assert not any(c.separate for c in engine.mixer.channels if not c.devices)
+    assert mic_channel(engine).separate  # the microphone keeps "Sluice (Mic)"
+    assert not engine.add_channel("Later").separate  # new channels follow the choice
+
+
+def test_older_settings_are_kept_and_asked_about_once(tmp_path):
+    import json
+    mixer = Mixer.default()
+    for channel in mixer.channels:
+        if not channel.devices:
+            channel.separate = channel.id == "game"
+    data = mixer.to_dict()
+    del data["recording_devices_for_channels"]  # as 0.12.5 and older wrote it
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps(data))
+    loaded = Mixer.load(path)
+    assert loaded.channel("game").separate and not loaded.channel("music").separate  # nothing changed by itself
+    assert loaded.ask_devices_for_channels and not loaded.devices_for_channels
+    loaded.save(path)
+    again = Mixer.load(path)
+    assert not again.ask_devices_for_channels  # the choice is saved: asked only once
+    everyone = Mixer.default().to_dict()
+    del everyone["recording_devices_for_channels"]
+    path.write_text(json.dumps(everyone))
+    assert not Mixer.load(path).ask_devices_for_channels  # all on already (like yours): nothing to ask
+
+
+def test_the_question_and_the_settings_switch(qapp, tmp_path, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+    from sluice.ui import MainWindow
+    eng = Engine(Mixer.demo(), MockSystem(), NullIO(realtime=False), NullLinker())
+    eng.start()
+    win = MainWindow(eng, tmp_path / "config.json")
+    try:
+        eng.set_devices_for_channels(False)
+        eng.mixer.ask_devices_for_channels = True
+        monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes)
+        win.ask_about_channel_devices()
+        assert all(c.separate for c in eng.mixer.channels) and win.devices_action.isChecked()
+        win.ask_about_channel_devices()  # never twice
+        win.devices_action.trigger()  # Settings › Audio switch off
+        assert not any(c.separate for c in eng.mixer.channels if not c.devices)
+    finally:
+        win.shutdown()

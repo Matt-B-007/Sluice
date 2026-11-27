@@ -73,6 +73,9 @@ class ParamRow(QWidget):
         self.value = info.value
         self.readout = ReadoutEdit(84)
         self.readout.setText(format_value(info.value, info.unit, info.normalized))
+        self.slider.setAccessibleName(info.label)  # 0.12.6: named for screen readers, with the value in its own words
+        self.readout.setAccessibleName(f"{info.label} value")
+        self._announce(info.value)
         row.addWidget(name)
         row.addWidget(self.slider, 1)
         row.addWidget(self.readout)
@@ -81,6 +84,9 @@ class ParamRow(QWidget):
         self.readout.entered.connect(self._typed)
         tip = "Double-click to reset" + (f" to {format_value(info.default, info.unit, info.normalized)}" if info.default is not None else "")
         self.slider.setToolTip(tip if info.default is not None else "")
+
+    def _announce(self, value: float) -> None:
+        self.slider.setAccessibleDescription(format_value(value, self.info.unit, self.info.normalized))
 
     def _position(self, value: float) -> int:
         span = (self.info.hi - self.info.lo) or 1.0
@@ -95,6 +101,7 @@ class ParamRow(QWidget):
         self.slider.setValue(self._position(value))
         self.slider.blockSignals(False)
         self.readout.setText(format_value(value, info.unit, info.normalized))
+        self._announce(value)
         self._on_change(info.key, value)
 
     def set_value(self, value: float) -> None:
@@ -117,6 +124,7 @@ class ParamRow(QWidget):
         value = info.lo + (info.hi - info.lo) * position / SLIDER_STEPS
         self.value = value
         self.readout.setText(format_value(value, info.unit, info.normalized))
+        self._announce(value)
         self._on_change(info.key, value)
 
 

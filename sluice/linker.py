@@ -213,6 +213,8 @@ class PwLinker(Linker):
         self._binary = binary
         self._run = run or self._subprocess_run
         self._owned: set = set()
+        self._links_after_sync: Optional[set] = None
+        self._links_at = 0.0
         self.watcher: Optional[GraphWatcher] = None
         if watch:  # the running app watches the graph; the tests and the bug report's checks do not
             watcher = GraphWatcher(binary)
@@ -243,6 +245,13 @@ class PwLinker(Linker):
     def current_links(self) -> set:
         return parse_links(self._run(["-l"])[1])
 
+    def fresh_links(self, max_age: float = 0.5) -> Optional[set]:
+        """0.12.6: the links as the last sync left them, if that was within ``max_age`` seconds, so a check right after it does
+        not start another pw-link to read the same list again."""
+        if self._links_after_sync is None or time.monotonic() - self._links_at > max_age:
+            return None
+        return set(self._links_after_sync)
+
     def sync(self, desired: set) -> set:
         existing = self.current_links()
         failed = set()
@@ -255,10 +264,13 @@ class PwLinker(Linker):
             else:
                 failed.add((out_port, in_port))
         self._owned |= desired & existing
+        removed = set()
         for pair in sorted(self._owned - desired):
-            if pair in existing:
-                self._run(["-d", pair[0], pair[1]])
+            if pair in existing and self._run(["-d", pair[0], pair[1]])[0] == 0:
+                removed.add(pair)
         self._owned &= desired
+        self._links_after_sync = (existing | ((desired - existing) - failed)) - removed
+        self._links_at = time.monotonic()
         return failed
 
     def shutdown(self) -> None:

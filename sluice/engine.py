@@ -84,6 +84,7 @@ class Engine:
         self._stream_signature: Optional[tuple] = None
         self._last_refresh = 0.0
         self._last_raw_check = 0.0
+        self._raw_last_seen: dict = {}
         self._refreshes_since_link = 0
         self._last_rules = 0.0
         self._link_retry = False
@@ -119,6 +120,9 @@ class Engine:
         self._prev_default_source: Optional[str] = None
         self._prev_streams: Optional[dict] = None
         self._load_total, self._load_blocks, self._load_worst = 0.0, 0, 0.0  # the whole session, for the bug report
+        # 0.12.6: of that, the time spent waiting for Python's lock (held by the window) before the work could start
+        self._wait_total, self._wait_ticks, self._wait_worst, self._wait_in_worst = 0.0, 0, 0.0, None
+        self._wait = (0.0, 0.0)
         self._load_worst_at: Optional[float] = None  # 0.11.7: when the worst block was (wall clock), and seconds after the start
         self._load_worst_after = 0.0
         self._born = time.monotonic()
@@ -629,11 +633,19 @@ class Engine:
             self.check_raw_mic(now)
         xruns = self.io.xruns
         average, worst = self.io.take_load()
+        wait = getattr(self.io, "take_wait", lambda: None)()
+        if wait is not None and (average or worst):
+            self._wait_total += wait[0]
+            self._wait_ticks += 1
+            self._wait_worst = max(self._wait_worst, wait[1])
+            self._wait = (0.7 * self._wait[0] + 0.3 * wait[0] if self._wait[0] else wait[0], max(wait[1], self._wait[1] * 0.9))
         if average or worst:
             self._load_total += average
             self._load_blocks += 1
             if worst > self._load_worst:
                 self._load_worst = worst
+                if wait is not None:
+                    self._wait_in_worst = wait[2]
                 self._load_worst_at, self._load_worst_after = time.time(), time.monotonic() - self._born
             self._load = (0.7 * self._load[0] + 0.3 * average if self._load[0] else average, max(worst, self._load[1] * 0.9))
         if now < self._quiet_until:
@@ -651,6 +663,13 @@ class Engine:
     def worst_block(self) -> tuple:
         """(wall-clock time, seconds after Sluice started) of the session's worst audio block, or (None, 0.0)."""
         return self._load_worst_at, self._load_worst_after
+
+    def wait_stats(self) -> Optional[tuple]:
+        """0.12.6: (average, worst, in the session's worst block) share of a block's time spent waiting for Python's lock, or
+        None when the audio client cannot measure it."""
+        if not self._wait_ticks:
+            return None
+        return self._wait_total / self._wait_ticks, self._wait_worst, self._wait_in_worst
 
     def load_stats(self) -> tuple:
         """(average, worst, samples): the share of a block's time Sluice's own audio work used over the whole session."""
@@ -674,7 +693,10 @@ class Engine:
         current_links = getattr(self.linker, "current_links", None)
         if current_links is None:
             return
-        links = self._guard(current_links)
+        fresh = getattr(self.linker, "fresh_links", None)
+        links = fresh() if fresh is not None else None  # 0.12.6: the list apply_links just read, when it is that recent
+        if links is None:
+            links = self._guard(current_links)
         if links is None:
             return
         found = {app: rawmic.message(app, channels)
@@ -686,15 +708,22 @@ class Engine:
         stream_mix = self.mixer.mix(STREAM)
         in_broadcast = (lambda channel: stream_mix is not None and not stream_mix.mute
                         and self.mixer.route_gain(channel, stream_mix) > 0.0)
-        for app, channel in rawmic.find_loops(links, self.streams, self.channel_for_stream, in_broadcast).items():
-            found[app + rawmic.LOOP] = rawmic.loop_message(app, channel)
-        for key in [k for k in self._raw_first_seen if k not in found]:  # it stopped: it may be reported again later
-            del self._raw_first_seen[key]
-            self._raw_reported.discard(key)
-            self.raw_mic.pop(key, None)
+        for app, (channel, via) in rawmic.find_loops(links, self.streams, self.channel_for_stream, in_broadcast).items():
+            found[app + rawmic.LOOP] = rawmic.loop_message(app, channel, via)
+        for key in [k for k in self._raw_first_seen if k not in found]:
+            self.raw_mic.pop(key, None)  # gone from the status bar at once
+            if now - self._raw_last_seen.get(key, 0.0) >= rawmic.FORGET_SECONDS:  # 0.12.6: and forgotten only after a minute,
+                del self._raw_first_seen[key]  # so OBS reconnecting its sources does not log and show the warning again
+                self._raw_reported.discard(key)
+                self._raw_last_seen.pop(key, None)
         for key, text in found.items():
+            self._raw_last_seen[key] = now
             first = self._raw_first_seen.setdefault(key, now)
-            if key in self._raw_reported or now - first < rawmic.SECONDS:
+            if key in self._raw_reported:
+                if f"rawmic:{key}" not in self.mixer.hints_seen:
+                    self.raw_mic[key] = text  # back after a moment away: shown again, without a new log line
+                continue
+            if now - first < rawmic.SECONDS:
                 continue
             self._raw_reported.add(key)
             if f"rawmic:{key}" in self.mixer.hints_seen:
@@ -715,8 +744,10 @@ class Engine:
         total, ours = self.io.xruns, self.io.xruns_ours
         average, worst = self._load
         log.warning("audio dropouts: %d in the last %.0f s (%d since Sluice started; %d of those while Sluice itself was running "
-                    "late). Sluice's own work uses about %.0f%% of a block, worst %.0f%%.",
-                    self._pending_xruns, max(1.0, now - self._pending_since), total, ours, average * 100, worst * 100)
+                    "late). Sluice's own work uses about %.0f%% of a block, worst %.0f%%%s.",
+                    self._pending_xruns, max(1.0, now - self._pending_since), total, ours, average * 100, worst * 100,
+                    f" (of that, waiting for the window: about {self._wait[0]:.0%}, worst {self._wait[1]:.0%})"
+                    if self._wait_ticks else "")
         found = events.before(self._pending_since)
         load = events.load_average()
         cause = events.likely_cause(found)
@@ -1027,6 +1058,9 @@ class Engine:
         channel = self.mixer.add_channel(label)
         log.info("channel '%s' added", channel.id)
         self._guard(self.system.ensure_null_sink, channel.sink_name, channel.description)
+        if channel.separate:  # 0.12.6: new channels come with their own recording device
+            self._guard(self.system.ensure_null_sink, channel.solo_sink_name, channel.solo_sink_description, True,
+                        channel.solo_description)
         self._sync_graph()
         self._push_gains()
         self.apply_links()
@@ -1069,6 +1103,14 @@ class Engine:
         """0.12.4: whether app channels' recording devices follow the Broadcast faders and mutes."""
         self.mixer.devices_follow_broadcast = bool(on)
         self._push_gains()
+
+    def set_devices_for_channels(self, on: bool) -> None:
+        """0.12.6: every app channel gets (or loses) its own recording device; new channels follow the choice."""
+        self.mixer.devices_for_channels = bool(on)
+        self.mixer.ask_devices_for_channels = False
+        for channel in list(self.mixer.channels):
+            if not channel.devices:
+                self.set_separate(channel.id, bool(on))
 
     def set_separate(self, channel_id: str, on: bool) -> None:
         """Offer (or stop offering) the channel as its own recording device, for example "Sluice (Mic)"."""
