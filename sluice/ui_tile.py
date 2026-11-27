@@ -23,7 +23,7 @@ import time
 from functools import partial
 from typing import Optional
 
-from PySide6.QtCore import QPoint, QPointF, QRectF, QSize, Qt
+from PySide6.QtCore import QPoint, QPointF, QRectF, QSize, Qt, QTimer
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QMenu, QPushButton, QSizePolicy, QVBoxLayout, QWidget
 
@@ -666,6 +666,8 @@ class TileStrip(ChannelStrip):
             self._clear_details()
         self.details.setVisible(big and not self._empty)
         self._apply_size()
+        if not big:  # 0.12.4: measured again once the folded-out parts are really gone (they are deleted a moment later, and
+            QTimer.singleShot(0, self._apply_size)  # until then they still count: the tile came back 24 px taller)
 
     def _apply_size(self) -> None:
         left, top, right, bottom = SHADOW
@@ -676,6 +678,7 @@ class TileStrip(ChannelStrip):
                 else self.layout_root.totalSizeHint().height()
             height = max(height, TILE_H + top + bottom)
         else:  # 0.11.7: as tall as the header, the lanes and the footer need (TILE_H kept 40 px of empty band above the footer)
+            self.layout_root.invalidate()
             self.layout_root.activate()
             height = self.layout_root.totalMinimumSize().height()
             if height <= top + bottom:  # not laid out yet

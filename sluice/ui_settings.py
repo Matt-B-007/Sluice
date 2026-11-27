@@ -318,6 +318,12 @@ class SettingsWindow(QDialog):
         choice = QButtonGroup(self)
         for action in w.buffer_actions.values():
             self._bind(group, action, choice)
+        # 0.12.4
+        devices = self._group(column, "Recording devices for OBS", "A channel's own recording device, such as \u201cSluice "
+                              "(Game)\u201d, carries just that channel. With this on, an app channel's device follows its Broadcast "
+                              "fader and mute, so muting Broadcast mutes it in OBS too. A microphone's device always stays on, "
+                              "because voice chats such as Discord often use it.")
+        self._bind(devices, w.follow_action)
 
     def _startup(self, column: QVBoxLayout) -> None:
         w = self.window_

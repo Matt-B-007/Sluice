@@ -80,11 +80,19 @@ class OwnDevicesDialog(QDialog):
         intro = QLabel(
             "Tick a channel to make it show up as its own microphone, so OBS or another recorder can record just that "
             "channel (for example one track for your mic and another for the game).\n\n"
-            "Each one carries only that channel, after its effects. It ignores the faders and mute buttons, so what you "
-            "record does not change when you adjust the live mix. In OBS add an Audio Input Capture and choose "
-            "\u201cSluice (channel name)\u201d, for example \u201cSluice (Game)\u201d.")
+            "Each one carries only that channel, after its effects. In OBS add an Audio Input Capture and choose "
+            "\u201cSluice (channel name)\u201d, for example \u201cSluice (Game)\u201d. (Not \u201cMonitor of Sluice "
+            "(Game) output\u201d: that is a copy from before the faders.)")
         intro.setWordWrap(True)
         layout.addWidget(intro)
+        # 0.12.4: an app channel's device follows its Broadcast fader and mute, so muting Broadcast mutes it in OBS too
+        self.follow = QCheckBox("App channels follow their Broadcast fader and mute (and the whole Broadcast's)")
+        self.follow.setToolTip("On: what OBS records from \u201cSluice (Game)\u201d is what Broadcast would send. Off: always at "
+                               "full level, and you set the level in OBS.\nA microphone's device is never muted by Broadcast, "
+                               "because a voice chat such as Discord often uses it too; \u201cMute my microphone\u201d mutes it.")
+        self.follow.setChecked(engine.mixer.devices_follow_broadcast)
+        self.follow.toggled.connect(window.set_devices_follow_broadcast)
+        layout.addWidget(self.follow)
         self.boxes: dict = {}
         for channel in engine.mixer.channels:
             box = QCheckBox(f"{channel.label}   \u2192   {channel.solo_description}")
@@ -809,19 +817,43 @@ class AppsBar(QPushButton):
                 found.append(stream)
         return found
 
+    def _outside(self) -> list:
+        """0.12.4: apps that played outside every channel in the last minutes, newest first (playing or not now)."""
+        playing = {s.assign_key for s in self._streams()}
+        recent = getattr(self.engine, "recent_unassigned", {})
+        return [(key, name, key in playing) for key, (name, _seen) in sorted(recent.items(), key=lambda item: -item[1][1])
+                if self.engine.mixer.channel_for_app(key) is None]
+
     def refresh(self) -> None:
         count = len(self._streams())
-        self.setText(f"Playing now · {count}" if count else "Playing now")
+        outside = len(self._outside())
+        text = f"Playing now · {count}" if count else "Playing now"
+        if outside:
+            text += f" · {outside} not on a channel"
+        self.setText(text)
+        self.setToolTip("Which apps are playing and which channel each one is on" + (
+            f"\n{outside} app(s) played outside every channel lately, so no fader or mute reaches them: click to put them "
+            "on one." if outside else ""))
 
     def _fill(self) -> None:
         menu = self.menu
         menu.clear()
         streams = self._streams()
-        if not streams:
+        outside = [(key, name) for key, name, playing in self._outside() if not playing]
+        if not streams and not outside:
             menu.addAction("No app is playing sound. Start something and it shows up here.").setEnabled(False)
+        if outside:  # 0.12.4: ones that played lately outside every channel (alerts, say), to put on a channel after the fact
+            heading = menu.addAction("Played lately, not on a channel (no fader reaches them)")
+            heading.setEnabled(False)
+            for key, name in outside:
+                sub = menu.addMenu(f"{name}  ›  not on a channel")
+                sub.setIcon(QIcon(icons.app_pixmap(self.engine.app_icon(key), name, 20, self.devicePixelRatioF(), key)))
+                for channel in self.engine.mixer.channels:
+                    sub.addAction(channel.label, partial(self._assign, key, channel.id))
+            menu.addSeparator()
         for stream in streams:
             owner = self.engine.channel_for_stream(stream)
-            sub = menu.addMenu(f"{stream.name}  ›  {owner.label}" if owner else f"{stream.name}  ›  plays directly")
+            sub = menu.addMenu(f"{stream.name}  ›  {owner.label}" if owner else f"{stream.name}  ›  not on a channel")
             sub.setIcon(QIcon(icons.app_pixmap(self.engine.app_icon(stream.assign_key), stream.name, 20, self.devicePixelRatioF(), stream.assign_key)))
             for channel in self.engine.mixer.channels:
                 action = sub.addAction(channel.label, partial(self._assign, stream.assign_key, channel.id))

@@ -276,7 +276,9 @@ USB_LINE = re.compile(r"usb \d+-[\d.]+: (?:new .*USB device number|USB disconnec
 def usb_events(limit: int = 30) -> str:
     """The last hours of USB connect, disconnect and reset lines from the kernel log. Serial numbers are not included."""
     text = _run(["journalctl", "-k", "--no-pager", "-o", "short-iso", "--since", "-4 hours"], timeout=8.0)
-    if text.startswith("(") or "No entries" in text:
+    if "No entries" in text and not text.startswith("("):  # 0.12.4: the journal was read and simply had nothing (dmesg,
+        return "No USB connect, disconnect or reset lines in the kernel log of the last hours."  # tried next, needs root)
+    if text.startswith("("):
         text = _run(["dmesg", "--time-format", "iso"], timeout=8.0)
     if text.startswith("("):
         return (f"{text}\nReading the kernel log may need permission: on many systems it works for members of the "
@@ -287,6 +289,50 @@ def usb_events(limit: int = 30) -> str:
     shown = found[-limit:]
     note = [f"({len(found) - len(shown)} older lines not shown)"] if len(found) > len(shown) else []
     return "\n".join(note + shown)
+
+
+def _short_names(text: str) -> dict:
+    """``pactl list short sinks`` (or sources) → {index: name}."""
+    names = {}
+    for line in text.splitlines():
+        parts = line.split("\t")
+        if len(parts) >= 2 and parts[0].strip().isdigit():
+            names[parts[0].strip()] = parts[1].strip()
+    return names
+
+
+def _stream_blocks(text: str, header: str, target: str) -> list:
+    """``pactl list sink-inputs`` (or source-outputs) → [(index, app, binary, target index)]."""
+    found, current = [], None
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line.startswith(header + " #"):
+            current = {"index": line.split("#", 1)[1].strip(), "app": "", "binary": "", "target": ""}
+            found.append(current)
+        elif current is None:
+            continue
+        elif line.startswith(target + ":"):
+            current["target"] = line.split(":", 1)[1].strip()
+        elif line.startswith("application.name = "):
+            current["app"] = line.split("=", 1)[1].strip().strip('"')
+        elif line.startswith("application.process.binary = "):
+            current["binary"] = line.split("=", 1)[1].strip().strip('"')
+    return [(b["index"], b["app"], b["binary"], b["target"]) for b in found]
+
+
+def stream_routes(streams_text: str, devices_text: str, header: str, target: str, verb: str) -> str:
+    """0.12.4: every app's stream and the device it is on, e.g. "201  Shred A Billion (shredabillion.exe) → sluice_ch_game".
+    This is what shows whether OBS records a channel's "Monitor of" (before the faders) or Sluice's recording device."""
+    if streams_text.startswith("("):
+        return streams_text
+    names = _short_names(devices_text)
+    rows = []
+    for index, app, binary, where in _stream_blocks(streams_text, header, target):
+        who = app or binary or "(no name)"
+        if binary and binary.lower() not in who.lower():
+            who += f" ({binary})"
+        rows.append(f"{index:>5}  {who} → {names.get(where, where or '?')}")
+    return "\n".join(rows) if rows else f"No app is {verb} right now."
 
 
 def busy_programs(limit: int = 6) -> str:
@@ -497,6 +543,12 @@ def build_report(log_lines: int = LOG_LINES) -> str:
                               top_errors(last) + "\n\n" + last))
     parts.append(_section("Sinks (pactl list short sinks)", _run(["pactl", "list", "short", "sinks"])))
     parts.append(_section("Sources (pactl list short sources)", _run(["pactl", "list", "short", "sources"])))
+    parts.append(_section("Apps playing and where their sound goes (pactl list sink-inputs)",
+                          stream_routes(_run(["pactl", "list", "sink-inputs"]), _run(["pactl", "list", "short", "sinks"]),
+                                        "Sink Input", "Sink", "playing")))
+    parts.append(_section("Apps recording and what they record (pactl list source-outputs; \".monitor\" is before the faders)",
+                          stream_routes(_run(["pactl", "list", "source-outputs"]), _run(["pactl", "list", "short", "sources"]),
+                                        "Source Output", "Source", "recording")))
     parts.append(_section("sluice modules loaded", _grep(_run(["pactl", "list", "short", "modules"]), "sluice")))
     parts.append(_section("sluice ports and links (pw-link -l)", sluice_blocks(_run(["pw-link", "-l"]))))
 

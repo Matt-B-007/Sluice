@@ -253,6 +253,7 @@ def test_meters_update_60_times_a_second_and_fall_25_db_a_second(qapp):
     from sluice import ui_meters
     from sluice.ui_meters import LevelMeter
     assert ui_meters.METER_FPS == 60 and abs(ui_meters.FALL_PER_S * 60 - 25.0) < 1e-9
+    ui_meters.FRAME_S = 1.0 / ui_meters.METER_FPS  # the rate while Sluice's window is the one in use
     meter = LevelMeter()
     meter.push(1.0)
     for _ in range(ui_meters.METER_FPS):  # one second of silence

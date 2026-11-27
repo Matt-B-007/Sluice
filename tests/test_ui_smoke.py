@@ -495,7 +495,7 @@ def test_menu_bar_has_the_usual_menus_in_the_usual_order(ui):
     assert _texts(_menu(win, "File")) == ["Save settings", "Import settings…", "Export settings…", "Restore earlier settings",
                                           "Reset all settings to the defaults…", "Open folder", "Quit", "Settings…"]
     assert _texts(_menu(win, "Mixer")) == ["Channels", "Add channel…", "Refresh devices and apps", "Mixes", "Recording mix (a third mix)",
-                                           "Recording devices for OBS…", "Quick mutes", "Mute my microphone", "Mute Listen",
+                                           "Recording devices for OBS…", "Recording devices follow Broadcast", "Quick mutes", "Mute my microphone", "Mute Listen",
                                            "Mute Broadcast", "Hear Broadcast"]
     assert _texts(_menu(win, "Settings")) == [
         "Startup and background", "Running in the background", "Add Sluice to the applications menu",

@@ -156,7 +156,10 @@ class TrayMixin:
         if state != self._tray_state or force:
             self._tray_state = state
             self._tray.setIcon(icons.tray_icon(state))  # only when it changes: nothing is redrawn while the state is steady
-        self._tray.setToolTip(self._tray_tooltip())
+        tip = self._tray_tooltip()
+        if force or tip != getattr(self, "_tray_tip", None):  # 0.12.4: only when it changes. On KDE every call is a message to
+            self._tray_tip = tip                              # the panel, and this runs with the meters (60 a second)
+            self._tray.setToolTip(tip)
 
     def _refresh_tray_menu(self) -> None:
         self._tray_show.setText("Hide Sluice" if self.isVisible() and not self.isMinimized() else "Show Sluice")

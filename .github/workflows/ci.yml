@@ -52,18 +52,7 @@ jobs:
           for pkg in $missing; do dpkg -s "$pkg" >/dev/null 2>&1 || echo "  $pkg"; done
           true
       - name: Check that Qt's system libraries are there
-        run: |
-          # 0.12.1: if the step above could not install them, say so plainly here, instead of dozens of test files failing
-          # with "libEGL.so.1: cannot open shared object file".
-          missing=""
-          for lib in libEGL.so.1 libGL.so.1 libxkbcommon.so.0 libfontconfig.so.1; do
-            ldconfig -p | grep -q "$lib" || missing="$missing $lib"
-          done
-          if [ -n "$missing" ]; then
-            echo "::error title=The test machine is missing libraries (not a Sluice bug)::GitHub's Ubuntu machine could not install$missing because Ubuntu's package servers did not answer. Nothing in Sluice is wrong: re-run the job (Re-run failed jobs)."
-            exit 1
-          fi
-          echo "Qt's system libraries are installed."
+        run: python3 tools/check-qt-libs.py  # 0.12.4: asks the loader, as Qt does (the library cache missed libraries that load)
       - run: pip install -e ".[dev]"
       - run: QT_QPA_PLATFORM=offscreen pytest -q
   rust:
@@ -99,18 +88,7 @@ jobs:
             sudo apt-get $opts update && sudo apt-get $opts install -y --no-install-recommends $pkgs
           fi
       - name: Check that Qt's system libraries are there
-        run: |
-          # 0.12.1: if the step above could not install them, say so plainly here, instead of dozens of test files failing
-          # with "libEGL.so.1: cannot open shared object file".
-          missing=""
-          for lib in libEGL.so.1 libGL.so.1 libxkbcommon.so.0 libfontconfig.so.1; do
-            ldconfig -p | grep -q "$lib" || missing="$missing $lib"
-          done
-          if [ -n "$missing" ]; then
-            echo "::error title=The test machine is missing libraries (not a Sluice bug)::GitHub's Ubuntu machine could not install$missing because Ubuntu's package servers did not answer. Nothing in Sluice is wrong: re-run the job (Re-run failed jobs)."
-            exit 1
-          fi
-          echo "Qt's system libraries are installed."
+        run: python3 tools/check-qt-libs.py  # 0.12.4: asks the loader, as Qt does (the library cache missed libraries that load)
       - run: pip install -e ".[dev]" maturin
       - name: Build the Rust engine
         run: cd rust/sluice_dsp && maturin build --release -o ../../dist && pip install ../../dist/sluice_dsp-*.whl

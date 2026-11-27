@@ -35,6 +35,8 @@ from .model import (BUFFER_CHOICES, MONITOR, PREFIX, STREAM, VOICE_CHAIN, Channe
 log = logging.getLogger("sluice.engine")
 
 REFRESH_SECONDS = 2.0
+UNASSIGNED_MEMORY = 15 * 60.0  # 0.12.4: an app that played outside every channel is offered in Playing now this long
+UNASSIGNED_KEEP = 12
 GUARD_STREAK_LOST = 6  # this many failed audio-server calls in a row, with no success between, means the server is gone
 RAW_SAFETY_SECONDS = 60.0  # with a graph watcher: the raw-microphone check runs at least this often (0.11.7)
 RELINK_EVERY = 5  # without a graph watcher: re-check the connections every 5th device refresh (10 s) unless something changed sooner
@@ -124,6 +126,7 @@ class Engine:
         self._load = (0.0, 0.0)           # (average, worst) share of a block that Sluice's own work uses, recently
         self._known_inputs: Optional[set] = None
         self._notices: list = []
+        self.recent_unassigned: dict = {}  # 0.12.4: assign key -> (name, last seen): apps that played outside every channel
         self._quiet_until = 0.0
         self._last_io_error = ""
 
@@ -163,6 +166,9 @@ class Engine:
                 self.save_config(save_to, backups=True)
             except OSError as exc:
                 self._error(f"Could not save settings: {exc}")
+        begin = getattr(self.system, "begin_shutdown", None)  # 0.12.4: at logout the audio server may be going away too
+        if begin is not None:
+            begin()
         self._guard(self._release_apps)
         self._guard(self.linker.shutdown)
         self._guard(self.system.cleanup)
@@ -486,6 +492,16 @@ class Engine:
         self.streams = streams
         self._describe_stream_changes(streams)
 
+        for stream in streams:  # 0.12.4: remembered for a while, so one that only plays now and then (alerts) can be put on a channel
+            if self.channel_for_stream(stream) is None and not stream.sink.startswith(PREFIX):
+                self.recent_unassigned[stream.assign_key] = (stream.name, now)
+        for key in [k for k, (_n, seen) in self.recent_unassigned.items() if now - seen > UNASSIGNED_MEMORY]:
+            del self.recent_unassigned[key]
+        for key in list(self.recent_unassigned)[:-UNASSIGNED_KEEP]:
+            del self.recent_unassigned[key]
+        live_indexes = {s.index for s in streams}
+        for index in [i for i in self._move_history if i not in live_indexes]:  # 0.12.4: forget streams that have ended
+            del self._move_history[index]
         live = {(s.index, s.sink) for s in streams}
         for key in [k for k in self._move_backoff if (k[0], k[2]) not in live and self._move_backoff[k] < now]:
             del self._move_backoff[key]
@@ -508,8 +524,14 @@ class Engine:
                 history.append(now)
                 self._move_history[stream.index] = history
                 log.info("moved %s (stream %d) from %s to %s", stream.name, stream.index, stream.sink, target)
+                if self._internal_sink(stream.sink):
+                    self._notices.append(f"Sluice moved {stream.name} off \u201c{self._sink_label(stream.sink)}\u201d, one of "
+                                         f"Sluice's own outputs: playing there, it would skip your faders and mutes.")
             except Exception as exc:
                 self._move_backoff[key] = now + MOVE_RETRY_SECONDS
+                if not self._stream_still_there(stream.index):  # 0.12.4: it stopped while being moved (a game opening and
+                    log.info("%s (stream %d) stopped before it could be moved", stream.name, stream.index)  # closing streams)
+                    continue
                 self._error(f"Could not move {stream.name}: {exc}")
         return changed
 
@@ -543,15 +565,40 @@ class Engine:
             return f"steam_icon_{key[len(STEAM_PREFIX):]}"
         return ""
 
+    def _stream_still_there(self, index: int) -> bool:
+        """Whether an app's stream still exists (asked again after a move failed: most failures are a stream that ended)."""
+        try:
+            return any(s.index == index for s in self.system.list_streams())
+        except Exception:  # cannot tell: report the failure
+            return True
+
     def _target_sink(self, stream: Stream) -> Optional[str]:
         channel = self.channel_for_stream(stream)
         if channel is not None:
             return channel.sink_name
-        if stream.sink.startswith(f"{PREFIX}ch_"):  # was on a channel it no longer belongs to
-            default = self.default_sink
+        if stream.sink.startswith(f"{PREFIX}ch_") or self._internal_sink(stream.sink):  # on a channel it no longer belongs
+            default = self.default_sink                                                  # to, or on Sluice's own outputs
             if default and not default.startswith(PREFIX):
                 return default
         return None
+
+    def _sink_label(self, sink: str) -> str:
+        """What the desktop calls one of Sluice's outputs."""
+        for mix in self.mixer.mixes:
+            if mix.sink_name == sink:
+                return f"Sluice ({mix.label}) feed"
+        for channel in self.mixer.channels:
+            if channel.solo_sink_name == sink:
+                return channel.solo_sink_description
+        return sink
+
+    def _internal_sink(self, sink: str) -> bool:
+        """0.12.4: Sluice's own outputs that no app should play into: the Broadcast feed (and the Recording mix's) and the
+        recording devices' feeds. They are what OBS records, so an app playing there would skip every fader and mute. (Your
+        desktop lists them as ordinary outputs, so it is easy to pick one by mistake.)"""
+        if not sink.startswith(PREFIX) or sink.startswith(f"{PREFIX}ch_"):
+            return False
+        return True
 
     def tick(self, now: Optional[float] = None) -> set:
         """Call a few times a second. Returns what changed: {'devices', 'streams'}."""
@@ -630,20 +677,30 @@ class Engine:
         links = self._guard(current_links)
         if links is None:
             return
-        found = rawmic.find(links, self.mixer.channels, self.resolve_source)
-        for app in [a for a in self._raw_first_seen if a not in found]:  # it stopped: it may be reported again later
-            del self._raw_first_seen[app]
-            self._raw_reported.discard(app)
-            self.raw_mic.pop(app, None)
-        for app, channels in found.items():
-            first = self._raw_first_seen.setdefault(app, now)
-            if app in self._raw_reported or now - first < rawmic.SECONDS:
+        found = {app: rawmic.message(app, channels)
+                 for app, channels in rawmic.find(links, self.mixer.channels, self.resolve_source).items()}
+        # 0.12.4: an app recording "Monitor of Sluice (Game) output" (a copy from before the faders), and an app that records
+        # Broadcast while its own sound plays into a channel that goes to Broadcast (a loop)
+        for app, channels in rawmic.find_monitors(links, self.mixer.channels).items():
+            found[app + rawmic.MONITOR] = rawmic.monitor_message(app, channels)
+        stream_mix = self.mixer.mix(STREAM)
+        in_broadcast = (lambda channel: stream_mix is not None and not stream_mix.mute
+                        and self.mixer.route_gain(channel, stream_mix) > 0.0)
+        for app, channel in rawmic.find_loops(links, self.streams, self.channel_for_stream, in_broadcast).items():
+            found[app + rawmic.LOOP] = rawmic.loop_message(app, channel)
+        for key in [k for k in self._raw_first_seen if k not in found]:  # it stopped: it may be reported again later
+            del self._raw_first_seen[key]
+            self._raw_reported.discard(key)
+            self.raw_mic.pop(key, None)
+        for key, text in found.items():
+            first = self._raw_first_seen.setdefault(key, now)
+            if key in self._raw_reported or now - first < rawmic.SECONDS:
                 continue
-            self._raw_reported.add(app)
-            if f"rawmic:{app}" in self.mixer.hints_seen:
-                continue  # "don't remind me" was chosen for this app
-            self.raw_mic[app] = rawmic.message(app, channels)
-            self._note(f"{app} is listening to the raw microphone (no Sluice effects)", logging.WARNING)
+            self._raw_reported.add(key)
+            if f"rawmic:{key}" in self.mixer.hints_seen:
+                continue  # "don't remind me" was chosen for this one
+            self.raw_mic[key] = text
+            self._note(rawmic.short_for(key)[2:], logging.WARNING)
 
     def dismiss_raw_mic(self, app: str) -> None:
         """"Don't remind me about this app": remembered with the settings."""
@@ -703,7 +760,7 @@ class Engine:
             self._applied_gains.clear()
         for channel in self.mixer.channels:
             muted = self.mic_muted and bool(channel.devices)  # "Mute my microphone" silences every microphone channel, own outputs too
-            solo = (0.0 if muted else 1.0) if channel.separate else None  # otherwise own outputs ignore faders and mutes
+            solo = (0.0 if muted else self.mixer.own_device_gain(channel)) if channel.separate else None  # (0.12.4)
             if self._applied_gains.get((channel.id, "solo"), "unset") != solo:
                 self._applied_gains[(channel.id, "solo")] = solo
                 self.graph.set_solo(channel.id, solo)
@@ -1007,6 +1064,11 @@ class Engine:
             self._guard(self.system.remove_null_sink, channel.solo_sink_name)
             self._guard(self.system.ensure_null_sink, channel.solo_sink_name, channel.solo_sink_description, True, channel.solo_description)
         self.apply_links()
+
+    def set_devices_follow_broadcast(self, on: bool) -> None:
+        """0.12.4: whether app channels' recording devices follow the Broadcast faders and mutes."""
+        self.mixer.devices_follow_broadcast = bool(on)
+        self._push_gains()
 
     def set_separate(self, channel_id: str, on: bool) -> None:
         """Offer (or stop offering) the channel as its own recording device, for example "Sluice (Mic)"."""

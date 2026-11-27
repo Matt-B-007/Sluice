@@ -56,18 +56,17 @@ The same mixer in the light theme, in the Rows layout, and the first-run screen:
 ![Rows layout](docs/screenshot-rows.png)
 ![First run](docs/first-run.png)
 
-## What's new in 0.12.3
+## What's new in 0.12.4
 
-- **Quicker voice meters:** a microphone's meter shows your voice before the effects (no more lag from the noise and echo
-  reducers), every meter redraws 60 times a second, and the bars fall back faster.
-- **Levels in percent too:** "-18 dB · 50%", on the same scale as your desktop's volume slider. Type either into a level's
-  box. *Window > Show levels as* chooses dB, percent or both.
-- **Updates only offer releases that can be installed**, and a release is published only once its zip is attached.
-- **Releases cannot be numbered so that no one gets them.** A test version such as `0.1.1-beta.1` after 0.1.1 is out (a beta comes
-  before its own final version, so it is older) is refused with the number to use instead, such as `0.1.2-beta.1`.
+- **OBS follows your Broadcast faders:** an app channel's recording device (such as "Sluice (Game)") follows its Broadcast
+  fader and mute, so muting Game on Broadcast mutes it in OBS. *Mixer > Recording devices follow Broadcast* turns this off.
+- **Warnings for routings that skip the faders:** OBS recording "Monitor of Sluice (…)", or an app that can hear itself on
+  Broadcast.
+- **Apps not on a channel** are listed under *Playing now*, one click from a channel. No app can play into Sluice's own outputs.
+- **Fixes and less CPU:** no false "Could not move" errors, a quick quiet quit at logout, Tile cards stay one height, the
+  tray updates only when something changes, and meters run at 30 a second while another window is in use.
 
-0.12.2, the release before this, made installing one command, added the Stable and Beta channels, redrew the four skins
-and made the interface sharp at every size.
+0.12.3, the release before this, made voice meters quicker and showed levels in percent as well as dB.
 
 The full list, and every earlier version, is in [CHANGELOG.md](CHANGELOG.md) (also under *Help > What's new in this version*).
 

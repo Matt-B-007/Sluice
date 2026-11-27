@@ -498,6 +498,7 @@ def test_a_channel_can_be_its_own_recording_device(rig):
     assert system.null_sinks["sluice_solo_music"] == ("Sluice (Music) recording feed", True)  # also offered as a microphone
     assert any(out == "sluice:out_solo_music_L" and inp.startswith("sluice_solo_music:") for out, inp in linker.links)
     assert "solo_music" in io.mix_ids  # the audio client has ports for it
+    engine.set_level("music", "stream", 0.0)  # (0.12.4: the own output follows the Broadcast fader, -18 dB in the demo)
     silence_except(io, engine, music=0.3, game=0.1)
     out = None
     for _ in range(3):
@@ -505,13 +506,20 @@ def test_a_channel_can_be_its_own_recording_device(rig):
     assert float(np.abs(out["solo_music"]).max()) == pytest.approx(0.3, abs=1e-3)  # just the music: no game in it
     assert "solo_game" not in out
 
-    engine.set_level("music", "stream", -60.0)  # faders and mutes of the mixes do not touch the own output
-    engine.set_mute("music", "stream", True)
-    engine.set_mute("music", "monitor", True)
+    engine.set_mute("music", "monitor", True)  # Listen's fader and mute never touch the own output
     for _ in range(3):
         out = io.process_once(N)
     assert float(np.abs(out["solo_music"]).max()) == pytest.approx(0.3, abs=1e-3)
-    assert float(np.abs(out["stream"]).max()) < 0.2  # while the Broadcast mix really did lose the music
+    engine.set_level("music", "stream", -60.0)  # 0.12.4: an app channel's own output follows its Broadcast fader and mute
+    engine.set_mute("music", "stream", True)
+    for _ in range(3):
+        out = io.process_once(N)
+    assert float(np.abs(out["solo_music"]).max()) < 1e-4
+    assert float(np.abs(out["stream"]).max()) < 0.2  # as the Broadcast mix lost the music
+    engine.set_devices_follow_broadcast(False)  # turned off: full level whatever the faders do (the old behaviour)
+    for _ in range(3):
+        out = io.process_once(N)
+    assert float(np.abs(out["solo_music"]).max()) == pytest.approx(0.3, abs=1e-3)
 
     engine.set_separate("music", False)
     assert "sluice_solo_music" not in system.null_sinks

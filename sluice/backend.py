@@ -337,12 +337,26 @@ class PulseSystem(AudioSystem):
                 base = f"master={name}.monitor source_name={source_name}"
                 self._remember(name, self._load_described("module-remap-source", base, "source_properties", source_description, source_name, "source"))
 
+    def begin_shutdown(self) -> None:
+        """0.12.4: Sluice is quitting. A broken connection is not replaced any more (at logout the audio server is shutting
+        down too: reconnecting waited two seconds for nothing), and once the server is found gone there is nothing left to
+        remove, since its devices went with it."""
+        self.__dict__["_quitting"] = True
+
     def remove_null_sink(self, name: str) -> None:
+        if self.__dict__.get("_server_gone"):
+            self._modules.pop(name, None)
+            return
         for index in reversed(self._modules.pop(name, [])):  # remap-source first, then the sink
             try:
                 self._pulse.module_unload(index)
                 log.debug("unloaded module %s (%s)", index, name)
             except Exception as exc:
+                if self.__dict__.get("_quitting"):
+                    self.__dict__["_server_gone"] = True
+                    log.info("the audio server is already gone (logging out?), and Sluice's devices with it: nothing to "
+                             "remove (%s)", exc)
+                    return
                 log.warning("could not unload module %s (%s): %s", index, name, exc)
 
     def _stale_modules(self, legacy: bool) -> list:
@@ -396,6 +410,8 @@ class PulseSystem(AudioSystem):
         try:
             return self._list_streams_once()
         except Exception as first:
+            if self.__dict__.get("_quitting"):  # 0.12.4: quitting: no new connection to a server that is going away
+                raise
             log.warning("listing the playing apps failed (%s: %s); reconnecting", type(first).__name__, first)
             self._reconnect()  # if the server really is gone this raises, and the caller's usual handling takes over
             return self._list_streams_once()

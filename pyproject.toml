@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sluice"
-version = "0.12.3"
+version = "0.12.4"
 description = "An open-source virtual audio mixer for PipeWire on Linux: channels, per-output mixes and VST3 effects"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -46,3 +46,6 @@ sluice = ["data/*.svg", "data/png/*.png", "data/*.md", "data/fonts/*.ttf", "data
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# 0.12.4: the tests always use the Sluice in this folder, also when it is not installed (StowLock runs pytest without the
+# "pip install -e" step) and when another copy is installed for the same Python.
+pythonpath = ["."]

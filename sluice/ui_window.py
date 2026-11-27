@@ -1072,7 +1072,10 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         if getattr(self, "mini", None) is not None and self.mini.tile:
             self.mini.push_levels(levels)
         self.tracker.meter_tick()
-        self._refresh_tray_icon()
+        now = time.monotonic()
+        if now - getattr(self, "_tray_looked", 0.0) >= 0.2:  # 0.12.4: the tray needs a look 5 times a second, not 60
+            self._tray_looked = now
+            self._refresh_tray_icon()
 
     def _begin_reconnect(self) -> None:
         from . import reconnect
@@ -1126,7 +1129,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         if warnings:
             app, text = next(iter(warnings.items()))
             more = f" (+{len(warnings) - 1} more)" if len(warnings) > 1 else ""
-            self.raw_mic_button.setText(rawmic.short(app) + more)
+            self.raw_mic_button.setText(rawmic.short_for(app) + more)
             self.raw_mic_button.setToolTip(text + "\nClick for details.")
 
     def show_raw_mic(self) -> None:
@@ -1135,10 +1138,11 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
             return
         box = ui_dialog.Message(self)
         box.setIcon(QMessageBox.Icon.Warning)
-        box.setWindowTitle("Raw microphone")
+        box.setWindowTitle("Where your sound goes")
         box.setText("\n\n".join(warnings.values()))
         box.setInformativeText("Nothing is wrong with Sluice. If that is what you want, you can stop the reminder.")
-        dismiss = box.addButton("Don't remind me about " + ("these apps" if len(warnings) > 1 else next(iter(warnings))),
+        only = next(iter(warnings)).split(" · ")[0]
+        dismiss = box.addButton("Don't remind me about " + ("these" if len(warnings) > 1 else only),
                                 QMessageBox.ButtonRole.DestructiveRole)
         box.addButton("OK", QMessageBox.ButtonRole.AcceptRole)
         box.exec()
@@ -1329,6 +1333,8 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         if self._closed:
             return
         self._closed = True
+        from . import ui_meters
+        ui_meters.FRAME_S = 1.0 / ui_meters.METER_FPS  # 0.12.4: the rate is shared; the next window starts from the usual one
         if report._window_source == self._report_info:
             report.set_window_source(None)
         hints = QGuiApplication.styleHints()
@@ -1425,9 +1431,10 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         self._window_state_changed()
 
     def _meter_interval(self) -> int:
-        """16 ms (60 a second, since 0.12.3) normally; 33 ms in Nexus while this window is not the one in use (it is still live, for a
-        second screen beside a game). The bars fall at the same speed in seconds either way."""
-        slow = themes.current_skin() == "nexus" and self.isVisible() and not self.isActiveWindow()
+        """16 ms (60 a second, since 0.12.3) while this window is the one in use; 33 ms while it is open but another window is
+        (0.12.4, every skin: Nexus alone before; still live, for a second screen beside a game, at half the cost). The bars fall
+        at the same speed in seconds either way."""
+        slow = self.isVisible() and not self.isActiveWindow()
         self._meter_slow = 2.0 if slow else 1.0
         from . import ui_meters
         ui_meters.FRAME_S = (2.0 if slow else 1.0) / ui_meters.METER_FPS

@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.12.4
+OBS hears what your Broadcast faders say, warnings for the routings that bypass them, and fixes from a long stream.
+- **Recording devices follow Broadcast.** An app channel's own recording device (such as "Sluice (Game)", the one OBS
+  records) now follows that channel's Broadcast fader and mute, and the whole Broadcast's. Muting Game on Broadcast mutes it
+  in OBS too. Microphone channels are left alone, because Discord records "Sluice (Mic)". Turn it off in *Mixer > Recording
+  devices follow Broadcast* or in Settings > Audio to get the full level back.
+- **A warning when OBS records "Monitor of Sluice (…)".** Those are taken before every fader, so Broadcast changes nothing
+  there. The status bar says so and tells you which device to pick instead.
+- **A warning for a loop:** an app that records Broadcast while its own sound goes into a channel that feeds Broadcast hears
+  itself.
+- **No app can play into Sluice's own outputs** (the Broadcast feed and the recording devices). One that does is moved to
+  your speakers and you are told.
+- **Apps not on any channel** that played in the last 15 minutes are listed under *Playing now*, with a menu to put each on a
+  channel. The bar counts them ("· 2 not on a channel").
+- **Fixes:** no "Could not move …" error for an app that closed its sound just as Sluice moved it; quitting during logout is
+  quick and quiet (no reconnecting, no warnings); a Tile card folded out and back in is as tall as the others again (it was 24
+  px taller and made the window scroll).
+- **Lighter on the CPU:** the tray tooltip is only updated when it changes (on KDE each update was a message to the panel,
+  60 times a second), the tray is checked 5 times a second, and meters run at 30 a second while another window is in use (60
+  while Sluice's is).
+- **Bug reports** list every app's sound and the device it plays to, every app that records and what it records, and
+  Sluice's memory over time. An empty kernel log now says "no USB events" instead of "Operation not permitted".
+- **The test check for Qt's libraries asks the loader**, the way Qt opens them. It looked them up in the system's library cache,
+  which does not list every library that loads, so it could fail on a computer where Sluice runs fine (and it blamed Ubuntu's
+  servers even off GitHub).
+- **The tests use the Sluice in their own folder** even when it is not installed, or when another copy is.
+
 ## 0.12.3
 Quicker voice meters, levels in percent as well as dB, and releases that cannot go wrong.
 - **Quicker voice meters.** A microphone's meter now shows your voice before the effects: the Noise Reducer and Echo Reducer

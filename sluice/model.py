@@ -256,6 +256,7 @@ class Mixer:
         self.buffer_frames = DEFAULT_BUFFER  # used the next time Sluice starts
         self.update_channel = "stable"  # 0.12.2: "stable" (full releases) or "beta" (pre-releases too)
         self.level_units = "both"  # 0.12.3: levels shown in "db", "percent" or "both"
+        self.devices_follow_broadcast = True  # 0.12.4: an app channel's recording device follows its Broadcast fader and mute
         self.auto_update = False  # download new releases in the background and install them when Sluice closes (off by default)
         self.layout = "columns"  # how the channels are laid out: "columns" (a card each) or "rows" (a line each); a saved "free" (gone in 0.11.5) loads as columns
         self.widget_skin = ""   # 0.11.6: the desktop widgets' own skin; "" is the same as the window
@@ -412,6 +413,19 @@ class Mixer:
     def master_gain(self, mix: Mix) -> float:
         return 0.0 if mix.mute else db_to_linear(mix.gain_db)
 
+    def own_device_gain(self, channel: Channel) -> float:
+        """0.12.4: the gain of a channel's own recording device ("Sluice (Game)"). An app channel's follows its Broadcast fader
+        and mute and the whole Broadcast fader and mute, so OBS gets what Broadcast would send (unless that was turned off).
+        A microphone's stays at full level: the same device is often a voice chat's microphone (Discord), which muting
+        Broadcast must not silence; "Mute my microphone" silences it."""
+        if channel.devices or not self.devices_follow_broadcast:
+            return 1.0
+        try:
+            stream = self.mix(STREAM)
+        except KeyError:
+            return 1.0
+        return self.route_gain(channel, stream) * self.master_gain(stream)
+
     # ---------------------------------------------------------------- persistence
     def to_dict(self) -> dict:
         return {
@@ -423,6 +437,7 @@ class Mixer:
             "auto_update": self.auto_update,
             "update_channel": self.update_channel,
             "level_units": self.level_units,
+            "recording_devices_follow_broadcast": self.devices_follow_broadcast,
             "theme": self.theme,
             "skin": self.skin,
             "layout": self.layout,
@@ -486,6 +501,8 @@ class Mixer:
             mixer.update_channel = data["update_channel"]
         if data.get("level_units") in LEVEL_UNITS:
             mixer.level_units = data["level_units"]
+        if isinstance(data.get("recording_devices_follow_broadcast"), bool):
+            mixer.devices_follow_broadcast = data["recording_devices_follow_broadcast"]
         theme = data.get("theme")
         if isinstance(theme, str) and 0 < len(theme) <= 80:
             mixer.theme = theme  # an id that no longer exists simply shows the default theme

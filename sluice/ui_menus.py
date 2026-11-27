@@ -120,10 +120,12 @@ class MenusMixin:
         heading(mixer_menu, "Mixes")
         self.recording_action = self._action(mixer_menu, "&Recording mix (a third mix)", self.toggle_recording_mix, checkable=True)
         self.own_devices_action = self._action(mixer_menu, "Recording &devices for OBS\u2026", self.show_own_devices)
+        self.follow_action = self._action(mixer_menu, "Recording devices f&ollow Broadcast",
+                                          lambda: self.set_devices_follow_broadcast(self.follow_action.isChecked()), checkable=True)  # 0.12.4: app channels' devices follow the Broadcast faders and mutes
         heading(mixer_menu, "Quick mutes")
         self.mic_action = self._action(mixer_menu, "Mute my &microphone", self.toggle_mic_mute, "Ctrl+M", checkable=True)
         self.mute_actions = {}
-        used = {"a", "f", "r", "d", "m", "h"}  # the Alt-key letters the other items take
+        used = {"a", "f", "r", "d", "o", "m", "h"}  # the Alt-key letters the other items take
         for mix in self.engine.mixer.mixes:
             shortcut = {MONITOR: "Ctrl+Shift+L", STREAM: "Ctrl+Shift+B"}.get(mix.id, "")
             letter = next((c for c in mix.label if c.isalnum() and c.lower() not in used), "")  # first letter of the name nobody has yet
@@ -413,6 +415,7 @@ class MenusMixin:
         self.hear_action.setChecked(self.engine.hear_broadcast)
         self.mic_action.setChecked(self.engine.mic_muted)
         self.recording_action.setChecked(self.engine.mixer.has_recording_mix)
+        self.follow_action.setChecked(self.engine.mixer.devices_follow_broadcast)
         for mix_id, action in self.mute_actions.items():
             action.setChecked(self.engine.mixer.mix(mix_id).mute)
 
@@ -439,6 +442,16 @@ class MenusMixin:
         self.save_settings()
         self.say({"both": "Levels are shown in dB and percent.", "db": "Levels are shown in dB.",
                   "percent": "Levels are shown in percent, as your desktop's volume slider shows them."}[units])
+
+    def set_devices_follow_broadcast(self, on: bool) -> None:
+        """0.12.4: app channels' recording devices follow the Broadcast faders and mutes, or stay at full level."""
+        self.engine.set_devices_follow_broadcast(on)
+        action = getattr(self, "follow_action", None)
+        if action is not None and action.isChecked() != bool(on):
+            action.setChecked(bool(on))
+        self.save_settings()
+        self.say("Recording devices for app channels now follow your Broadcast faders and mutes." if on else
+                 "Recording devices now stay at full level whatever the Broadcast faders do; set their levels in OBS.")
 
     def toggle_recording_mix(self) -> None:
         mixer = self.engine.mixer

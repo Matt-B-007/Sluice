@@ -29,6 +29,8 @@ log = logging.getLogger(__name__)
 SNAPSHOT_NAME = "efficiency.json"
 SNAPSHOT_SECONDS = 60.0
 BASELINE_SECONDS = 60.0  # the memory use at this point is what later growth is compared with
+MEMORY_EVERY = 15 * 60.0  # 0.12.4: memory is noted this often, so a report shows whether it grows steadily or jumps once
+MEMORY_KEEP = 200  # about two days of samples; the oldest are dropped
 STATES = ("open", "tray", "background")  # window visible / hidden into the tray / minimized or hidden with no tray
 
 # When a flag is raised (one per line in the report). These are rules of thumb, not alarms.
@@ -197,6 +199,7 @@ class Tracker:
         self.audio_cpu_last = 0.0
         self.audio_read_at = 0.0
         self.rss_baseline: Optional[float] = None
+        self.rss_samples: list = []  # (seconds since start, MB)
         self.last_written = 0.0
         self.engine = None
 
@@ -222,6 +225,11 @@ class Tracker:
             self.audio_cpu_last = used
         if self.rss_baseline is None and now - self.started >= BASELINE_SECONDS:
             self.rss_baseline = _status("VmRSS")
+        if self.rss_baseline is not None and (not self.rss_samples or now - self.started - self.rss_samples[-1][0] >= MEMORY_EVERY):
+            mb = _mb(_status("VmRSS"))
+            if mb is not None:
+                self.rss_samples.append((round(now - self.started, 1), mb))
+                del self.rss_samples[:-MEMORY_KEEP]
 
     def meter_tick(self) -> None:
         self.ticks[self.state] += 1
@@ -243,6 +251,7 @@ class Tracker:
             "rss_mb": _mb(_status("VmRSS")),
             "rss_peak_mb": _mb(_status("VmHWM")),
             "rss_baseline_mb": _mb(self.rss_baseline),
+            "rss_over_time": [list(sample) for sample in self.rss_samples],
             "threads": _status("Threads"),
             "helper_cpu_seconds": round(max(0.0, _helper_cpu_seconds() - self.helper_cpu_start), 3),
         }
@@ -386,6 +395,16 @@ def flags(data: dict) -> list:
     return notes
 
 
+def memory_over_time(samples: list, every: float = 3600.0) -> str:
+    """0.12.4: the memory samples, one an hour (the first and the latest always), as "0:01 61 MB · 1:00 63 MB · …"."""
+    shown, next_at = [], None
+    for i, (seconds, mb) in enumerate(samples):
+        if next_at is None or seconds >= next_at or i == len(samples) - 1:
+            shown.append(f"{int(seconds // 3600)}:{int(seconds % 3600 // 60):02d} {mb:.0f} MB")
+            next_at = (seconds // every + 1) * every
+    return " · ".join(shown) if len(shown) > 1 else ""
+
+
 def summary_line(data: Optional[dict]) -> str:
     """One line for the top of the report."""
     if not data:
@@ -470,6 +489,9 @@ def format_section(data: Optional[dict], source: str = "") -> str:
         if data.get("rss_baseline_mb") is not None:
             text += f", after the first minute {data['rss_baseline_mb']:.0f} MB"
         lines.append(text + (f"; {int(data['threads'])} threads" if data.get("threads") else ""))
+        over = memory_over_time(data.get("rss_over_time") or [])
+        if over:
+            lines.append("  over time: " + over)
     else:
         lines.append("  (not available on this system)")
     split = data.get("cpu_split")
