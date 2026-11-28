@@ -1,5 +1,66 @@
 # Changelog
 
+## 0.13.1-beta.3
+The third test version of 0.13.1: the fixes from a click-everything pass over beta.2, which found 47 things. Nothing new to
+learn; a lot that now does what it says.
+
+**Things that did the wrong thing**
+- **Settings switches show what is really on.** "Look for a new version once a day", "Recording devices follow Broadcast" and
+  "Every app channel has its own recording device" showed off while they were on, so the first click turned them off.
+- **Calm, Rows view: the background is no longer black,** and the faint dot grid now really shows in Columns. The grid was a
+  style-sheet rule that blackened Rows and was never drawn in Columns; the floor under the channels paints it now.
+- **Uninstall:** with "Also delete my settings and logs" unticked, the logs are kept as well as the settings (they were
+  removed), and the list of what goes follows both boxes as you tick them.
+- **"Skip this version" also stops the automatic update** from installing that version.
+- **The Effects window knows which channel it is on.** On Game it says "Game effects", "Hear the original sound" and "This
+  channel, live", suggests an EQ and a Limiter, and no longer warns that an EQ, Gain or Limiter is "made for a voice".
+- **Reset.** Each effect has "Reset this effect" (the Noise Gate had no reset at all), and "Reset Room" / "Reset Voice style"
+  go back to the choice you were on, not to whichever choice the moved sliders are nearest.
+- **Two channels cannot have the same name** (they would look the same in OBS). A name longer than 24 characters is said to
+  have been shortened, and adding a channel is confirmed in the status line.
+- **Ctrl+K finds themes, skins and the "Play to" switch,** matches from the start of a word ("rows" no longer finds
+  "Browser"; "mute" still finds "Unmute"), says so when nothing matches, and names commands for what they do instead of the
+  File, Mixer and Window menus that left the screen in 0.12.0.
+- **Linking a channel says so** when it moves Broadcast to Listen's level.
+- **Screen readers hear each fader's real level** from the start (every fader said "0.0 dB" until it was moved).
+- **The ☰ menu** has Show the tour (it listed "Report a problem" twice); the tour's last step points at the Playing now
+  button at the top; Enter in the report's summary no longer opens Save; a long report still opens on GitHub; About sends
+  you to Help (?) › Report a problem; the Privacy page says the truth about the daily look.
+
+**Look**
+- **A ticked box has a tick; a chosen option is a round dot** (it was a square, and its text sat 6 px to the right). On
+  OLED Black the unchosen options can be seen. On Light and Paper an "off" switch has a white knob like every other theme.
+- **The Effects window fits a small screen:** everything scrolls, it has a Close button, and it opens no bigger than the
+  screen (it needed 892 px of height). "Measure my room…" is right under the Noise Gate's sliders, and "Compare: switch
+  both reducers" is only on the two reducers' pages.
+- **The update window has three choices and one obvious one:** Skip this version, Later, **Update now** (Enter). "Open
+  download page" is only there when Sluice cannot install the update itself. The update pill is as tall as the top bar's
+  other buttons.
+- **A long output device name ends in "…"** (the ellipsis itself was cut, leaving ".."). Tile's copy button reads
+  Copy “Sluice (Broadcast)” and fits. In Rows, the Listen and Broadcast cards are as tall as they need, with no empty band.
+- **Compact list:** a whole line above the Listen row (it was a single dot). The focus brackets follow a card's rounded
+  corners. Settings: the Theme button's text has room on the left, the Controllers heading matches the others, and notes
+  always get the height their lines need.
+- **Not reproduced:** "the Mic card sits 1–2 px out of line in Calm Columns". The cards now measure identical to the pixel;
+  the square focus brackets on the first card are the likely cause. Say if you still see it.
+
+**Wording**
+- Messages point at where things are now: ☰ › Quit, Settings › General, Settings › Appearance, Settings › Advanced,
+  Settings › Updates, Settings › About & uninstall (they named the old File, View and Help menus).
+- A level at the bottom reads **off** everywhere (it was "off" on a channel and "-inf dB" on a mix).
+- Listen's mute says "Listen is muted: you hear nothing from Sluice" (it said "nobody hears what you hear"). "1 of 1 is on".
+- Hover hints give the shortcut: Mute Listen (Ctrl+Shift+L), Mute Broadcast (Ctrl+Shift+B), Hear Broadcast (Ctrl+H), Add
+  channel (Ctrl+N).
+- The automatic-update question mentions the signature check, and **Setup check lists `cryptography`**, which checks it.
+
+**For developers**
+- **Tests changed, and why:** `format_db(-60)` is "off" (one word everywhere); keeping settings on uninstall now keeps the
+  logs (the box says "settings and logs"); command labels have no menu prefix; the update window with Update now has no
+  download-page button and Update now is the default. None was loosened. New: `tests/test_beta3_audit_fixes.py`.
+
+## 0.13.1-beta.3
+- (say what changed)
+
 ## 0.13.1-beta.2
 The second test version of 0.13.1: the "Play to" devices are hidden, the logo has its green arcs back, and fixes from
 beta.1's bug reports. Updates must now be signed.

@@ -378,7 +378,8 @@ class LivePanel(QFrame):
         layout.setSpacing(16)
         head = QHBoxLayout()
         head.setSpacing(16)
-        heading = QLabel("YOUR VOICE, LIVE")
+        self.voice = bool(channel.devices)  # 0.13.1-beta.3: an app channel is not "your voice"
+        heading = QLabel("YOUR VOICE, LIVE" if self.voice else "THIS CHANNEL, LIVE")
         heading.setObjectName("tag")
         head.addWidget(heading, 1)
         for text, who in (("Going in", "in"), ("Coming out", "out")):
@@ -536,9 +537,14 @@ class LivePanel(QFrame):
         elif self.effect.bypass:
             self.status.setText("This effect is switched off, so nothing changes. Switch it on to see it work.")
         elif tap is None:
-            self.status.setText("The live display needs Sluice to be running with sound. Speak into your microphone.")
+            self.status.setText(
+                "The live display needs Sluice to be running with sound. "
+                + ("Speak into your microphone." if self.voice else "Play something on this channel.")
+            )
         elif quiet:
-            self.status.setText("Waiting for sound. Speak into your microphone.")
+            self.status.setText(
+                "Waiting for sound. " + ("Speak into your microphone." if self.voice else "Play something on this channel.")
+            )
         else:
             self.status.setText("")
         if self.spectrum.isVisible() and tap is not None and self._ticks % 2 == 0 and not quiet:
@@ -556,7 +562,9 @@ class LivePanel(QFrame):
             self.level_bars[who].set_level(db, max(self._peaks[who]))
             self.level_texts[who].setText("–" if db <= FLOOR_DB + 0.5 else f"{db:.0f} dB")
         values = [v for v in self._recent if v > -75]
-        if len(values) >= 45 and max(values) - min(values) >= 12:
+        if not self.voice:
+            self.room_text.setText("")
+        elif len(values) >= 45 and max(values) - min(values) >= 12:
             ordered = sorted(values)
             room, voice = ordered[int(len(ordered) * 0.1)], ordered[int(len(ordered) * 0.95) - 1]
             self.room_text.setText(

@@ -103,13 +103,20 @@ def test_command_search_finds_menu_items_channels_and_settings(win, qapp, monkey
     from sluice import ui_command
 
     labels = [label for label, _ in ui_command.commands(win)]
-    assert any(label.startswith("Help › Report a problem") for label in labels)
+    # 0.13.1-beta.3: a command is named for what it does (no "File ›", "Help ›": those menus are not on screen), and the themes,
+    # the skins and the "Play to" switch are found too
+    assert any(label.startswith("Report a problem") for label in labels)
+    assert not any(label.startswith(("File ›", "Mixer ›", "Window ›", "Help ›")) for label in labels)
+    assert "Theme › Light" in labels and "Skin › Tile" in labels and any("Play to" in label for label in labels)
+    assert ui_command.matches("Rows (a line for each channel)", "rows") and not ui_command.matches("Effects on Browser", "rows")
     assert "Settings › Appearance" in labels
     assert any(label.startswith("Mute Mic in") or label.startswith("Unmute Mic in") for label in labels)
     assert ui_command.matches("Settings › Appearance", "set app")
     win.command_action.trigger()
     search = win.command_search
     search.search.setText("mute mic")
+    assert search.results.count() >= 3  # "Mute my microphone", and the Mic channel in each mix (muted there or not)
+    search.search.setText("mute mic broadcast")
     assert search.results.count() >= 1
     first = search.results.item(0).text()
     channel = win.engine.mixer.channels[0]
@@ -117,6 +124,12 @@ def test_command_search_finds_menu_items_channels_and_settings(win, qapp, monkey
     search.run_selected()
     qapp.processEvents()
     assert first.split(" ")[0] in ("Mute", "Unmute") and channel.mutes != before
+    win.command_action.trigger()
+    search = win.command_search
+    search.search.setText("zzzz")
+    assert search.results.count() == 1 and search.results.item(0).text().startswith("Nothing matches")
+    search.run_selected()  # (nothing to run: it just stays harmless)
+    search.close()
 
 
 def test_question_mark_opens_the_shortcuts_page_but_not_while_typing(win):

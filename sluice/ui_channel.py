@@ -231,7 +231,7 @@ class CardFrame(QFrame):
             from .ui_tile_paint import paint_brackets
 
             p = QPainter(self)
-            paint_brackets(p, QRectF(self.rect()), themes.color("accent"))
+            paint_brackets(p, QRectF(self.rect()), themes.color("accent"), radius=12)  # (the card's own corner)
             p.end()
 
 
@@ -773,7 +773,13 @@ class ChannelStrip(QWidget):
     def rename(self) -> None:
         text, ok = QInputDialog.getText(self, "Rename channel", "Name:", text=self.channel.label)
         if ok and text.strip():
-            self.engine.rename_channel(self.channel.id, text)
+            name, problem = self.window.channel_name(text, renaming=self.channel.id)
+            if problem:
+                self.window.say(problem)
+                return
+            self.engine.rename_channel(self.channel.id, name)
+            if len(text.strip()) > len(name):
+                self.window.say(f"Renamed to \u201c{name}\u201d (the name was shortened to 24 characters).")
             self.title.setText(self.channel.label)
             self.title.setToolTip(self._title_tip())
             self.window.refresh_sources()
@@ -800,7 +806,9 @@ class ChannelStrip(QWidget):
             else f"{len(active)} of {count} on"
         )
         self.fx_button.setToolTip(
-            "Open this channel's effects" if count == 0 else f"Open this channel's effects: {len(active)} of {count} are on"
+            "Open this channel's effects"
+            if count == 0
+            else f"Open this channel's effects: {len(active)} of {count} {'is' if count == 1 else 'are'} on"
         )
 
     def _on_level(self, mix_id: str, value: int) -> None:
@@ -827,7 +835,15 @@ class ChannelStrip(QWidget):
         self.title.setToolTip(self._title_tip())
 
     def _on_link(self, on: bool) -> None:
+        levels = dict(self.channel.levels)
         self.engine.set_linked(self.channel.id, on)
+        if on and len(set(round(v, 1) for v in levels.values())) > 1:  # 0.13.1-beta.3: the jump is said, not silent
+            from .ui_base import format_db
+
+            self.window.say(
+                f"{self.channel.label}: linked. Broadcast now follows Listen, at {format_db(self.channel.levels.get('monitor', 0.0))} "
+                "(unlink to set them apart again)."
+            )
         self.link.setIcon(icons.icon("link", themes.color("accent_text") if on else themes.color("text_dim"), 18))
         self.sync_from_model()
 

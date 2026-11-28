@@ -22,6 +22,20 @@ GLOW_HZ = 10  # a card's glow follows its sound ten times a second at most (the 
 RADIUS = 20
 
 
+class GridFloor(QWidget):
+    """0.13.1-beta.3: the plain floor under the Rows view: nothing but the faint dot grid (when it is on)."""
+
+    def __init__(self, object_name: str = "channels") -> None:
+        super().__init__()
+        self.setObjectName(object_name)
+
+    def paintEvent(self, event) -> None:
+        if themes.grid_on():
+            p = QPainter(self)
+            themes.paint_grid(p, event.rect())
+            p.end()
+
+
 class CardFloor(QWidget):
     """The floor under Nexus cards: a shadow under each card and a glow round it that follows its sound."""
 
@@ -153,6 +167,8 @@ class CardFloor(QWidget):
         )  # 0.12.2: smooth edges everywhere
         area = event.rect()
         layer = self._static_layer(d, ratio)
+        if self.soft:
+            themes.paint_grid(p, area)  # (under the shadows; aligned to the widget, whatever part is repainted)
         p.drawPixmap(QRectF(area), layer, QRectF(area.x() * ratio, area.y() * ratio, area.width() * ratio, area.height() * ratio))
         if glows:
             for card, color, glow, _wanted in list(self._cards.values()):

@@ -617,12 +617,13 @@ QFrame#sourcechip { background: $surface2; border: none; border-radius: 8px; }
 QFrame#chip { background: $surface2; border: none; border-radius: 8px; }
 QFrame#statuschip { background: transparent; border: 1px solid $border; border-radius: 12px; }
 QFrame#divider { background: $border2; max-width: 1px; min-width: 1px; }
+QFrame#hrule { background: $border2; border: none; max-height: 1px; min-height: 1px; }
 QFrame#empty { background: transparent; border: 2px dashed $dashed; border-radius: 12px; }
 QFrame#firstrun { background: $panel; border: 1px solid $card_edge; border-radius: 16px; }
 QFrame#accent { border: none; border-radius: 2px; }
 QPushButton#danger { color: #ffffff; background: $alarm; border: 1px solid $alarm; font-weight: 600; }
-QPushButton#updatepill { color: $on_color; background: $accent; border: none; border-radius: 16px; padding: 6px 14px;
-    font-weight: 600; }
+QPushButton#updatepill { color: $on_color; background: $accent; border: none; border-radius: 16px; padding: 0 14px;
+    min-height: 32px; max-height: 32px; font-weight: 600; }
 QPushButton#helpbutton { font-size: 16px; font-weight: 700; color: $text; background: transparent; border: 1px solid $border;
     border-radius: 8px; }
 QPushButton#helpbutton:hover { background: $row_hover; }
@@ -821,12 +822,16 @@ QLineEdit { background: $input; border: 1px solid $border_soft; border-radius: 8
     selection-background-color: $select; selection-color: $select_text; }
 QLineEdit:focus { border: 2px solid $focus; padding: 7px; }
 QCheckBox { spacing: 8px; color: $check_text; }
-QCheckBox::indicator { width: 16px; height: 16px; border: 1px solid $line; border-radius: 4px; background: $input; }
-QCheckBox::indicator:checked { background: $accent; border-color: $accent; }
+QCheckBox::indicator { width: 16px; height: 16px; border: 1px solid $text_dim; border-radius: 4px; background: $input; }
+QCheckBox::indicator:checked { background: $accent; border-color: $accent; image: url("$tick_url"); }
 QCheckBox::indicator:focus { border-color: $focus; }
 QRadioButton { spacing: 8px; color: $check_text; }
-QRadioButton::indicator { width: 16px; height: 16px; border: 1px solid $line; border-radius: 9px; background: $input; }
-QRadioButton::indicator:checked { background: $accent; border: 4px solid $input; outline: none; }
+QRadioButton::indicator { width: 16px; height: 16px; border: 1px solid $text_dim; border-radius: 9px; background: $input; }
+QRadioButton::indicator:checked {
+    border-color: $accent;
+    background: qradialgradient(cx: 0.5, cy: 0.5, radius: 0.5, fx: 0.5, fy: 0.5,
+        stop: 0 $accent, stop: 0.44 $accent, stop: 0.56 $input, stop: 1 $input);
+}
 QRadioButton::indicator:focus { border-color: $focus; }
 QListWidget { background: $input; border: 1px solid $border_soft; border-radius: 12px; padding: 8px; color: $list_text;
     outline: 0; }
@@ -1008,14 +1013,19 @@ def finish(colors: dict) -> dict:
     return c
 
 
-def chevron_file(color: str) -> str:
+def tick_file(color: str) -> str:
+    """0.13.1-beta.3: the tick in a ticked box (a ticked box was a plain filled square, like a button)."""
+    return chevron_file(color, "check")
+
+
+def chevron_file(color: str, name: str = "chevron_down") -> str:
     """0.12.2: a dropdown's arrow is Sluice's drawn chevron in the theme's colour, saved once as a small picture for the style sheet
     (a style sheet can only show a picture from a file). "" when it cannot be made (no window system yet, or no writable folder)."""
     import os
     from pathlib import Path
 
     folder = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "sluice" / "icons"
-    path = folder / f"chevron-{color.lstrip('#')}.png"
+    path = folder / f"{name.split('_')[0]}-{color.lstrip('#')}.png"
     if path.is_file():
         return path.as_posix()
     try:
@@ -1026,7 +1036,7 @@ def chevron_file(color: str) -> str:
         from . import ui_icons
 
         folder.mkdir(parents=True, exist_ok=True)
-        if ui_icons.render("chevron_down", color, 32).save(str(path), "PNG"):
+        if ui_icons.render(name, color, 32).save(str(path), "PNG"):
             return path.as_posix()
     except Exception:  # noqa: BLE001 - only a nicer arrow is lost
         pass
@@ -1050,53 +1060,50 @@ def _style_for(items: tuple, skin: str = DEFAULT_SKIN) -> str:
         values["text_off"], values["text_dim"], 0.45
     )  # a greyed-out menu item: plainly off, still easy to read
     values["chevron_url"] = chevron_file(values["text_dim"])
+    values["tick_url"] = tick_file(values["input"])
     if skin == "tile":  # the Calm sheet with the Tile rules after it: flat surfaces with a hairline edge
         from .skin_tile import TILE_STYLE_EXTRA, tile_colors
 
         values.update(tile_colors(values, mix))
         return STYLE_TEMPLATE.substitute(values) + TILE_STYLE_EXTRA.substitute(values)
-    css = STYLE_TEMPLATE.substitute(values)
-    if skin == "calm+grid":
-        dots = grid_file(values["text"], luminance(values["bg"]) >= 0.4)
-        if dots:  # (the House Standard's optional faint pattern, at about 4%: only behind the channel area)
-            css += f"\nQWidget#channels {{ background: {values['bg']} url({dots}) repeat; }}\n"
-    return css
+    return STYLE_TEMPLATE.substitute(values)
 
 
-def grid_file(color: str, light: bool) -> str:
-    """0.13.1: a 16-pixel tile with one faint dot (about 4% of the text colour), saved once for the style sheet. "" if it cannot
-    be made."""
-    import os
+def grid_on() -> bool:
+    """Whether the faint dot grid is drawn behind the channels: the Calm skin, unless "Reduce effects" is on."""
+    return current_skin() == "calm" and not _reduce
 
-    folder = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "sluice" / "icons"
-    path = folder / f"grid-{color.lstrip('#')}.png"
-    if path.is_file():
-        return path.as_posix()
-    try:
-        from PySide6.QtGui import QColor, QGuiApplication, QImage
 
-        if QGuiApplication.instance() is None:
-            return ""
-        folder.mkdir(parents=True, exist_ok=True)
-        image = QImage(16, 16, QImage.Format.Format_ARGB32)
-        image.fill(0)
-        dot = QColor(color)
-        dot.setAlphaF(0.07 if light else 0.05)
-        for x, y in ((7, 7), (8, 7), (7, 8), (8, 8)):
-            image.setPixelColor(x, y, dot)
-        if image.save(str(path), "PNG"):
-            return path.as_posix()
-    except Exception:  # noqa: BLE001 - only the pattern is lost
-        pass
-    return ""
+@lru_cache(maxsize=8)
+def _grid_tile(color: str, light: bool, ratio: float):
+    from PySide6.QtGui import QColor, QPainter, QPixmap
+
+    size = max(1, round(16 * ratio))
+    tile = QPixmap(size, size)
+    tile.fill(QColor(0, 0, 0, 0))
+    tile.setDevicePixelRatio(ratio)
+    dot = QColor(color)
+    dot.setAlphaF(0.07 if light else 0.05)
+    p = QPainter(tile)
+    p.fillRect(7, 7, 2, 2, dot)
+    p.end()
+    return tile
+
+
+def paint_grid(painter, rect) -> None:
+    """0.13.1-beta.3: the House Standard's faint dot grid (one dot every 16 pixels, about 5% of the text colour), painted by the
+    widget under the channels. It was a style-sheet rule: that turned the Rows view's background black and, in Columns, was never
+    drawn at all (the floor under the cards paints itself)."""
+    if not grid_on():
+        return
+    ratio = painter.device().devicePixelRatioF() if painter.device() is not None else 1.0
+    painter.drawTiledPixmap(rect, _grid_tile(color("text"), luminance(color("bg")) >= 0.4, ratio), rect.topLeft())
 
 
 def build_style(colors: dict, skin: str = DEFAULT_SKIN, see: Optional[bool] = None) -> str:  # (``see`` is ignored: Glass is gone)
     """The window's style sheet for a complete colour set in a look (cached: switching back costs nothing). Glass has a second
     form for a see-through window (``see``; the window's own state when not given)."""
     skin = valid_skin(skin)
-    if skin == "calm" and not _reduce:
-        skin = "calm+grid"  # 0.13.1: the faint dot grid behind the channels (off with "Reduce effects")
     return _style_for(tuple(sorted(colors.items())), skin)
 
 

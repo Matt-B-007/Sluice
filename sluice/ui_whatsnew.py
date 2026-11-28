@@ -57,7 +57,9 @@ class NotesDialog(QDialog):
         self.action = action
         self.action_button: Optional[QPushButton] = None
         self.main_button: Optional[QPushButton] = None
-        if main_label and main_url:
+        # 0.13.1-beta.3: with something to run (Update now) the download page's button is left out: five buttons in a row, none
+        # of them the obvious one, was too many ("All releases" still leads to the page)
+        if main_label and main_url and not (action is not None and action_label):
             self.main_button = QPushButton(main_label)
             self.main_button.clicked.connect(self._open_main)
             buttons.addWidget(self.main_button)
@@ -68,17 +70,20 @@ class NotesDialog(QDialog):
             self.extra_button.clicked.connect(lambda _c=False: (run(), self.accept()))
             buttons.addWidget(self.extra_button)
         self.close_button = QPushButton(close_label)
-        if action is not None and action_label:
+        self.close_button.clicked.connect(self.accept)
+        buttons.addWidget(self.close_button)
+        if action is not None and action_label:  # last, and the one Enter presses
             self.action_button = QPushButton(action_label)
             self.action_button.setObjectName("primary")
             self.action_button.clicked.connect(self._run_action)
             buttons.addWidget(self.action_button)
-        self.close_button.clicked.connect(self.accept)
-        buttons.addWidget(self.close_button)
         layout.addLayout(buttons)
         for button in self.findChildren(QPushButton):
             button.setAutoDefault(False)
             button.setDefault(False)
+        if self.action_button is not None:
+            self.action_button.setDefault(True)
+            self.action_button.setFocus()
 
     def _run_action(self) -> None:
         self.accept()

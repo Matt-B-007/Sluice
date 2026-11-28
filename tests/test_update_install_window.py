@@ -68,7 +68,9 @@ def test_an_update_that_can_be_installed_offers_update_now(make, monkeypatch, tm
     win._show_update_result(offer())
     dialog = shown[0]
     assert dialog.action_button is not None and dialog.action_button.text() == "Update now"
-    assert dialog.main_button is not None and dialog.main_button.text() == "Open download page"  # still there too
+    # 0.13.1-beta.3: the download page's button is left out beside Update now (five buttons in a row was too many; "All
+    # releases" still leads there), and Update now is the one Enter presses
+    assert dialog.main_button is None and dialog.action_button.isDefault()
     assert "cannot install this by itself" not in dialog.view.toPlainText()
 
 

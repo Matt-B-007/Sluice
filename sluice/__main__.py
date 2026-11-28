@@ -302,7 +302,7 @@ def _uninstall(args) -> int:
 
     lock = _acquire_lock()
     if lock is None:
-        print("sluice is running. Close it first (Help > Uninstall Sluice closes it for you).", file=sys.stderr)
+        print("sluice is running. Close it first (Settings > About & uninstall closes it for you).", file=sys.stderr)
         return 1
     try:
         return uninstall.run(

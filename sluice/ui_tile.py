@@ -1008,7 +1008,9 @@ class TileStrip(ChannelStrip):
             text = f"{active} of {count} on"
         self.fx_button.setText(text)
         self.fx_button.setToolTip(
-            "Add effects to this channel" if count == 0 else f"Open this channel's effects: {active} of {count} are on"
+            "Add effects to this channel"
+            if count == 0
+            else f"Open this channel's effects: {active} of {count} {'is' if count == 1 else 'are'} on"
         )
         if bool(self.fx_button.property("none")) != (count == 0):
             self.fx_button.setProperty("none", count == 0)
@@ -1206,7 +1208,7 @@ def build_mix_key(strip, mix, on_remove=None, on_add_recording=None) -> None:
         details.addWidget(strip.combo)
     else:
         # 0.13.1: ends in an ellipsis on a narrow card (the whole name is still what is copied)
-        strip.device_button = ElidedButton(f"Pick “{mix.source_description}” in OBS: copy the name")
+        strip.device_button = ElidedButton(f"Copy “{mix.source_description}”")  # 0.13.1-beta.3: short enough to fit
         strip.device_button.setObjectName("tilemove")
         strip.device_button.setCursor(Qt.CursorShape.PointingHandCursor)
         strip.device_button.setToolTip(
@@ -1223,7 +1225,7 @@ def build_mix_key(strip, mix, on_remove=None, on_add_recording=None) -> None:
         strip.hear.setCursor(Qt.CursorShape.PointingHandCursor)
         strip.hear.setToolTip(
             "Check what your audience hears: your output plays the Broadcast mix instead of the Listen mix. "
-            "Turn it off to go back. It always starts off."
+            "Turn it off to go back. It always starts off. (Ctrl+H)"
         )
         strip.hear.toggled.connect(strip._on_hear)
         details.addWidget(strip.hear, 0, Qt.AlignmentFlag.AlignLeft)

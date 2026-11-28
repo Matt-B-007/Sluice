@@ -28,6 +28,10 @@ from . import logs, report
 from .ui_base import DISCORD_URL, ISSUES_URL
 
 
+GITHUB_TITLE_MAX = 120
+GITHUB_STORY_MAX = 1500  # characters of the story in the link (GitHub's limit on a link is about 8,000 once encoded)
+
+
 class ReportDialog(QDialog):
     def __init__(self, window) -> None:
         super().__init__(window)
@@ -81,6 +85,7 @@ class ReportDialog(QDialog):
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
         close = QPushButton("Close")
+        close.setAutoDefault(False)
         close.clicked.connect(self.accept)
         row = QHBoxLayout()
         row.addStretch(1)
@@ -94,8 +99,7 @@ class ReportDialog(QDialog):
         button = QPushButton(text)
         button.setAccessibleName(text.rstrip("…"))
         button.clicked.connect(lambda _c=False: slot())
-        if primary:
-            button.setDefault(True)
+        button.setAutoDefault(False)  # 0.13.1-beta.3: Enter in the summary box opened the Save dialog
         row.addWidget(button)
         return button
 
@@ -147,13 +151,11 @@ class ReportDialog(QDialog):
 
     def github_url(self) -> str:
         """A new GitHub issue with the summary and the report's header only (not the whole report): the file is attached."""
-        title = self.summary.text().strip() or "Problem report"
-        body = (
-            report.header()
-            + "\n"
-            + (self.story.toPlainText().strip() or "(what happened, and what was expected)")
-            + "\n\nPlease attach the saved report file here (drag it into this box)."
-        )
+        title = (self.summary.text().strip() or "Problem report")[:GITHUB_TITLE_MAX]
+        story = self.story.toPlainText().strip() or "(what happened, and what was expected)"
+        if len(story) > GITHUB_STORY_MAX:  # 0.13.1-beta.3: GitHub refuses a link that is too long; the rest is in the file
+            story = story[:GITHUB_STORY_MAX].rstrip() + "\n(…the rest is in the attached report file)"
+        body = report.header() + "\n" + story + "\n\nPlease attach the saved report file here (drag it into this box)."
         return f"{ISSUES_URL}/new?title={quote(title)}&body={quote(report.anonymize(body))}"
 
     def github(self) -> None:

@@ -617,8 +617,10 @@ def test_about_has_the_links(two, monkeypatch):
     shown = []
     monkeypatch.setattr(QMessageBox, "about", staticmethod(lambda *a, **k: shown.append(a[2])))
     win.show_about()
-    for url in (ui_module.DISCORD_URL, ui_module.PROJECT_URL, ui_module.ISSUES_URL):
+    for url in (ui_module.DISCORD_URL, ui_module.PROJECT_URL):
         assert f'href="{url}"' in shown[0]
+    # 0.13.1-beta.3: no link straight to the public issues page: reports go through Help > Report a problem and its warning
+    assert ui_module.ISSUES_URL not in shown[0] and "Report a problem" in shown[0]
 
 
 def test_the_discord_link_is_the_same_everywhere():

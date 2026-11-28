@@ -63,7 +63,9 @@ def test_keeping_settings_leaves_only_that_folder(home):
     assert config_path().parent not in {i.path for i in result.items}
     assert any(p == config_path().parent for p, _ in result.kept)
     assert uninstall.execute(result) == 0
-    assert config_path().exists() and not root.exists() and not logs.state_dir().exists()
+    # 0.13.1-beta.3: the box reads "Also delete my settings and logs", so with it unticked the logs stay too (they were removed)
+    assert config_path().exists() and not root.exists() and logs.state_dir().exists()
+    assert any(p == logs.state_dir() for p, _ in result.kept)
     assert not launcher.launcher_path().exists()
 
 

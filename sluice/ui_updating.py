@@ -203,7 +203,7 @@ class UpdatingMixin:
         self.say(
             "Sluice looks for a new version once a day."
             if mixer.check_daily
-            else "Sluice no longer looks for new versions by itself. Settings > Check now still works."
+            else "Sluice no longer looks for new versions by itself. Settings > Updates > Check for updates still works."
         )
 
     def toggle_auto_update(self) -> None:
@@ -219,8 +219,8 @@ class UpdatingMixin:
                 self,
                 "Update automatically",
                 "Sluice will ask GitHub once, shortly after it starts, whether there is a newer version. If there is, it "
-                "downloads it, checks it against its checksum, and installs it the next time you close Sluice. It never "
-                "restarts or changes anything while it is running, and you can go back with Settings > Go back to the previous "
+                "downloads it, checks its signature and its checksum, and installs it the next time you close Sluice. It never "
+                "restarts or changes anything while it is running, and you can go back with Settings > Updates > Go back to the previous "
                 "version.\n\nTurn this on?",
             )
             if ask != QMessageBox.StandardButton.Yes:
@@ -231,7 +231,7 @@ class UpdatingMixin:
         self.say(
             "Sluice will download new versions by itself and install them when you close it."
             if turn_on
-            else "Automatic updates are off. Settings > Check for updates still works."
+            else "Automatic updates are off. Settings > Updates > Check for updates still works."
         )
 
     def _auto_update_check(self) -> None:
@@ -249,6 +249,9 @@ class UpdatingMixin:
                 result = check(__version__, channel=self.engine.mixer.update_channel)
                 if result.status != "available" or update_install.offer_problem(root, result):
                     return
+                if result.latest == self.engine.mixer.skipped_version:  # 0.13.1-beta.3: "Skip this version" counts here too
+                    log.info("automatic update: %s was skipped by choice", result.latest)
+                    return
                 bridge.quiet.emit((stage(result, root), ""))
             except update_install.UpdateError as exc:
                 bridge.quiet.emit(("", str(exc)))
@@ -263,7 +266,7 @@ class UpdatingMixin:
             self.say(f"Sluice {version} was downloaded and checked. It is installed when you close Sluice.")
         else:
             log.info("automatic update did not go ahead: %s", message)
-            self.say("An automatic update could not be installed. Settings > Check for updates shows why.")
+            self.say("An automatic update could not be installed. Settings > Updates > Check for updates shows why.")
 
     def rollback_update(self) -> None:
         root = update_install.install_root()
@@ -276,7 +279,7 @@ class UpdatingMixin:
         ask.setText(
             f"Go back to Sluice {previous}?\n\nSluice restarts. Your settings are kept, but a newer version may have "
             "saved things an older one does not understand, so a backup of your settings is a good idea first "
-            "(File > Export settings)."
+            "(Settings > Advanced > Export)."
         )
         go = ask.addButton("Go back and restart", QMessageBox.ButtonRole.AcceptRole)
         ask.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)

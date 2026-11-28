@@ -52,13 +52,16 @@ class Switch(QCheckBox):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         on = self.isChecked()
-        track = QColor(themes.color("accent") if on else themes.color("border"))
+        # 0.13.1-beta.3: on a light theme an "off" switch had a dark knob (it read as a third state): a white knob on a greyer track
+        light = themes.luminance(themes.color("bg")) >= 0.4
+        off_track = themes.mix(themes.color("border"), themes.color("text_dim"), 0.6) if light else themes.color("border")
+        track = QColor(themes.color("accent") if on else off_track)
         if not self.isEnabled():
             track.setAlphaF(0.4)
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(track)
         p.drawRoundedRect(self.rect().adjusted(0, 0, -1, -1), 11, 11)
-        p.setBrush(QColor("#ffffff") if on else QColor(themes.color("text2")))
+        p.setBrush(QColor("#ffffff") if on or light else QColor(themes.color("text2")))
         x = self.width() - 19 if on else 3
         p.drawEllipse(x, 3, 16, 16)
         if self.hasFocus():
@@ -254,7 +257,7 @@ class MenuPanel(QWidget):
         self._row(column, w.whats_new_action, "star")
         self._row(column, w.glitch_action, "pulse")
         self._row(column, w.report_action, "bug")
-        self._row(column, w.problem_action, "info")
+        self._row(column, w.tour_action, "info")  # 0.13.1-beta.3: was "Report a problem" a second time
         links = QHBoxLayout()
         links.setContentsMargins(40, 2, 10, 4)
         links.setSpacing(14)

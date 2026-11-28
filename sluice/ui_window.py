@@ -59,7 +59,6 @@ from .ui_base import (
     DISCORD_URL,
     ElidedLabel,
     FIRST_RUN_WIDTH,
-    ISSUES_URL,
     LAYOUTS,
     MIX_HEADINGS,
     MIX_TAGS,
@@ -643,8 +642,9 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
 
             self.channels_widget = CardFloor(soft=True)
         else:
-            self.channels_widget = QWidget()
-            self.channels_widget.setObjectName("channels")
+            from .ui_nexus import GridFloor
+
+            self.channels_widget = GridFloor()
         page = QHBoxLayout()
         page.setContentsMargins(0, 0, 0, 0)
         page.setSpacing((8 if tray else 24))
@@ -680,7 +680,8 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
                 masters = QVBoxLayout()
                 masters.setSpacing(16)
                 for strip in self.mix_strips:
-                    masters.addWidget(strip, 1)
+                    masters.addWidget(strip)
+                masters.addStretch(1)  # 0.13.1-beta.3: each card as tall as it needs (stretched, each had an empty band inside)
                 holder = QWidget()
                 holder.setFixedWidth(304)
                 holder.setLayout(masters)
@@ -1058,7 +1059,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         elif mode == "tray" and not self.tray_active:
             self.say(
                 "No system tray was found on this desktop, so closing the window will minimize it to the taskbar instead. "
-                "Use File > Quit to exit."
+                "Use ☰ > Quit (Ctrl+Q) to exit."
             )
         elif mode == "tray":
             self.say(
@@ -1066,7 +1067,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
                 "the window back; right-click it for Quit."
             )
         else:
-            self.say("Closing the window will keep Sluice running, minimized to the taskbar. Use File > Quit to exit.")
+            self.say("Closing the window will keep Sluice running, minimized to the taskbar. Use ☰ > Quit (Ctrl+Q) to exit.")
 
     # ---------------------------------------------------------------- outside control
     def attach_controls(self, controls) -> None:
@@ -1109,7 +1110,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         add = QPushButton("+  Add channel")
         add.setObjectName("addchannel")
         add.setCursor(Qt.CursorShape.PointingHandCursor)
-        add.setToolTip("Add a channel for another app or group of apps")
+        add.setToolTip("Add a channel for another app or group of apps (Ctrl+N)")
         add.clicked.connect(self.add_channel)
         if rows:
             add.setFixedHeight(48)
@@ -1166,9 +1167,30 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
 
     def add_channel(self) -> None:
         text, ok = QInputDialog.getText(self, "New channel", "Name (for example Game, Music, Browser):")
-        if ok and text.strip():
-            self.engine.add_channel(text)
-            self.rebuild_channels()
+        if not ok:
+            return
+        name, problem = self.channel_name(text)
+        if problem:
+            self.say(problem)
+            return
+        channel = self.engine.add_channel(name)
+        self.rebuild_channels()
+        cut = " (the name was shortened to 24 characters)" if len(text.strip()) > len(name) else ""
+        self.say(f"Channel \u201c{channel.label}\u201d added{cut}. Use + Add app or device on its card to put apps on it.")
+
+    def channel_name(self, text: str, renaming: Optional[str] = None) -> tuple:
+        """0.13.1-beta.3: (the name as it will be kept, what is wrong with it or ""). A name is cut to 24 characters, and two
+        channels (or a channel and a mix) cannot share one: their devices would have the same name in OBS."""
+        name = (text or "").strip()[:24].strip()
+        if not name:
+            return "", "A channel needs a name."
+        mixer = self.engine.mixer
+        taken = {c.label.casefold() for c in mixer.channels if c.id != renaming} | {m.label.casefold() for m in mixer.mixes}
+        if name.casefold() in taken:
+            return name, (
+                f"There is already a \u201c{name}\u201d. Choose another name: two with the same name would look the same in OBS."
+            )
+        return name, ""
 
     def remove_channel(self, channel_id: str) -> None:
         self.engine.remove_channel(channel_id)
@@ -1349,8 +1371,8 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
             f"<b>Sluice {__version__}</b><br>An open-source virtual audio mixer for PipeWire.<br><br>"
             f"License: GPL-3.0-or-later<br>Python {platform.python_version()}, PySide6 {pyside_version}<br>"
             f"Log: {logs.short_path(logs.log_path())}<br><br>"
-            f'<a href="{PROJECT_URL}">Project page</a> &nbsp;·&nbsp; <a href="{DISCORD_URL}">Join the Discord</a> '
-            f'&nbsp;·&nbsp; <a href="{ISSUES_URL}">Report a problem</a>',
+            f'<a href="{PROJECT_URL}">Project page</a> &nbsp;·&nbsp; <a href="{DISCORD_URL}">Join the Discord</a>'
+            "<br><br>To report a problem, use Help (?) › Report a problem: it shows what the report holds first.",
         )
 
     def check_for_updates(self) -> None:
@@ -1580,7 +1602,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
                     "Could not save the report",
                     f"The report could not be saved to:\n{path}\n\n{type(exc).__name__}: {exc}\n\n"
                     "Try another folder, or run  sluice --report  in a terminal. Details are in the log "
-                    "(File > Open folder).",
+                    "(Settings > Advanced > Open folder).",
                 )
 
     def mark_glitch(self) -> None:
@@ -1646,7 +1668,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
         box.setText("Quit Sluice, or keep it running in the system tray?")
         box.setInformativeText(
             "In the tray the mixer keeps working while the window is out of the way, and you can mute your microphone "
-            "from the tray icon. You can change this any time in Settings > Running in the background."
+            "from the tray icon. You can change this any time in Settings > General."
         )
         tray = box.addButton("Keep running in the tray", QMessageBox.ButtonRole.AcceptRole)
         quit_button = box.addButton("Quit Sluice", QMessageBox.ButtonRole.DestructiveRole)
@@ -1680,7 +1702,7 @@ class MainWindow(MenusMixin, ThemesMixin, TrayMixin, UpdatingMixin, QMainWindow)
                 self.say("Sluice is still running in the system tray.")
             else:
                 self.showMinimized()
-                self.say("Sluice is still running. Click it in the taskbar to bring it back, or use File > Quit.")
+                self.say("Sluice is still running. Click it in the taskbar to bring it back, or use ☰ > Quit (Ctrl+Q).")
             return
         self.shutdown()
         event.accept()

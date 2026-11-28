@@ -22,11 +22,11 @@ def commands(window) -> list:
             if action.isSeparator() or not action.text():
                 continue
             if action.menu() is not None:
-                walk(action.menu(), f"{path} › {plain(action.text())}")
+                walk(action.menu(), f"{path} › {plain(action.text())}" if path else plain(action.text()))
                 continue
             if not action.isEnabled() or action.property("heading"):
                 continue
-            label = f"{path} › {plain(action.text())}"
+            label = f"{path} › {plain(action.text())}" if path else plain(action.text())
             keys = action.shortcut().toString(QKeySequence.SequenceFormat.NativeText)
             if keys:
                 label += f"   ({keys})"
@@ -34,8 +34,16 @@ def commands(window) -> list:
                 seen.add(label)
                 found.append((label, action.trigger))
 
+    # 0.13.1-beta.3: the skins and themes are found too (their lists are only filled when opened), and so is the "Play to" switch
+    for fill in ("_fill_skin_menu", "_fill_theme_menu"):
+        if hasattr(window, fill):
+            getattr(window, fill)()
+    # ...and a command is named for what it does, not for a File, Mixer or Window menu that has not been on screen since 0.12.0
     for menu in getattr(window, "action_groups", []):
-        walk(menu, plain(menu.title()))
+        walk(menu, "")
+    extra = getattr(window, "play_to_action", None)
+    if extra is not None:
+        found.append((plain(extra.text()), extra.trigger))
     engine = window.engine
     for channel in engine.mixer.channels:
         found.append((f"Effects on {channel.label}", partial(_effects, window, channel.id)))
@@ -74,9 +82,18 @@ def _toggle_mute(window, channel_id: str, mix_id: str) -> None:
     window.say(f"{channel.label} {'muted' if on else 'unmuted'} in {window.engine.mixer.mix(mix_id).label}.")
 
 
+def _parts(label: str) -> list:
+    low = label.lower()
+    for mark in "\u203a()\u201c\u201d:,/-\u00b7":
+        low = low.replace(mark, " ")
+    parts = low.split()
+    return parts + [part[2:] for part in parts if part.startswith("un") and len(part) > 4]  # "mute" finds "Unmute" too
+
+
 def matches(label: str, text: str) -> bool:
-    words = text.lower().split()
-    return all(word in label.lower() for word in words)
+    """Every word typed starts a word of the label. 0.13.1-beta.3: it was "is anywhere inside", so "rows" found "Browser"."""
+    parts = _parts(label)
+    return all(any(part.startswith(word) for part in parts) for word in _parts(text))
 
 
 def score(label: str, text: str) -> int:
@@ -116,6 +133,10 @@ class CommandSearch(QDialog):
             self.results.addItem(item)
         if self.results.count():
             self.results.setCurrentRow(0)
+        else:  # 0.13.1-beta.3: an empty box said nothing
+            item = QListWidgetItem(f"Nothing matches \u201c{text.strip()}\u201d. Try one word, such as mute, theme or effects.")
+            item.setFlags(Qt.ItemFlag.NoItemFlags)
+            self.results.addItem(item)
 
     def keyPressEvent(self, event) -> None:
         if event.key() in (Qt.Key.Key_Down, Qt.Key.Key_Up) and self.results.count():

@@ -7,7 +7,7 @@ import logging
 from typing import Optional
 
 from PySide6.QtCore import QSize, Qt, Signal
-from PySide6.QtGui import QFontMetrics, QGuiApplication, QPainter
+from PySide6.QtGui import QGuiApplication, QPainter
 from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
@@ -31,7 +31,7 @@ from .ui_base import (
     _is_tile,
     _label,
     MIX_ICONS,
-    MIX_MUTE_TIPS,
+    mix_mute_tip,
     MIX_WIDTH,
     NONE_DATA,
     ReadoutEdit,
@@ -64,8 +64,12 @@ class DeviceCombo(QComboBox):
         option = QStyleOptionComboBox()
         self.initStyleOption(option)
         text = (self.prefix + option.currentText) if option.currentText or self.prefix else ""
-        room = max(16, self.width() - 12 * 2 - 24)
-        option.currentText = QFontMetrics(self.font()).elidedText(text, Qt.TextElideMode.ElideRight, room)
+        # 0.13.1-beta.3: the room the style really gives the text (a guess let the "…" itself be cut, so a name ended in "..")
+        field = self.style().subControlRect(
+            QStyle.ComplexControl.CC_ComboBox, option, QStyle.SubControl.SC_ComboBoxEditField, self
+        )
+        room = max(16, min(field.width(), self.width() - 12 * 2 - 24) - 6)
+        option.currentText = option.fontMetrics.elidedText(text, Qt.TextElideMode.ElideRight, room)
         painter.drawComplexControl(QStyle.ComplexControl.CC_ComboBox, option)
         painter.drawControl(QStyle.ControlElement.CE_ComboBoxLabel, option)
 
@@ -288,7 +292,7 @@ class MixStrip(QFrame):
             self.hear.setCursor(Qt.CursorShape.PointingHandCursor)
             self.hear.setToolTip(
                 "Check what your audience hears: your output plays the Broadcast mix instead of the Listen mix. "
-                "Turn it off to go back. It always starts off."
+                "Turn it off to go back. It always starts off. (Ctrl+H)"
             )
             self.hear.toggled.connect(self._on_hear)
             layout.addWidget(self.hear)
@@ -363,8 +367,7 @@ class MixStrip(QFrame):
             )
         )
         self.mute.setIconSize(QSize(size, size))
-        what = MIX_MUTE_TIPS.get(self.mix.id, f"the {self.mix.label} mix")
-        self.mute.setToolTip(f"Muted: nobody hears {what}. Click to unmute." if muted else f"Mute {what}")
+        self.mute.setToolTip(mix_mute_tip(self.mix, muted))
         on = self.limiter.isChecked()
         if self.tile_key:
             self.fader.set_muted(muted)

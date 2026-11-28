@@ -6,7 +6,7 @@ signal in its grooves.
 
 The tiles themselves are in ``ui_tile``; this module holds the colours and the style sheet rules that go after the Calm sheet.
 
-Part of the Look setting (View > Look). With View > Tile colours on (the default), the built-in themes show the look's own keys:
+Part of the Look setting (Settings > Appearance). With Skin's own colours on (the default), the built-in themes show the look's own keys:
 white keys on a silver tray for Light and Paper, graphite keys on a black tray for the dark ones. Off, or with High contrast or an
 imported theme, the keys take the theme's own colours."""
 

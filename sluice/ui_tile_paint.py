@@ -98,11 +98,12 @@ def paint_surface(
             p.setPen(QPen(QColor(255, 255, 255, 34), 1))
             p.drawRoundedRect(face.adjusted(0.5, 0.5, -0.5, -0.5), radius, radius)
     if focus:
-        paint_brackets(p, face, themes.color("accent"))
+        paint_brackets(p, face, themes.color("accent"), radius=radius)
 
 
-def paint_brackets(p: QPainter, rect: QRectF, color: str, length: float = 14.0, width: float = 2.0) -> None:
-    """0.13.1 (House Standard v1.3, the family detail): small corner brackets in the accent around the focused card."""
+def paint_brackets(p: QPainter, rect: QRectF, color: str, length: float = 14.0, width: float = 2.0, radius: float = 0.0) -> None:
+    """0.13.1 (House Standard v1.3, the family detail): small corner brackets in the accent around the focused card.
+    0.13.1-beta.3: ``radius`` rounds each bracket to the card's own corner (square brackets stuck out past a rounded card)."""
     p.save()
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
     p.setBrush(Qt.BrushStyle.NoBrush)
@@ -116,8 +117,18 @@ def paint_brackets(p: QPainter, rect: QRectF, color: str, length: float = 14.0, 
         (r.left(), r.bottom(), 1, -1),
         (r.right(), r.bottom(), -1, -1),
     ):
-        p.drawLine(QPointF(x, y + dy * length), QPointF(x, y))
-        p.drawLine(QPointF(x, y), QPointF(x + dx * length, y))
+        if radius <= 0:
+            p.drawLine(QPointF(x, y + dy * length), QPointF(x, y))
+            p.drawLine(QPointF(x, y), QPointF(x + dx * length, y))
+            continue
+        turn = max(1.0, radius - width / 2 - 1)  # the card's corner, drawn that much further in
+        reach = max(length, turn + 4)
+        k = turn * 0.4477  # (1 - 0.5523): a quarter circle as one curve
+        path = QPainterPath(QPointF(x, y + dy * reach))
+        path.lineTo(QPointF(x, y + dy * turn))
+        path.cubicTo(QPointF(x, y + dy * k), QPointF(x + dx * k, y), QPointF(x + dx * turn, y))
+        path.lineTo(QPointF(x + dx * reach, y))
+        p.drawPath(path)
     p.restore()
 
 

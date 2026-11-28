@@ -363,7 +363,7 @@ class MenusMixin:
             return
         specs, mixer.hidden_widgets = list(mixer.hidden_widgets), []
         if not specs:
-            self.say("No desktop widgets to bring back. Choose some in View > Desktop widgets.")
+            self.say("No desktop widgets to bring back. Choose some in Settings > Appearance.")
             return
         for spec in specs:
             desktop.reopen(spec)
@@ -463,7 +463,12 @@ class MenusMixin:
         from .ui_uninstall import UninstallDialog
 
         self.uninstall_dialog = dialog = UninstallDialog(
-            uninstall.plan(keep_settings=True), uninstall.plan(keep_settings=False, remove_git=True), self
+            uninstall.plan(keep_settings=True),
+            uninstall.plan(keep_settings=False, remove_git=True),
+            self,
+            plan=lambda everything, caches: uninstall.plan(
+                keep_settings=not everything, clear_caches=caches, remove_git=everything
+            ),
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -519,6 +524,7 @@ class MenusMixin:
     def _refresh_settings_menu(self) -> None:
         self._refresh_file_menu()
         self.auto_update_action.setChecked(self.engine.mixer.auto_update)
+        self.check_daily_action.setChecked(self.engine.mixer.check_daily)
         for name, action in getattr(self, "channel_actions", {}).items():
             action.setChecked(self.engine.mixer.update_channel == name)
         self._refresh_update_menu()

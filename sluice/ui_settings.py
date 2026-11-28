@@ -52,8 +52,46 @@ def _heading(text: str) -> QLabel:
     return label
 
 
+class PickerButton(QPushButton):
+    """0.13.1-beta.3: a button that opens a list: its text 16 px from the left edge and a drawn chevron 14 px from the right.
+    (Qt's style sheets ignore a button's padding once it has both an icon and ``text-align``, so "Dark" sat on the border.)"""
+
+    def paintEvent(self, _event) -> None:  # noqa: N802
+        from PySide6.QtGui import QPainter
+        from PySide6.QtWidgets import QStyle, QStyleOptionButton
+
+        option = QStyleOptionButton()
+        self.initStyleOption(option)
+        text, option.text = option.text, ""
+        option.icon = type(option.icon)()
+        p = QPainter(self)
+        self.style().drawControl(QStyle.ControlElement.CE_PushButton, option, p, self)
+        room = self.rect().adjusted(16, 0, -14 - 14 - 8, 0)
+        p.setPen(self.palette().buttonText().color())
+        p.drawText(
+            room,
+            int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
+            self.fontMetrics().elidedText(text, Qt.TextElideMode.ElideRight, room.width()),
+        )
+        icons.icon("chevron_down", themes.color("text_dim"), 14).paint(
+            p, self.width() - 14 - 14, (self.height() - 14) // 2, 14, 14
+        )
+        p.end()
+
+
+class WrapLabel(QLabel):
+    """0.13.1-beta.3: wrapped text that always gets the height its lines need at the width it has (a plain label in a scrolling
+    column could keep the height of a wider layout, and lose its last line: the note over "Recording devices for OBS")."""
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        need = self.heightForWidth(self.width())
+        if need > 0 and need != self.minimumHeight():
+            self.setMinimumHeight(need)
+
+
 def _note(text: str) -> QLabel:
-    label = QLabel(text)
+    label = WrapLabel(text)
     label.setObjectName("hint")
     label.setWordWrap(True)
     return label
@@ -319,9 +357,8 @@ class SettingsWindow(QDialog):
         holder.addStretch(1)
         column.addLayout(holder)
         window = self._group(column, "Window")
-        self.theme_button = QPushButton()
+        self.theme_button = PickerButton()
         self.theme_button.setObjectName("themepicker")
-        icons.dropdown(self.theme_button)  # 0.12.2: a drawn chevron, not a typed ▾
         self.theme_button.setMenu(w.theme_menu)
         self.theme_button.setAccessibleName("Theme")
         self.theme_button.setMinimumWidth(200)
@@ -412,9 +449,7 @@ class SettingsWindow(QDialog):
         # 0.12.2: the controllers page itself, here, instead of a button that opened another window
         self.controllers_box = QVBoxLayout()
         self.controllers_box.setSpacing(8)
-        heading = QLabel("MIDI controllers and Stream Deck")
-        heading.setObjectName("grouphead")
-        self.controllers_box.addWidget(heading)
+        self.controllers_box.addWidget(_heading("MIDI controllers and Stream Deck"))  # 0.13.1-beta.3: as every other heading
         self.controllers_box.addWidget(_note("Turn a knob or press a key to move a fader, mute a channel or your mic."))
         column.addLayout(self.controllers_box)
         self.controllers_panel = None
@@ -590,14 +625,16 @@ class SettingsWindow(QDialog):
         group = self._group(
             column,
             "What Sluice sends",
-            "Nothing, by itself. There is no telemetry and no account. Sluice uses "
-            "the internet only for updates: when you check for one, or if automatic updates are on (Updates).",
+            "There is no telemetry and no account. Sluice uses the internet only for updates: once a day it asks GitHub "
+            "which version is the newest (you can turn that off under Updates), when you press Check now, and to download "
+            "an update you chose or automatic updates fetched. That request carries no information about you or your setup.",
         )
-        group.addWidget(
-            _note(
-                "Never collected: your audio, settings, logs or reports, the names of your devices, apps, channels or "
-                "games, usage statistics, crash reports, or anything that identifies you or your computer."
-            )
+        self._row(
+            group,
+            "Never collected",
+            None,
+            "Your audio, settings, logs or reports, the names of your devices, apps, channels or games, usage statistics, "
+            "crash reports, or anything that identifies you or your computer.",
         )
         reports = self._group(
             column,
@@ -695,6 +732,7 @@ class SettingsWindow(QDialog):
         """Show the real state of every setting (the window's own refreshers bring the actions up to date first)."""
         w = self.window_
         w._refresh_settings_menu()
+        w._refresh_mixer_menu()  # 0.13.1-beta.3: the recording-device, "Play to" and daily-look switches showed "off" without it
         w._refresh_buffer_menu()
         w._refresh_view_menu()
         w._show_layout_choice()

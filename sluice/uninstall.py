@@ -138,7 +138,10 @@ def plan(keep_settings: bool = False, root: Optional[Path] = None, clear_caches:
         else:
             result.items.append(Item(settings, "settings, presets and controller bindings"))
     if logs.state_dir().exists():
-        result.items.append(Item(logs.state_dir(), "logs, notes and the crash log"))
+        if keep_settings:  # 0.13.1-beta.3: "Also delete my settings and logs" unticked keeps the logs too, as it says
+            result.kept.append((logs.state_dir(), "your logs, notes and the crash log (you chose to keep them)"))
+        else:
+            result.items.append(Item(logs.state_dir(), "logs, notes and the crash log"))
     for path in _legacy_dirs():
         if path.exists():
             result.items.append(Item(path, "settings or logs from the old name (pwmix)"))

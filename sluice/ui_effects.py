@@ -270,14 +270,35 @@ class EffectsDialog(QDialog):
         self._speech_started = None
         self._rows: dict = {}  # parameter key -> its ParamRow, for the effect being shown
         self.setWindowTitle(f"Effects — {channel.label}")
-        self.resize(1280, 920)
+        self._voice = bool(channel.devices)  # a microphone channel (an app channel gets no voice wording)
+        self._axis_chosen: dict = {}  # axis -> the choice picked here (Reset goes back to it, not to the nearest one)
+        # 0.13.1-beta.3: everything scrolls, so the window fits a small screen (it needed 892 px of height), with a Close button
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 12)
+        outer.setSpacing(8)
+        page = QScrollArea()
+        page.setWidgetResizable(True)
+        page.setFrameShape(QScrollArea.Shape.NoFrame)
+        inner = QWidget()
+        page.setWidget(inner)
+        outer.addWidget(page, 1)
+        bottom = QHBoxLayout()
+        bottom.setContentsMargins(24, 0, 24, 0)
+        bottom.addStretch(1)
+        self.close_button = QPushButton("Close")
+        self.close_button.clicked.connect(self.accept)
+        bottom.addWidget(self.close_button)
+        outer.addLayout(bottom)
+        screen = self.screen().availableGeometry() if self.screen() is not None else None
+        self.setMinimumSize(640, 420)
+        self.resize(min(1280, screen.width() - 40) if screen else 1280, min(960, screen.height() - 60) if screen else 960)
 
-        root = QVBoxLayout(self)
-        root.setContentsMargins(24, 24, 24, 24)
+        root = QVBoxLayout(inner)
+        root.setContentsMargins(24, 24, 24, 12)
         root.setSpacing(24)
         head = QVBoxLayout()
         head.setSpacing(4)
-        heading = QLabel("Mic effects")
+        heading = QLabel(f"{channel.label} effects")
         heading.setObjectName("title")
         caption = QLabel("Sound passes through these from left to right.")
         caption.setObjectName("hint")
@@ -304,7 +325,7 @@ class EffectsDialog(QDialog):
             status = QLabel("")
             status.setObjectName("hint")
             top.addWidget(status, 1)
-            reset = QPushButton("Reset")
+            reset = QPushButton(f"Reset {title}")
             reset.setFlat(True)
             reset.setToolTip("Put every setting of this choice back to exactly what the name says.")
             reset.clicked.connect(partial(self._reset_axis, axis))
@@ -389,7 +410,7 @@ class EffectsDialog(QDialog):
             changed_layout.addWidget(button)
         self.mine_changed_row.hide()
         side.addWidget(self.mine_changed_row)
-        self.compare_button = QPushButton("Hear my original microphone")
+        self.compare_button = QPushButton(self._original_text())
         self.compare_button.setCheckable(True)
         self.compare_button.setToolTip(
             "Switches the whole effect chain off so you can compare with and without. "
@@ -586,6 +607,10 @@ class EffectsDialog(QDialog):
             self.mine_changed_label.setText(f"Changed from your preset \u201c{self._active_user}\u201d.")
         for axis in presets.AXES:
             name, changed = presets.axis_state(effects, axis)
+            if name is not None and not changed:
+                self._axis_chosen[axis] = name  # exactly on a choice: that is the one Reset returns to
+            elif name is not None and self._axis_chosen.get(axis) in presets.AXES[axis]:
+                name = self._axis_chosen[axis]  # moved off it: still "Normal (changed)", whatever is nearest now
             for (a, n), button in self._choice_buttons.items():
                 if a != axis:
                     continue
@@ -612,14 +637,35 @@ class EffectsDialog(QDialog):
             (i for i, e in enumerate(self.channel.effects) if e.kind == "builtin" and any(x["type"] == e.type for x in entries)),
             None,
         )
+        self._axis_chosen[axis] = name
         self._reload(select=target if target is not None else max(0, self.list.currentRow()))
         self._tell(f"{'Room' if axis == 'room' else 'Voice style'}: {name}. {presets.summary(entries)}.")
 
     def _reset_axis(self, axis: str) -> None:
-        presets.reset_axis(self.engine, self.channel.id, axis)
+        """Back to the choice you were on. 0.13.1-beta.3: that is the one picked or shown when the sliders were first moved,
+        not whichever choice the moved sliders now happen to be nearest to."""
+        name = self._axis_chosen.get(axis)
+        if name in presets.AXES[axis]:
+            presets.apply(self.engine, self.channel.id, presets.AXES[axis][name][1])
+        else:
+            presets.reset_axis(self.engine, self.channel.id, axis)
+            name, _changed = presets.axis_state(self.channel.effects, axis)
         self._reload(select=max(0, self.list.currentRow()))
-        name, _changed = presets.axis_state(self.channel.effects, axis)
         self._tell(f"{name} is back to its own settings.")
+
+    def _reset_effect(self, effect) -> None:
+        """0.13.1-beta.3: every slider of the effect shown back to its starting value (the Room and Voice style Reset buttons
+        do not cover every effect: the Noise Gate belongs to neither)."""
+        instance = self.engine.effect_instance(effect.id)
+        if instance is None:
+            return
+        for info in instance.param_infos():
+            if info.default is not None:
+                self.engine.set_effect_param(effect.id, info.key, info.default)
+        self.live.parameters_changed()
+        self._show_params(self.list.currentRow())
+        self._update_presets_button()
+        self._tell(f"{effect.name} is back to its starting values.")
 
     def _tell(self, message: str) -> None:
         self.preset_feedback.setText(message)
@@ -630,7 +676,10 @@ class EffectsDialog(QDialog):
 
     def _compare_chain(self, original: bool) -> None:
         self.engine.set_chain_compare(self.channel.id, original)
-        self.compare_button.setText("Back to my effects" if original else "Hear my original microphone")
+        self.compare_button.setText("Back to my effects" if original else self._original_text())
+
+    def _original_text(self) -> str:
+        return "Hear my original microphone" if self._voice else "Hear the original sound"
 
     def done(self, result) -> None:  # the before/after switch and the live look never outlive the window
         self._stop_tap()
@@ -829,13 +878,18 @@ class EffectsDialog(QDialog):
                 lead.setObjectName("bigvalue")
                 lead.setWordWrap(True)
                 side.addWidget(lead)
-                note = QLabel("Add an effect to shape it. For a microphone most people start with these two:")
+                note = QLabel(
+                    "Add an effect to shape it. For a microphone most people start with these two:"
+                    if self._voice
+                    else "Add an effect to shape it. For music, games and other apps these two are the useful ones:"
+                )
                 note.setWordWrap(True)
                 note.setObjectName("hint")
                 side.addWidget(note)
                 for key, why in (
-                    ("noise_gate", "silences the room between your words"),
-                    ("compressor", "evens out loud and quiet talking"),
+                    (("noise_gate", "silences the room between your words"), ("compressor", "evens out loud and quiet talking"))
+                    if self._voice
+                    else (("eq", "shapes the tone: more or less bass, middle and treble"), ("limiter", "stops loud peaks"))
                 ):
                     button = QPushButton(f"Add {BUILTIN_NAMES[key]}")
                     button.setIcon(icons.themed_icon("plus", "text"))
@@ -860,12 +914,34 @@ class EffectsDialog(QDialog):
             row = ParamRow(info, partial(self._param_changed, effect.id))
             self._rows[info.key] = row
             layout.addWidget(row)
+        if any(info.default is not None for info in infos):
+            reset = QPushButton("Reset this effect")
+            reset.setAutoDefault(False)
+            reset.setToolTip(f"Put every slider of {effect.name} back to its starting value.")
+            reset.clicked.connect(partial(self._reset_effect, effect))
+            layout.addWidget(reset, 0, Qt.AlignmentFlag.AlignLeft)
         definition = BUILTINS.get(effect.type) if effect.kind == "builtin" else None
+        if effect.kind == "builtin" and effect.type == "noise_gate" and instance.usable and self._voice:
+            # 0.13.1-beta.3: straight under the sliders (it was below the long explanation, out of sight)
+            measure = QPushButton("Measure my room…")
+            measure.setAutoDefault(False)
+            measure.setToolTip(
+                "Not sure what threshold suits your room? Stay quiet for 5 seconds with your usual background noise on; "
+                "the threshold is set just above it."
+            )
+            measure.clicked.connect(partial(self._measure_room, effect))
+            tools = QHBoxLayout()
+            tools.setSpacing(8)
+            tools.addWidget(measure)
+            tools.addWidget(self._voice_button())
+            tools.addStretch(1)
+            layout.addLayout(tools)
         self.activity_label, self._activity_stage, self._compressor = None, None, None
         self._timer.stop()
         if definition is not None and definition.hint:
             layout.addSpacing(8)
-            if not self.channel.devices:
+            # 0.13.1-beta.3: not on the EQ, Gain or Limiter (they suit music and games as well as a voice)
+            if not self.channel.devices and effect.type not in ("eq", "gain", "limiter"):
                 warn = QLabel(
                     "This channel has no microphone. This effect is made for a voice and will make music or "
                     "game sound worse: remove it here."
@@ -890,13 +966,14 @@ class EffectsDialog(QDialog):
                 measure_echo.setToolTip("Clap once; Sluice works out how long your room's echo lasts and sets Room echo time.")
                 measure_echo.clicked.connect(partial(self._measure_echo, effect))
                 layout.addWidget(measure_echo, 0, Qt.AlignmentFlag.AlignLeft)
-            compare = QPushButton("Compare: switch both reducers off / on")
-            compare.setAutoDefault(False)
-            compare.setToolTip(
-                "Flips the Echo Reducer and Noise Reducer together, so you can hear the difference while you talk."
-            )
-            compare.clicked.connect(self._compare_reducers)
-            layout.addWidget(compare, 0, Qt.AlignmentFlag.AlignLeft)
+            if effect.type in ("echo_reducer", "noise_reducer"):  # 0.13.1-beta.3: it was on the Gate, Compressor and Limiter too
+                compare = QPushButton("Compare: switch both reducers off / on")
+                compare.setAutoDefault(False)
+                compare.setToolTip(
+                    "Flips the Echo Reducer and Noise Reducer together, so you can hear the difference while you talk."
+                )
+                compare.clicked.connect(self._compare_reducers)
+                layout.addWidget(compare, 0, Qt.AlignmentFlag.AlignLeft)
         if effect.kind == "builtin" and effect.type == "compressor" and instance.usable:
             self.activity_label = QLabel("")
             self.activity_label.setObjectName("hint")
@@ -907,23 +984,6 @@ class EffectsDialog(QDialog):
             self._update_activity()
             if self.channel.devices:
                 layout.addWidget(self._voice_button(), 0, Qt.AlignmentFlag.AlignLeft)
-        if effect.kind == "builtin" and effect.type == "noise_gate" and instance.usable:
-            note = QLabel(
-                "Not sure what threshold suits your room? Sluice can listen to your microphone for a few "
-                "quiet seconds and set it for you."
-            )
-            note.setWordWrap(True)
-            note.setObjectName("hint")
-            measure = QPushButton("Measure my room…")
-            measure.setAutoDefault(False)
-            measure.setToolTip(
-                "Stay quiet for 5 seconds with your usual background noise on; the threshold is set just above it."
-            )
-            measure.clicked.connect(partial(self._measure_room, effect))
-            layout.addSpacing(12)
-            layout.addWidget(note)
-            layout.addWidget(measure, 0, Qt.AlignmentFlag.AlignLeft)
-            layout.addWidget(self._voice_button(), 0, Qt.AlignmentFlag.AlignLeft)
         if len(infos) > MAX_VST3_PARAMS:
             more = QLabel(f"{len(infos) - MAX_VST3_PARAMS} more parameters: use “Open plugin window”.")
             more.setObjectName("hint")

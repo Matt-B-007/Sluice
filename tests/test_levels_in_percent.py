@@ -31,7 +31,7 @@ def test_levels_are_shown_as_the_settings_say():
     ui_base.UNITS = "both"
     assert format_level(-18.0) == "-18.0 dB · 50%" and format_level(0.0) == "0.0 dB · 100%"
     assert format_level(-18.0, narrow=True) == "-18.0 dB"  # Tile's small boxes: one of the two
-    assert format_level(-60.0) == "-inf dB · 0%"
+    assert format_level(-60.0) == "off · 0%"
     ui_base.UNITS = "db"
     assert format_level(-18.0) == "-18.0 dB"
     ui_base.UNITS = "percent"

@@ -269,7 +269,16 @@ class Fader(QAbstractSlider):
     def _announce(self, *_args) -> None:
         from .ui_base import format_db
 
-        self.setAccessibleDescription(format_db(self.gain() / 10.0))
+        text = format_db(self.gain() / 10.0)
+        if text != self.accessibleDescription():
+            self.setAccessibleDescription(text)
+
+    def sliderChange(self, change) -> None:  # noqa: N802
+        """0.13.1-beta.3: also when the value is set without signals (at start, or by a linked fader): screen readers were told
+        "0.0 dB" for every fader until it was first moved by hand."""
+        super().sliderChange(change)
+        if change == QAbstractSlider.SliderChange.SliderValueChange:
+            self._announce()
 
     def gain(self) -> int:
         return round(fader_position_to_db(self.value() / FADER_STEPS) * 10)

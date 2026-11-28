@@ -36,8 +36,8 @@ STEPS = (
     ),
     (
         "Playing now",
-        "The bar at the bottom shows every app making sound, including any that is not on a channel yet: click "
-        "one to put it on a channel.",
+        "The Playing now button at the top shows every app making sound, including any that is not on a channel "
+        "yet: click one to put it on a channel.",
         None,
     ),
 )

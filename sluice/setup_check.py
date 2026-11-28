@@ -134,6 +134,14 @@ def _pedalboard() -> tuple:
         return False, f"not installed ({type(exc).__name__})"
 
 
+def _cryptography() -> tuple:
+    from . import signing
+
+    if signing.available():
+        return True, "installed"
+    return False, "not installed: updates cannot be checked, so none is installed"
+
+
 def _pip() -> str:
     return f"{sys.executable} -m pip"
 
@@ -222,6 +230,16 @@ PARTS = (
         _pedalboard,
         None,
         lambda result: f"{_pip()} install pedalboard",
+    ),
+    Part(  # 0.13.1-beta.3: listed (since beta.2 an update is refused without it)
+        "cryptography",
+        "cryptography",
+        "Checks the signature on a new version before it is installed. Without it Sluice installs no updates.",
+        False,
+        (),
+        _cryptography,
+        None,
+        lambda result: f"{_pip()} install cryptography",
     ),
     Part(
         "tray",

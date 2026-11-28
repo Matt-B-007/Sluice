@@ -10,9 +10,10 @@ from . import uninstall
 
 
 class UninstallDialog(QDialog):
-    def __init__(self, keep_plan, everything_plan, parent=None) -> None:
+    def __init__(self, keep_plan, everything_plan, parent=None, plan=None) -> None:
         super().__init__(parent)
         self.keep, self.everything = keep_plan, everything_plan
+        self._plan = plan  # 0.13.1-beta.3: (delete settings, clear caches) -> Plan, so the list follows both boxes
         self.setWindowTitle("Uninstall Sluice")
         self.resize(560, 440)
         layout = QVBoxLayout(self)
@@ -30,6 +31,7 @@ class UninstallDialog(QDialog):
         self.delete_settings.toggled.connect(self._refresh)
         layout.addWidget(self.delete_settings)
         self.caches = QCheckBox("Also clear download caches (pip and cargo; other programs use them too)")
+        self.caches.toggled.connect(self._refresh)
         self.caches.setToolTip(
             "Clears ~/.cache/pip and ~/.cargo/registry. Programs that use them just download again when they need to."
         )
@@ -57,5 +59,7 @@ class UninstallDialog(QDialog):
 
     def _refresh(self) -> None:
         plan = self.everything if self.delete_settings.isChecked() else self.keep
-        text = uninstall.describe(plan).replace("Sluice will remove:", "This removes:")
+        if self._plan is not None:
+            plan = self._plan(self.delete_settings.isChecked(), self.caches.isChecked())
+        text = uninstall.describe(plan).replace("Sluice will remove:", "This removes:").replace("Left alone:", "Kept:")
         self.listing.setText(text.replace("\n  (nothing: it is not installed here)", ""))

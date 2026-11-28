@@ -122,7 +122,7 @@ def level_fraction(linear: float) -> float:
 
 def format_db(db: float) -> str:
     if db <= MIN_DB:
-        return "-inf dB"
+        return "off"  # 0.13.1-beta.3: one word everywhere (it was "off" on a channel and "-inf dB" on a mix)
     return "0.0 dB" if abs(db) < 0.05 else f"{db:+.1f} dB"
 
 
@@ -158,7 +158,7 @@ def format_level(db: float, narrow: bool = False) -> str:
     if UNITS == "db" or narrow:
         return format_db(db)
     if db <= MIN_DB:
-        return "-inf dB · 0%"
+        return "off · 0%"
     number = "0.0" if abs(db) < 0.05 else f"{db:+.1f}"
     return f"{number} dB · {format_percent(db)}"
 
@@ -186,7 +186,7 @@ def level_forms(db: float, narrow: bool = False) -> list:
     if UNITS != "both" or narrow:
         return [full]
     if db <= MIN_DB:
-        return [full, "off · 0%", format_db(db)]
+        return [full, format_db(db)]
     number = f"{db:+.0f}" if round(db) else "0"
     pct = format_percent(db)
     return [full, f"{number} dB · {pct}", f"{number} · {pct}", f"{number}\u2009·\u2009{pct}", format_db(db)]
@@ -405,6 +405,22 @@ class ReadoutEdit(QLineEdit):
 
 
 MIX_MUTE_TIPS = {MONITOR: "what you hear", STREAM: "what your audience hears", RECORDING: "what your recorder hears"}
+
+
+MIX_MUTED_TIPS = {
+    MONITOR: "Listen is muted: you hear nothing from Sluice",
+    STREAM: "Broadcast is muted: your audience hears nothing",
+    RECORDING: "Recording is muted: your recorder gets nothing",
+}
+MIX_MUTE_KEYS = {MONITOR: "Ctrl+Shift+L", STREAM: "Ctrl+Shift+B"}
+
+
+def mix_mute_tip(mix, muted: bool) -> str:
+    """The hint on a mix's own mute button. 0.13.1-beta.3: it said "nobody hears what you hear", and left the shortcut out."""
+    keys = f" ({MIX_MUTE_KEYS[mix.id]})" if mix.id in MIX_MUTE_KEYS else ""
+    if muted:
+        return f"{MIX_MUTED_TIPS.get(mix.id, f'The {mix.label} mix is muted')}. Click to unmute{keys}."
+    return f"Mute {MIX_MUTE_TIPS.get(mix.id, f'the {mix.label} mix')}{keys}"
 
 
 def mute_tip(mix, muted: bool) -> str:

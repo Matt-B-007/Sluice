@@ -67,7 +67,7 @@ class MiniStrip(QWidget):
         outer.addLayout(self.list_box)
         outer.addStretch(1)
         rule = QFrame()
-        rule.setObjectName("divider")
+        rule.setObjectName("hrule")
         rule.setFixedHeight(1)
         outer.addWidget(rule)
         self.master_row = self._make_row("Main", None)

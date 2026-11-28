@@ -56,9 +56,16 @@ The same mixer in the light theme, in the Rows layout, and the first-run screen:
 ![Rows layout](docs/screenshot-rows.png)
 ![First run](docs/first-run.png)
 
-## What's new in 0.13.1-beta.2
+## What's new in 0.13.1-beta.3
 
 A test version (the Beta channel only). There is no 0.13.0; the normal release will be 0.13.1.
+
+- **47 fixes from a click-everything pass over beta.2.** Settings switches show what is really on; the Rows view's background
+  is no longer black; the Effects window fits a small screen, speaks of the channel it is on and has a Reset for each effect;
+  two channels cannot share a name; Ctrl+K finds themes and skins; ticked boxes have a tick; messages point at where things
+  are now.
+
+0.13.1-beta.2:
 
 - **The "Play to" devices are hidden** from OBS and apps' sound menus, so OBS cannot record from before your faders by
   mistake (Settings › Audio can show them again). Devices are listed in alphabetical order.
@@ -79,7 +86,7 @@ A test version (the Beta channel only). There is no 0.13.0; the normal release w
 - **Signed updates:** releases are signed, and a release with a wrong signature is refused.
 - **0.12.7's fix:** Sluice's own fonts for the whole window, so text is the same width on every computer.
 
-The full list, and every earlier version, is in [CHANGELOG.md](CHANGELOG.md) (also under *Help > What's new*).
+The full list, and every earlier version, is in [CHANGELOG.md](CHANGELOG.md) (also under *Help (?) › What's new*).
 
 ## Status: please read
 
@@ -89,7 +96,7 @@ theme. On CachyOS (PipeWire, Elgato Wave XLR Pro) these have been confirmed by h
 **Sluice (Broadcast)** in OBS, Hear Broadcast, the faders, Steam game detection and routing (Counter-Strike 2 through
 Proton), the Rust audio engine, starting from the applications menu, installing from a release zip and updating from inside
 Sluice. Not yet confirmed on real hardware: controller support, VST3 plugins, recording devices for channels other than
-Mic, and every distribution other than Arch. If something does not work, use **Help > Save bug report** (or
+Mic, and every distribution other than Arch. If something does not work, use **Help (?) › Report a problem** (or
 `sluice --report`) and send the file: see *Logs and bug reports* below.
 
 ## Install
@@ -252,14 +259,14 @@ launcher left from an older version or a deleted folder: run `sluice --diagnose`
 ## Saving
 
 Your layout (channels, levels, effects, devices) saves itself a few seconds after every change, and again when you
-quit, so a crash or a power cut loses almost nothing. *File > Save settings* saves right now. *File > Import settings*
+quit, so a crash or a power cut loses almost nothing. *Settings › Advanced › Save* saves right now. *Settings › Advanced › Import*
 is the one exception: after an import, Sluice keeps the imported file until you save or restart.
 
 **Earlier versions.** Before a save replaces the settings file, Sluice keeps the old one in
 `~/.config/sluice/backups/`, at most one new version every 15 minutes and only if something actually changed. It keeps
-the **last 5** and deletes older ones by itself. *File > Restore earlier settings* lists them by time and number of
+the **last 5** and deletes older ones by itself. *Settings › Advanced › Restore earlier settings* lists them by time and number of
 channels; choosing one makes it the saved settings (your current ones go to `config.before-import.json`) and takes
-effect the next time Sluice starts. *File > Export settings* never makes backups.
+effect the next time Sluice starts. *Settings › Advanced › Export* never makes backups.
 
 ## Running in the background
 
@@ -269,7 +276,7 @@ effect the next time Sluice starts. *File > Export settings* never makes backups
 output), **Keep running in the taskbar**, so the mixer keeps working while the window is out of the way (click it in the
 taskbar to bring it back), or **Keep running in the tray**. In tray mode Sluice puts an icon in the system tray; closing *or
 minimizing* the window hides it there, and a click on the icon shows or hides the window. Starting Sluice a second time also
-brings the window back. *File > Quit* (Ctrl+Q) always quits. If your desktop has no system tray (some GNOME setups need an
+brings the window back. *☰ › Quit* (Ctrl+Q) always quits. If your desktop has no system tray (some GNOME setups need an
 extension for it), the menu says so and Sluice minimizes to the taskbar instead, so the window can never get lost. The tray was tested with a simulated tray only, not on a real KDE or GNOME desktop.
 
 **The tray icon shows what is going on.** It is the Sluice logo; while you talk its ring closes in a lighter teal
@@ -338,7 +345,7 @@ To watch what it is doing while you test: `tail -f ~/.local/state/sluice/sluice.
   `sluice --cleanup` also removes devices left behind by the old name (pwmix).
 - **Audio still odd?** `systemctl --user restart pipewire pipewire-pulse wireplumber` resets PipeWire's running
   state (all audio is interrupted for a moment; none of your files are touched).
-- **Uninstall:** *Help > Uninstall Sluice...* or `./uninstall.sh` (see *Uninstalling* below). It removes everything Sluice put on your computer and tells you when nothing is left.
+- **Uninstall:** *Settings › About & uninstall* or `./uninstall.sh` (see *Uninstalling* below). It removes everything Sluice put on your computer and tells you when nothing is left.
 
 ## The menus
 
@@ -370,7 +377,7 @@ From a terminal, in the install folder: `./uninstall.sh [--keep-settings] [--cle
 
 ## Desktop widgets
 
-*View > Desktop widgets* puts small windows on your desktop, so the big window can stay closed: a microphone mute button, a volume dial
+*Settings › Appearance › Desktop widgets* puts small windows on your desktop, so the big window can stay closed: a microphone mute button, a volume dial
 for each mix, a list of every channel, one mix (its slider, Mute and the Limiter) or one channel (a slider and a mute for each mix).
 Drag a widget by its edge to move it; drag or scroll a slider to change a level; right-click for its menu. Widgets snap to the screen's
 edges and to each other, and remember where they were on each screen. They follow the skin and theme of the window (or one of their own,
@@ -380,7 +387,7 @@ in *Settings > Themes and skins*).
 KDE's own layer-shell (the way Plasma's panels and widgets are made) when the `layer-shell-qt` package is installed, which it usually is
 with Plasma 6: then widgets go where you drop them, stay on their screen, stay on top and never take the keyboard from your game. Without
 it they are ordinary windows; right-click one and choose *Keep widgets on top on KDE…* and Sluice adds a KWin window rule that keeps them
-on top. *Help > Save bug report* says which of the two your widgets use, and why. On X11 desktops widgets place themselves and stay on
+on top. *Help (?) › Report a problem* says which of the two your widgets use, and why. On X11 desktops widgets place themselves and stay on
 top without either.
 
 **Moving widgets.** Drag a widget by any part that is not a slider or a button (the pointer shows an open hand). It snaps to the screen's
@@ -438,7 +445,7 @@ Gain effect. A Compressor whose threshold is above your voice shows "not doing a
 
 ## Version and updates
 
-The version is in the window title, at the right of the status bar and in **Help > About Sluice**. Please include it
+The version is in the window title, at the right of the status bar and in **Help (?) › About Sluice**. Please include it
 in bug reports. **Settings > Updates > Check for updates now** runs when you click it: it asks GitHub for the newest release
 on your channel and tells you whether yours is current. If a newer one exists it shows **what that version
 changes** (its release notes) with an **Update now** button and a button to open the download page. Nothing is sent
@@ -464,7 +471,7 @@ released. Switching from Beta back to Stable while running a test version asks w
 Sluice, never while you are in a call or a game.
 
 **After an update**, Sluice shows what is new in the version you now have, once (a brand-new install is not shown it, and
-a start minimized at login waits until you open the window). **Help > What's new in this version** shows it again. The
+a start minimized at login waits until you open the window). **Help (?) › What's new** shows it again. The
 notes come from `CHANGELOG.md`, which is also what the GitHub release page shows.
 
 When you remove an app from a channel it goes back to playing straight to your normal output, outside the mixer, so
@@ -735,7 +742,7 @@ behind by a crash are cleaned up on the next start, or with `sluice --cleanup`.
   Proton (named like `cs2.exe`) match with or without the `.exe`. If one does not move, check the names in the log
   (`moved ...` lines) and add it by name.
 - Meters show peaks per channel (after effects and fader), not per source.
-- Two mixes (Listen and Broadcast), or three with *Mixer > Recording mix*, which needs a restart of Sluice.
+- Two mixes (Listen and Broadcast), or three with *Add a recording mix* on the Broadcast card, which needs a restart of Sluice.
 - **Chat is muted on Broadcast by default.** If a voice-chat app (Discord, etc.) plays into *Chat* and records from
   *Sluice (Broadcast)*, un-muting Chat on Broadcast would send people their own voice back to them.
 - **Mute and push-to-talk.** *Mute my microphone* (button, Ctrl+M) works inside the Sluice window. A key that works

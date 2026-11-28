@@ -279,7 +279,7 @@ def test_helpers():
     assert format_db(0.0) == "0.0 dB"
     assert format_db(-6.04) == "-6.0 dB"
     assert format_db(3.0) == "+3.0 dB"
-    assert format_db(-60.0) == "-inf dB"
+    assert format_db(-60.0) == "off"
     assert level_fraction(1.0) == pytest.approx(1.0)
     assert level_fraction(0.0) == 0.0
     assert 0.0 < level_fraction(0.1) < 1.0
@@ -792,7 +792,7 @@ def test_fader_readouts_can_be_typed_into(ui):
     music.readouts["monitor"].entered.emit(500.0)  # clamped to +12
     assert engine.mixer.channel("music").levels["monitor"] == 12.0
     music.readouts["monitor"].entered.emit(float("-inf"))
-    assert engine.mixer.channel("music").levels["monitor"] == -60.0 and music.readouts["monitor"].toolTip().startswith("-inf dB")
+    assert engine.mixer.channel("music").levels["monitor"] == -60.0 and music.readouts["monitor"].toolTip().startswith("off")
     win.mix_strips[1].readout.entered.emit(-6.0)
     assert engine.mixer.mix(STREAM).gain_db == -6.0 and win.mix_strips[1].readout.toolTip().startswith(
         "-6.0 dB"

@@ -243,7 +243,7 @@ class ThemesMixin:
                 "Hard to read",
                 f"The theme \u201c{theme.name}\u201d may be hard to read:\n\n"
                 + "\n".join("\u2022 " + p for p in problems[:4])
-                + "\n\nUse it anyway? You can switch back in View > Theme.",
+                + "\n\nUse it anyway? You can switch back in Settings > Appearance.",
             )
             if ask != QMessageBox.StandardButton.Yes:
                 raise themes.ThemeError("The theme was not imported.")
@@ -266,7 +266,9 @@ class ThemesMixin:
         name = theme.name if theme.id.startswith(themes.CUSTOM_PREFIX) else f"{theme.name} copy"
         data = themes.export_dict(themes.Theme(theme.id, name, theme.base, theme.colors))
         Path(path).write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-        self.say(f"Theme saved to {logs.short_path(path)}. Edit the colours, then use View > Theme > Import theme.")
+        self.say(
+            f"Theme saved to {logs.short_path(path)}. Edit the colours, then use Settings > Appearance > Theme > Import theme."
+        )
 
     def export_theme(self) -> None:
         path, _ = QFileDialog.getSaveFileName(
